@@ -1,0 +1,17 @@
+{
+  "description": "Optionally record successful file edits as lightweight dirty-path hints.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|write_file|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -I -B \"${PLUGIN_ROOT}/scripts/record_change.py\"",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,331 @@
+"""End-to-end smoke tests for the lightweight LLM Wiki plugin."""
+
+from __future__ import annotations
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+from http.client import HTTPConnection
+from pathlib import Path
+from urllib.parse import urlencode
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = PLUGIN_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+from llmwiki_core import (  # noqa: E402
+    init_project,
+    read_file,
+    search,
+    snapshot,
+    status,
+    wiki_check,
+    wiki_list,
+    wiki_write,
+)
+from llmwiki_registry import (  # noqa: E402
+    get_project,
+    register_project,
+    select_project,
+    unregister_project,
+    update_project_storage,
+    update_settings,
+)
+from markdown_renderer import render_markdown  # noqa: E402
+from web_server import create_server  # noqa: E402
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def make_source(root: Path, name: str) -> Path:
+    source = root / name
+    (source / "src").mkdir(parents=True)
+    (source / "src/main.py").write_text(
+        "from pipeline import run\n\ndef main():\n    return run('demo')\n",
+        encoding="utf-8",
+    )
+    (source / "src/pipeline.py").write_text(
+        "def run(name):\n    return f'hello {name}'\n", encoding="utf-8"
+    )
+    return source
+
+
+def test_core(root: Path) -> None:
+    source = make_source(root, "core-project")
+    init = init_project(str(source))
+    require(init["ok"], "init failed")
+    first = snapshot(str(source))
+    require(first["file_count"] == 2, "snapshot should exclude state and Wiki")
+    hits = search(str(source), "def run")
+    require(hits["results"][0]["path"] == "src/pipeline.py", "search failed")
+    opened = read_file(str(source), "src/main.py", start_line=1, end_line=3)
+    require("def main" in opened["content"], "bounded read failed")
+    wiki_write(
+        str(source),
+        "architecture.md",
+        "---\ntitle: Architecture\nsources:\n  - src/main.py\n---\n\n# Architecture\n\nSee [[pipeline]].\n",
+    )
+    wiki_write(
+        str(source),
+        "pipeline.md",
+        "---\ntitle: Pipeline\nsources:\n  - src/pipeline.py\n---\n\n# Pipeline\n",
+    )
+    require(
+        len(wiki_list(str(source))["pages"]) == 3, "Wiki index and pages should exist"
+    )
+    checked = wiki_check(str(source))
+    require(
+        not checked["broken_links"] and not checked["missing_sources"],
+        "Wiki checks failed",
+    )
+    (source / "src/pipeline.py").write_text(
+        "def run(name):\n    return f'HELLO {name}'\n", encoding="utf-8"
+    )
+    require(
+        snapshot(str(source), save=False)["changes"]["modified"] == ["src/pipeline.py"],
+        "modified file not detected",
+    )
+    require(
+        status(str(source))["snapshot_file_count"] == 2, "preview replaced baseline"
+    )
+
+
+def test_registry(root: Path) -> tuple[Path, Path, dict]:
+    home = root / "home"
+    source1 = make_source(root, "registered-one")
+    first = register_project(str(source1), home=str(home))
+    require(
+        Path(first["project"]["wiki_root"]) == source1 / "wiki",
+        "new-user default must be <project>/wiki",
+    )
+    require(
+        register_project(str(source1), home=str(home))["existing"],
+        "duplicate registration not detected",
+    )
+    default = root / "obsidian"
+    update_settings(home=str(home), default_wiki_root=str(default), web_port=9123)
+    source2 = make_source(root, "registered-two")
+    second = register_project(str(source2), home=str(home))
+    record = second["project"]
+    require(
+        Path(record["wiki_root"]).parent == default, "configured default root not used"
+    )
+    require(
+        get_project(current_path=str(source2 / "src"), home=str(home))["project"]["id"]
+        == record["id"],
+        "current path resolution failed",
+    )
+    select_project(record["id"], home=str(home))
+    wiki_write(
+        str(source2),
+        "guide.md",
+        "---\ntitle: Guide\nsources:\n  - src/main.py\n---\n\n# Guide\n\n[[Other]]\n",
+        state_root=record["state_root"],
+    )
+    moved_wiki = root / "moved/wiki"
+    moved_state = root / "moved/state"
+    moved = update_project_storage(
+        record["id"],
+        home=str(home),
+        wiki_root=str(moved_wiki),
+        state_root=str(moved_state),
+    )
+    require((moved_wiki / "guide.md").is_file(), "Wiki was not copied")
+    require(Path(moved["previous_wiki_root"]).exists(), "old Wiki should be preserved")
+    require(
+        Path(moved["previous_state_root"]).exists(), "old state should be preserved"
+    )
+    record = moved["project"]
+    removed = unregister_project(record["id"], home=str(home))
+    require(
+        not removed["files_deleted"] and moved_wiki.exists(), "unregister deleted files"
+    )
+    record = register_project(
+        str(source2),
+        home=str(home),
+        wiki_root=str(moved_wiki),
+        state_root=str(moved_state),
+    )["project"]
+    return home, source2, record
+
+
+def test_renderer() -> None:
+    text = """---\ntitle: Demo\ntags:\n  - test\n---\n# Heading\n\n- [x] done\n- item\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n> [!NOTE] Note\n> visible\n\n```python\nprint("<safe>")\n```\n\n[[Other Page]] and ![local](img.png)\n"""
+    rendered = render_markdown(text, "demo", "index.md")
+    for token in (
+        "frontmatter",
+        "<table>",
+        "checkbox",
+        "callout",
+        "code-language",
+        "wikilink",
+        "/asset/img.png",
+        "&lt;safe&gt;",
+    ):
+        require(token in rendered, f"renderer missing {token}")
+
+
+def request(
+    connection: HTTPConnection, method: str, path: str, body: str | None = None
+) -> tuple[int, bytes, dict]:
+    headers = (
+        {"Content-Type": "application/x-www-form-urlencoded"}
+        if body is not None
+        else {}
+    )
+    connection.request(method, path, body=body, headers=headers)
+    response = connection.getresponse()
+    return response.status, response.read(), dict(response.headers)
+
+
+def test_web(root: Path, home: Path, source: Path, record: dict) -> None:
+    wiki_write(
+        str(source), "other-page.md", "# Other Page\n", state_root=record["state_root"]
+    )
+    wiki_write(
+        str(source),
+        "demo.md",
+        "---\ntitle: Demo\n---\n\n# Demo\n\n- [x] task\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n[[other-page]]\n",
+        state_root=record["state_root"],
+    )
+    server = create_server(home=str(home), port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    connection = HTTPConnection(host, port, timeout=5)
+    try:
+        original_stderr = sys.stderr
+        sys.stderr = None
+        try:
+            code, body, _ = request(connection, "GET", "/")
+        finally:
+            sys.stderr = original_stderr
+        require(
+            code == 200 and "registered-two" in body.decode("utf-8"),
+            "headless home page failed",
+        )
+        code, body, _ = request(
+            connection, "GET", f"/project/{record['id']}/page/demo.md"
+        )
+        text = body.decode("utf-8")
+        require(
+            code == 200 and "<table>" in text and "wikilink" in text,
+            "Markdown page failed",
+        )
+        code, _, _ = request(
+            connection, "GET", f"/project/{record['id']}/page/..%2F..%2Fsecret.md"
+        )
+        require(code in {400, 404}, "path traversal was not rejected")
+        new_wiki = root / "web-moved"
+        form = urlencode(
+            {
+                "wiki_root": str(new_wiki),
+                "state_root": record["state_root"],
+                "copy_existing": "1",
+            }
+        )
+        code, _, headers = request(
+            connection, "POST", f"/project/{record['id']}/storage", form
+        )
+        require(code == 303 and "Location" in headers, "storage form failed")
+        require((new_wiki / "demo.md").is_file(), "web storage move did not copy Wiki")
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_mcp(root: Path, home: Path) -> None:
+    process = subprocess.Popen(
+        [sys.executable, "-I", "-B", str(SCRIPTS / "mcp_server.py")],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "LLMWIKI_HOME": str(home)},
+    )
+    assert process.stdin and process.stdout
+    messages = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "smoke", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "llmwiki_project_list", "arguments": {}},
+        },
+    ]
+    for message in messages:
+        process.stdin.write(json.dumps(message) + "\n")
+    process.stdin.close()
+    responses = [json.loads(process.stdout.readline()) for _ in range(3)]
+    process.wait(timeout=10)
+    require(
+        responses[0]["result"]["serverInfo"]["version"] == "0.2.0", "initialize failed"
+    )
+    names = {x["name"] for x in responses[1]["result"]["tools"]}
+    require(
+        len(names) == 18 and "llmwiki_web_start" in names and "llmwiki_search" in names,
+        "tool catalog failed",
+    )
+    require(responses[2]["result"]["isError"] is False, "registry MCP call failed")
+
+
+def test_hook(home: Path, source: Path, record: dict) -> None:
+    payload = {
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Edit",
+        "cwd": str(source),
+        "tool_input": {"file_path": "src/main.py"},
+        "tool_response": {"ok": True},
+    }
+    completed = subprocess.run(
+        [sys.executable, "-I", "-B", str(SCRIPTS / "record_change.py")],
+        input=json.dumps(payload),
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        timeout=10,
+        env={**os.environ, "LLMWIKI_HOME": str(home)},
+        check=False,
+    )
+    require(completed.returncode == 0, "hook should be fail-open")
+    require(
+        "src/main.py"
+        in (Path(record["state_root"]) / "events.jsonl").read_text(encoding="utf-8"),
+        "registered hook event missing",
+    )
+
+
+def main() -> int:
+    with tempfile.TemporaryDirectory(prefix="llmwiki-smoke-") as temp:
+        root = Path(temp)
+        test_core(root)
+        home, source, record = test_registry(root)
+        test_renderer()
+        test_web(root, home, source, record)
+        record = get_project(current_path=str(source), home=str(home))["project"]
+        test_mcp(root, home)
+        test_hook(home, source, record)
+    print("LLM Wiki smoke test passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

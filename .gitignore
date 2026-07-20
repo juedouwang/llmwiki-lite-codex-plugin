@@ -1,0 +1,12 @@
+# Python caches and local test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Local LLM Wiki runtime data
+.llmwiki/
+
+# Local development files
+.env
+*.log

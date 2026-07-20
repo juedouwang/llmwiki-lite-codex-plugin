@@ -1,0 +1,37 @@
+{
+  "name": "llmwiki-lite",
+  "version": "0.2.0",
+  "description": "A lightweight Codex plugin for LLM-led project understanding, useful Markdown Wikis, incremental maintenance, and a local website.",
+  "author": {
+    "name": "LLM Wiki Agent contributors",
+    "url": "https://github.com/juedouwang/llmwiki-lite-codex-plugin"
+  },
+  "homepage": "https://github.com/juedouwang/llmwiki-lite-codex-plugin",
+  "repository": "https://github.com/juedouwang/llmwiki-lite-codex-plugin",
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "project-understanding",
+    "knowledge",
+    "mcp",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "LLM Wiki Lite",
+    "shortDescription": "让 Codex 理解项目并维护实用的 Markdown Wiki，支持项目注册、增量更新和本地网站。",
+    "longDescription": "通过独立 Skill 指导 Codex 完成项目理解、查询和维护；MCP 只提供注册、扫描、搜索、读取、哈希、增量检测与安全写入等机械能力，Hook 仅记录变更提示。",
+    "developerName": "LLM Wiki Lite contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Project registry",
+      "LLM-led project understanding",
+      "Local Markdown Wiki",
+      "Loopback website",
+      "MCP tools",
+      "Optional change hook"
+    ],
+    "defaultPrompt": "注册并理解当前项目，让 Codex 创建少量真正有用、可持续维护的 Markdown Wiki 页面。"
+  }
+}
