@@ -224,11 +224,15 @@ def test_web(root: Path, home: Path, source: Path, record: dict) -> None:
             and "我的研究项目" in home_text,
             "Chinese research home page failed",
         )
+        for token in ("console-shell", "console-topbar", "console-sidebar", "console-project-table"):
+            require(token in home_text, f"console shell missing {token}")
         code, body, _ = request(connection, "GET", f"/project/{record['id']}")
         project_text = body.decode("utf-8")
         for token in ("项目研究台", "研究内容", "研究总览", "实验记录", "建议下一步"):
             require(token in project_text, f"project cockpit missing {token}")
         require("进入文献中心" in project_text, "project literature entry missing")
+        for token in ("console-breadcrumbs", "console-nav-item is-active"):
+            require(token in project_text, f"project console navigation missing {token}")
         literature_base = f"/project/{record['id']}/literature"
         code, body, _ = request(connection, "GET", literature_base)
         library_text = body.decode("utf-8")
@@ -246,6 +250,8 @@ def test_web(root: Path, home: Path, source: Path, record: dict) -> None:
             "列表",
             "从推荐到网页对照阅读",
             "data-literature-kind",
+            "console-project-switcher",
+            "console-global-search",
             "data-literature-status",
         ):
             require(code == 200 and token in library_text, f"literature library missing {token}")

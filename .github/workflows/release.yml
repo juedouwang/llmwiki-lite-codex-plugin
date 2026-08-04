@@ -1,0 +1,39 @@
+name: Release LLM Wiki Lite
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install validation tools
+        run: python -m pip install --upgrade pip ruff
+
+      - name: Validate release version
+        env:
+          PYTHONUTF8: '1'
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION=$(python -c "import json; print(json.load(open('plugins/llmwiki-lite/.codex-plugin/plugin.json', encoding='utf-8'))['version'])")
+          test "$TAG_NAME" = "v$VERSION"
+          ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests
+          python -B plugins/llmwiki-lite/tests/smoke_test.py
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" --title "LLM Wiki Lite ${{ github.ref_name }}" --generate-notes

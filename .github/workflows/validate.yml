@@ -1,0 +1,58 @@
+name: Validate LLM Wiki Lite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install validation tools
+        run: python -m pip install --upgrade pip ruff
+
+      - name: Run static checks
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests
+          python -m compileall -q plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests
+
+      - name: Run smoke test
+        env:
+          PYTHONUTF8: '1'
+        run: python -B plugins/llmwiki-lite/tests/smoke_test.py
+
+      - name: Validate plugin metadata
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          plugin_path = Path('plugins/llmwiki-lite/.codex-plugin/plugin.json')
+          marketplace_path = Path('.agents/plugins/marketplace.json')
+          plugin = json.loads(plugin_path.read_text(encoding='utf-8'))
+          marketplace = json.loads(marketplace_path.read_text(encoding='utf-8'))
+          version = str(plugin.get('version', ''))
+          assert plugin.get('name') == 'llmwiki-lite'
+          assert re.fullmatch(r'\d+\.\d+\.\d+', version)
+          assert marketplace.get('name') == 'llmwiki-lite'
+          assert marketplace['plugins'][0]['name'] == 'llmwiki-lite'
+          assert marketplace['plugins'][0]['source']['path'] == './plugins/llmwiki-lite'
+          print(f'Validated LLM Wiki Lite {version}')
+          PY

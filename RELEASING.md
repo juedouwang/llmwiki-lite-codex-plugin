@@ -6,14 +6,17 @@ This repository is the standalone lightweight release line for LLM Wiki. It is i
 
 1. Update the version in `plugins/llmwiki-lite/.codex-plugin/plugin.json`.
 2. Update `CHANGELOG.md`.
-3. Run:
+3. Run the local validation commands:
    - `ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests`
    - `python -B plugins/llmwiki-lite/tests/smoke_test.py`
-   - `quick_validate.py` for all five Skill directories
+   - `quick_validate.py` for every Skill directory
    - `validate_plugin.py plugins/llmwiki-lite`
-4. Commit to `main`.
-5. Create an annotated tag such as `v0.2.1` and push it.
-6. Create a GitHub Release from the tag.
+4. Commit the release preparation to `main` and push it.
+5. Create an annotated tag that exactly matches the manifest version, for example `v0.3.1`, and push it.
+6. `.github/workflows/validate.yml` checks every `main` push and pull request.
+7. `.github/workflows/release.yml` validates the tag and creates the GitHub Release automatically.
+
+The installed Codex client still needs a Marketplace refresh; GitHub Actions validates and publishes the release but does not silently replace an installed local plugin.
 
 ## User update flow
 

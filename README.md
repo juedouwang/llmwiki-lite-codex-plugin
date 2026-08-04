@@ -79,7 +79,7 @@ codex plugin marketplace upgrade llmwiki-lite
 codex plugin add llmwiki-lite@llmwiki-lite
 ```
 
-发布维护以 `main` 分支和版本标签（例如 `v0.3.0`）为准。
+发布维护以 `main` 分支和版本标签（例如 `v0.3.1`）为准。每次推送 `main` 或提交版本标签都会由 GitHub Actions 自动执行验证；版本标签通过验证后自动创建 GitHub Release。
 
 ## 验证
 
