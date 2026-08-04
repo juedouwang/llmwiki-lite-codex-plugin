@@ -1,7 +1,7 @@
 {
   "name": "llmwiki-lite",
-  "version": "0.2.0",
-  "description": "A lightweight Codex plugin for LLM-led project understanding, useful Markdown Wikis, incremental maintenance, and a local website.",
+  "version": "0.3.0",
+  "description": "A lightweight Codex plugin for LLM-led research and project understanding, useful Markdown Wikis, incremental maintenance, and a Chinese-first local research cockpit with direct PDF and assisted-reading comparison.",
   "author": {
     "name": "LLM Wiki Agent contributors",
     "url": "https://github.com/juedouwang/llmwiki-lite-codex-plugin"
@@ -11,6 +11,7 @@
   "license": "MIT",
   "keywords": [
     "wiki",
+    "research",
     "project-understanding",
     "knowledge",
     "mcp",
@@ -19,19 +20,22 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "LLM Wiki Lite",
-    "shortDescription": "让 Codex 理解项目并维护实用的 Markdown Wiki，支持项目注册、增量更新和本地网站。",
-    "longDescription": "通过独立 Skill 指导 Codex 完成项目理解、查询和维护；MCP 只提供注册、扫描、搜索、读取、哈希、增量检测与安全写入等机械能力，Hook 仅记录变更提示。",
+    "displayName": "LLM Wiki Lite 科研助手",
+    "shortDescription": "让 Codex 理解科研项目并维护实用的中文 Markdown Wiki 与本地研究工作台。",
+    "longDescription": "通过六个独立 Skill 指导 Codex 完成项目注册、研究理解、证据核验、增量维护、文献推荐下载精读和网页浏览；MCP 只承担文件读取、检索、快照、状态和安全写入等机械劳动，网页端提供中文研究项目、文献中心、PDF 原文阅读、中文辅助阅读对照、方法、实验、结果、结论和计划视图。",
     "developerName": "LLM Wiki Lite contributors",
     "category": "Productivity",
     "capabilities": [
       "Project registry",
-      "LLM-led project understanding",
-      "Local Markdown Wiki",
-      "Loopback website",
+      "LLM-led research understanding",
+      "Chinese Markdown Wiki",
+      "Chinese research cockpit",
+      "Literature recommendation and ingestion",
+      "PDF literature reading",
+      "Assisted-reading comparison",
       "MCP tools",
       "Optional change hook"
     ],
-    "defaultPrompt": "注册并理解当前项目，让 Codex 创建少量真正有用、可持续维护的 Markdown Wiki 页面。"
+    "defaultPrompt": "注册并理解当前研究项目，使用简体中文创建少量真正有用、可核验、可持续维护的 Markdown Wiki 页面，然后打开中文科研知识工作台。"
   }
 }

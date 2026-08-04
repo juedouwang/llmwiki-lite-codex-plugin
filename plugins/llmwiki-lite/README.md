@@ -1,128 +1,86 @@
-# LLM Wiki Lite
+# LLM Wiki Lite 科研助手
 
-一个轻量、可直接安装到 Codex 的 Plugin。Codex/LLM 负责阅读、理解、推理与知识写作；本地程序只负责项目注册、文件扫描、搜索、读取、hash、增量检测、安全写入和网站展示等机械工作。
+LLM Wiki Lite 是可直接安装到 Codex 的轻量 Plugin。它不替代 LLM 推理：Codex 负责理解研究问题、选择证据和写知识；程序只承担重复、确定性的文件与状态操作。
 
-新实现与旧的 `llmwiki-research-codex-plugin` 完全分开：
-
-- 本仓库 Plugin：`plugins/llmwiki-lite/`
-- 产品契约：`docs/product-contract.md`
-- 旧 Research 版：https://github.com/juedouwang/llmwiki-research-codex-plugin
-
-## 架构
+## 组成
 
 ```text
-Codex / LLM
-├─ llmwiki-projects   项目注册、选择和存储位置
-├─ llmwiki-understand 项目理解与有用 Wiki 写作
-├─ llmwiki-query      基于 Wiki 并回到真实源文件回答
-├─ llmwiki-maintain   增量变化与最小必要维护
-├─ llmwiki-web        本地网站启动和使用
-├─ MCP                机械文件、注册表、存储与网站启动工具
-└─ Hook               可选、fail-open 的 dirty-path 提示
+llmwiki-lite/
+├─ .codex-plugin/plugin.json
+├─ .mcp.json
+├─ skills/
+│  ├─ llmwiki-projects/
+│  ├─ llmwiki-understand/
+│  ├─ llmwiki-query/
+│  ├─ llmwiki-maintain/
+│  ├─ llmwiki-literature/
+│  └─ llmwiki-web/
+├─ hooks/
+├─ scripts/
+└─ tests/
 ```
 
-不再生成固定十五类页面，不建设 Claim/Evidence 状态机，不用无 LLM 的程序假装理解项目。
+六个 Skill 可以独立触发：
 
-## 安装
+1. `llmwiki-projects`：注册项目和管理存储位置；
+2. `llmwiki-understand`：理解研究或软件项目并建立少量有用 Wiki；
+3. `llmwiki-query`：从 Wiki 定位，再回到真实项目核验；
+4. `llmwiki-maintain`：根据变化增量维护受影响页面；
+5. `llmwiki-literature`：调研推荐论文，在用户选定后下载原文、生成中文精读并进入文献中心；
+6. `llmwiki-web`：启动中文科研知识工作台。
 
-GitHub 安装：
+## 中文输出约定
+
+人类可读 Wiki、维护报告和查询回答默认使用简体中文，写作结构贴近中国研究生科研习惯：研究问题、方法、实验条件、证据、结果、结论、局限和下一步。
+
+以下内容在需要精度时保留英文：代码、路径、命令、API/MCP 名、Schema 字段、算法名、模型名、论文标题、数据集名、指标名和不宜机械翻译的技术术语。
+
+## 中文科研知识工作台
+
+网页端是主要可视化和浏览入口，保持简洁、无前端构建链：
+
+- **我的研究项目**：项目数、知识页、源文件、待核对变化；
+- **项目研究台**：按科研流程动态归类已有 Markdown，并显示最近更新、建议下一步和可复制给 Codex 的维护 Prompt；
+- **文献中心**：采用接近 Obsidian 的左侧文献库导航，可按已精读/待精读和文献类型快速筛选，并支持卡片/列表视图；
+- **原文与精读**：自动发现项目目录中的 PDF、EPUB、DOCX 和 HTML，直接阅读 PDF 原文，并把原文与简体中文辅助阅读左右对照；
+- **科研检索**：跨项目或按项目检索论文、方法、实验、结果、结论和计划；
+- **Markdown 阅读**：完整渲染正文，并提供中文导航、目录、分类、更新时间、阅读时长、复制路径和打印/PDF；
+- **存储设置**：修改全局默认 Wiki 根目录、项目 `wiki_root` 和高级 `state_root`。
+
+科研分类只是网页浏览视图，不会改变真实目录，也不会强制生成固定类型页面。网站不编辑任意 Markdown 正文；Markdown 文件仍是唯一知识源。
+
+文献辅助阅读推荐写入 `wiki_root`，并在 frontmatter 中使用相对项目根目录的 `paper_file` 或 `sources` 精确关联原文。未显式关联时只做保守的标题/路径候选匹配；置信度不足就保持“待关联”，不会伪造对应关系。系统不自动翻译 PDF，Codex 必须先读原文，再把原文事实、解释和待验证推断分开写。
+
+启动方式：
 
 ```powershell
-codex plugin marketplace add https://github.com/juedouwang/llmwiki-lite-codex-plugin
-codex plugin add llmwiki-lite@llmwiki-lite
+python -I -B scripts/web_server.py --host 127.0.0.1 --port 8765
 ```
 
-本地开发安装：
+也可让 Codex 调用 `llmwiki_web_start`。
 
-```powershell
-codex plugin marketplace add E:\GitHub\llm-wiki-agent\next\llmwiki-lite-codex-plugin
-codex plugin add llmwiki-lite@llmwiki-lite
-```
+## 存储模型
 
-要求：Codex Plugin 支持、`PATH` 中可执行的 Python 3.10+。不需要额外 Python 包、API key 或独立数据库。
+每个注册项目有三个位置：
 
-## 项目注册与存储
+- `source_root`：真实研究/代码项目，插件只读理解；
+- `wiki_root`：人类可读 Markdown；
+- `state_root`：快照、哈希、配置和变化提示。
 
-全局轻量配置默认位于：
+未配置全局默认时，新用户使用 `<project-root>/wiki`。配置例如 `E:\wiki_obsidian` 后，新项目默认使用其独立子目录。网页修改位置时默认复制原内容，并永不自动删除旧目录。
 
-- Windows：`%LOCALAPPDATA%\LLMWiki\`
-- 其他系统：`~/.local/share/llmwiki/`
-- 可用 `LLMWIKI_HOME` 覆盖。
+## 安全边界
 
-```text
-<LLMWIKI_HOME>/
-├─ registry.json
-├─ settings.json
-└─ projects/<project_id>/state/
-```
-
-每个项目保存三个明确位置：
-
-```text
-source_root  只读理解对象/源项目
-state_root   manifest、config、events 等机器状态
-wiki_root    人和 Agent 阅读的 Markdown
-```
-
-注册不会扫描或总结项目。项目 ID 由项目名称 slug 和规范化源路径 hash 稳定生成。
-
-Wiki 位置选择顺序：
-
-1. 注册时显式传入 `wiki_root`；
-2. 全局配置了 `default_wiki_root` 时，使用 `<default_wiki_root>/<project_id>`；
-3. 其他新用户默认使用 `<project-root>/wiki`。
-
-当前开发机器可配置为 `E:\wiki_obsidian`，但该路径不是写死的跨用户默认值。
-
-移动 Wiki 或状态目录时默认复制现有内容、拒绝向非空目标合并、切换注册表并保留旧目录；取消注册也不会删除任何文件。
-
-## MCP 工具
-
-项目与设置：
-
-- `llmwiki_project_register`
-- `llmwiki_project_list`
-- `llmwiki_project_get`
-- `llmwiki_project_select`
-- `llmwiki_project_storage_update`
-- `llmwiki_project_unregister`
-- `llmwiki_settings_get`
-- `llmwiki_settings_update`
-- `llmwiki_web_start`
-
-项目机械操作：
-
-- `llmwiki_init`
-- `llmwiki_status`
-- `llmwiki_snapshot`
-- `llmwiki_files`
-- `llmwiki_search`
-- `llmwiki_read`
-- `llmwiki_wiki_write`
-- `llmwiki_wiki_list`
-- `llmwiki_wiki_check`
-
-MCP 不做页面分类、重要性判断、项目总结或科学结论判断。
-
-## 本地网站
-
-通过 Codex 调用 `llmwiki_web_start`，或直接运行：
-
-```powershell
-python -I -B scripts/web_server.py --open
-```
-
-默认地址：`http://127.0.0.1:8765/`。网站只允许绑定 loopback，不访问外部网络，不使用数据库。
-
-网站包括：
-
-- 已注册项目列表、源目录、Wiki 目录、状态目录；
-- 项目页、页面列表、快照状态、最近变化提示；
-- 跨项目和项目内 Wiki 搜索；
-- Markdown frontmatter、标题、段落、列表、任务列表、引用、Obsidian callout、表格、代码块、行内代码、链接、图片、分隔线和 `[[wikilinks]]`；
-- 设置页：修改全局默认 Wiki 根目录，注册项目，修改项目 `wiki_root` / `state_root`，取消注册。
-
-网站当前不编辑 Markdown 正文。Markdown 文件仍是唯一知识真相源，由 Codex 和用户在文件层维护。
+- 网站只绑定 `127.0.0.1` / loopback；
+- 所有文件读写做根目录和路径穿越检查；
+- Wiki 写入仅发生在配置的 `wiki_root`；
+- 文献原文只从已注册项目的 `source_root` 读取，只允许 PDF、EPUB、DOCX、HTML/HTM；路径穿越和符号链接会被拒绝；
+- PDF 使用 inline 与 Range 流式响应供浏览器阅读，非 PDF 作为附件打开，源项目 HTML 不在站内执行；
+- 网站永不修改、移动或删除文献原文；
+- Hook 仅提供 dirty-path 提示且始终 fail-open；
+- 不进行独立外部网络发送；
+- 不引入 React/Vue、Node 构建链、数据库或外部 CDN；
+- 不生成固定十五类页面，不批量制造空模板。
 
 ## 使用示例
 
@@ -131,36 +89,26 @@ python -I -B scripts/web_server.py --open
 ```
 
 ```text
-理解这个项目，只建立真正有内容的 Wiki 页面。
+理解这个研究项目，用简体中文建立少量真正有内容的 Wiki 页面。
 ```
 
 ```text
-这个项目的数据如何进入核心模型？请核验真实代码后回答。
+核验低纹理 RGB-D 配准方案的实验依据，并指出还缺什么实验。
 ```
 
 ```text
-检查最近变化，只更新受影响的 Wiki。
+精读 references/ANoCo.pdf，生成简体中文辅助阅读并写入 Wiki，然后打开文献中心进行原文对照。
 ```
 
 ```text
-打开 LLM Wiki 网站。
+检查最近变化，只更新受影响的 Wiki，然后打开中文科研工作台。
 ```
-
-## 安全边界
-
-- 所有读取和写入都做根目录约束与路径穿越检查；
-- Wiki 写入只发生在配置的 `wiki_root`；
-- 网站附件只从对应项目的 `wiki_root` 提供；
-- 网站只绑定 `127.0.0.1` / loopback；
-- Hook 失败不会阻断 Codex；
-- Hook 只是提示，准确变化以 snapshot 为准；
-- 程序不进行独立外部网络发送。
 
 ## 验证
 
 ```powershell
 $env:PYTHONUTF8='1'
-ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests
-python -B plugins/llmwiki-lite/tests/smoke_test.py
-python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/llmwiki-lite
+ruff check scripts tests
+python -B tests/smoke_test.py
+python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
 ```

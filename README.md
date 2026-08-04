@@ -1,8 +1,14 @@
 # LLM Wiki Lite Codex Plugin
 
-这是与旧 `llmwiki-research` 架构完全分离的轻量版 Codex Plugin。
+这是与旧 `llmwiki-research` 架构完全分离的轻量版科研与项目知识助手。
 
-Codex/LLM 负责项目理解、推理和 Wiki 写作；程序只提供项目注册、文件扫描、搜索、读取、hash、增量检测、安全写入、Hook 提示和本地网站等机械能力。
+- **Codex / LLM** 负责理解、选择证据、推理和 Markdown 写作；
+- **Skill** 负责给 Codex 清晰、可独立执行的工作指引；
+- **MCP** 只提供注册、扫描、检索、读取、快照、状态和安全写入等重复机械劳动；
+- **Hook** 只记录可能变化的路径提示；
+- **Web** 是简体中文优先的本地科研知识工作台。
+
+程序不会生成固定十五类空页面，也不会重新引入复杂 Research Core。
 
 ## 安装
 
@@ -15,14 +21,33 @@ codex plugin add llmwiki-lite@llmwiki-lite
 
 Plugin 位于 `plugins/llmwiki-lite/`，完整说明见 `plugins/llmwiki-lite/README.md`。
 
-## 产品组成
+## 中文科研工作台
 
-- 五个独立 Skill：项目管理、项目理解、查询、维护、网站；
-- MCP：注册表、扫描、搜索、读取、hash、增量检测和 Wiki 写入；
-- Hook：可选、fail-open 的 dirty-path 提示；
-- Web：loopback-only 的简洁 Markdown 可视化与存储位置设置。
+网页端面向中国研究生的日常科研使用：
 
-程序不生成固定十五类页面，也不实现替代 LLM 的复杂 Research Core。
+- 首页查看研究项目、知识页、源文件和待核对变化；
+- 项目研究台按研究总览、文献、方法、数据、实验、结果、结论、计划等流程动态归类现有 Markdown；
+- 文献中心采用 Obsidian 风格的左侧文献库，可按阅读状态和文献类型快速筛选，并支持卡片/列表切换；
+- 自动发现项目目录中的 PDF、EPUB、DOCX 和 HTML，并区分论文、补充材料、专利与报告；
+- PDF 可直接在网页内阅读，也可与 Codex 生成的简体中文精读 Markdown 左右双栏对照；
+- 独立 `llmwiki-literature` Skill 负责“调研推荐 → 用户选择 → 下载原文 → 中文精读 → 网页入库”的完整流程；
+- 检索论文、方法、实验、指标、结论和待办；
+- 阅读页提供项目导航、本页目录、更新时间、预计阅读时长、复制路径和打印/PDF；
+- 在网页修改人类可读 Wiki 目录与高级机器状态目录。
+
+网页只监听 loopback，不修改源项目，也不提供任意 Markdown 正文编辑器。文献原文始终只读；系统不会自动翻译 PDF，也不会把不确定的阅读记录强行关联到论文。
+
+## 默认语言
+
+人类可读 Wiki 和报告默认使用简体中文。代码、路径、命令、API/MCP 名、算法名、模型名、论文标题、数据集名和需要保持精度的技术术语保留英文。
+
+## 存储
+
+- 新用户未配置时：`<project-root>/wiki`
+- 当前用户推荐的人类可读根目录：`E:\wiki_obsidian`
+- 机器状态与人类 Markdown 分开保存
+- 网页可修改默认位置和项目位置
+- 移动时默认复制内容，旧目录永不自动删除
 
 ## 与旧版的区别
 
@@ -38,7 +63,7 @@ https://github.com/juedouwang/llmwiki-lite-codex-plugin
 https://github.com/juedouwang/llmwiki-research-codex-plugin
 ```
 
-两条发布线使用不同的仓库名、Marketplace 名和 Plugin 名，可以并行维护，不会覆盖彼此。
+两条发布线使用不同仓库名、Marketplace 名和 Plugin 名，可以并行维护。
 
 ## 本地开发安装
 
@@ -47,18 +72,16 @@ codex plugin marketplace add E:\GitHub\llm-wiki-agent\next\llmwiki-lite-codex-pl
 codex plugin add llmwiki-lite@llmwiki-lite
 ```
 
-## 从 GitHub 更新
+## 更新
 
 ```powershell
 codex plugin marketplace upgrade llmwiki-lite
 codex plugin add llmwiki-lite@llmwiki-lite
 ```
 
-发布维护以 `main` 分支和版本标签（例如 `v0.2.0`）为准。版本更新流程见 `RELEASING.md`，变更记录见 `CHANGELOG.md`。
+发布维护以 `main` 分支和版本标签（例如 `v0.3.0`）为准。
 
 ## 验证
-
-从仓库根目录运行：
 
 ```powershell
 $env:PYTHONUTF8='1'

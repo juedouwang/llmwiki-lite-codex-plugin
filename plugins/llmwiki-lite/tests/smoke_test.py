@@ -9,7 +9,7 @@ import tempfile
 import threading
 from http.client import HTTPConnection
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PLUGIN_ROOT / "scripts"
@@ -170,14 +170,16 @@ def test_renderer() -> None:
 
 
 def request(
-    connection: HTTPConnection, method: str, path: str, body: str | None = None
+    connection: HTTPConnection,
+    method: str,
+    path: str,
+    body: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> tuple[int, bytes, dict]:
-    headers = (
-        {"Content-Type": "application/x-www-form-urlencoded"}
-        if body is not None
-        else {}
-    )
-    connection.request(method, path, body=body, headers=headers)
+    request_headers = dict(headers or {})
+    if body is not None:
+        request_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+    connection.request(method, path, body=body, headers=request_headers)
     response = connection.getresponse()
     return response.status, response.read(), dict(response.headers)
 
@@ -192,6 +194,16 @@ def test_web(root: Path, home: Path, source: Path, record: dict) -> None:
         "---\ntitle: Demo\n---\n\n# Demo\n\n- [x] task\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n[[other-page]]\n",
         state_root=record["state_root"],
     )
+    references = source / "references"
+    references.mkdir(parents=True, exist_ok=True)
+    demo_pdf = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n"
+    (references / "demo-paper.pdf").write_bytes(demo_pdf)
+    wiki_write(
+        str(source),
+        "demo-paper-reading.md",
+        "---\ntitle: Demo Paper 中文精读\ntype: literature-note\nlanguage: zh-CN\npaper_file: references/demo-paper.pdf\nsources:\n  - references/demo-paper.pdf\n---\n\n# Demo Paper 中文精读\n\n## 一句话结论\n这是用于文献中心测试的中文辅助阅读。\n",
+        state_root=record["state_root"],
+    )
     server = create_server(home=str(home), port=0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -204,17 +216,113 @@ def test_web(root: Path, home: Path, source: Path, record: dict) -> None:
             code, body, _ = request(connection, "GET", "/")
         finally:
             sys.stderr = original_stderr
+        home_text = body.decode("utf-8")
         require(
-            code == 200 and "registered-two" in body.decode("utf-8"),
-            "headless home page failed",
+            code == 200
+            and "registered-two" in home_text
+            and "中文科研知识工作台" in home_text
+            and "我的研究项目" in home_text,
+            "Chinese research home page failed",
         )
+        code, body, _ = request(connection, "GET", f"/project/{record['id']}")
+        project_text = body.decode("utf-8")
+        for token in ("项目研究台", "研究内容", "研究总览", "实验记录", "建议下一步"):
+            require(token in project_text, f"project cockpit missing {token}")
+        require("进入文献中心" in project_text, "project literature entry missing")
+        literature_base = f"/project/{record['id']}/literature"
+        code, body, _ = request(connection, "GET", literature_base)
+        library_text = body.decode("utf-8")
+        for token in (
+            "文献中心",
+            "论文原文",
+            "LLM 辅助阅读",
+            "demo-paper.pdf",
+            "literature-sidebar",
+            "全部文献",
+            "已精读",
+            "待精读",
+            "文献类型",
+            "卡片",
+            "列表",
+            "从推荐到网页对照阅读",
+            "data-literature-kind",
+            "data-literature-status",
+        ):
+            require(code == 200 and token in library_text, f"literature library missing {token}")
+        require(
+            '<main class="literature-content">' not in library_text
+            and '<section class="literature-content">' in library_text,
+            "literature workspace contains nested main landmark",
+        )
+        paper_path = "references/demo-paper.pdf"
+        encoded_paper = quote(paper_path, safe="/")
+        code, body, _ = request(
+            connection, "GET", f"{literature_base}/read/{encoded_paper}"
+        )
+        read_text = body.decode("utf-8")
+        require(
+            code == 200 and "paper-frame" in read_text and "原文 + LLM 辅助阅读" in read_text,
+            "paper reading page failed",
+        )
+        code, body, _ = request(
+            connection, "GET", f"{literature_base}/compare/{encoded_paper}"
+        )
+        compare_text = body.decode("utf-8")
+        for token in ("论文原文", "LLM 辅助阅读", "这是用于文献中心测试的中文辅助阅读"):
+            require(code == 200 and token in compare_text, f"comparison page missing {token}")
+        code, body, headers = request(
+            connection, "GET", f"{literature_base}/source/{encoded_paper}"
+        )
+        require(
+            code == 200
+            and body == demo_pdf
+            and headers.get("Content-Type") == "application/pdf"
+            and headers.get("X-Frame-Options") == "SAMEORIGIN",
+            "PDF source endpoint failed",
+        )
+        code, body, headers = request(
+            connection,
+            "GET",
+            f"{literature_base}/source/{encoded_paper}",
+            headers={"Range": "bytes=0-7"},
+        )
+        require(
+            code == 206
+            and body == demo_pdf[:8]
+            and headers.get("Content-Range") == f"bytes 0-7/{len(demo_pdf)}",
+            "PDF range response failed",
+        )
+        code, _, _ = request(
+            connection,
+            "GET",
+            f"{literature_base}/source/..%2F..%2Fsecret.pdf",
+        )
+        require(code in {400, 404}, "literature path traversal was not rejected")
         code, body, _ = request(
             connection, "GET", f"/project/{record['id']}/page/demo.md"
         )
         text = body.decode("utf-8")
         require(
-            code == 200 and "<table>" in text and "wikilink" in text,
-            "Markdown page failed",
+            code == 200
+            and "<table>" in text
+            and "wikilink" in text
+            and "返回项目研究台" in text
+            and "本页目录" in text
+            and "打印 / 导出 PDF" in text,
+            "Markdown reading page failed",
+        )
+        code, body, _ = request(connection, "GET", "/search")
+        require(
+            code == 200 and "检索论文、方法、实验和结论" in body.decode("utf-8"),
+            "Chinese research search page failed",
+        )
+        code, body, _ = request(connection, "GET", "/settings")
+        settings_text = body.decode("utf-8")
+        require(
+            code == 200
+            and "人类可读 Wiki 目录" in settings_text
+            and "机器状态目录" in settings_text,
+            "Chinese storage settings page failed",
         )
         code, _, _ = request(
             connection, "GET", f"/project/{record['id']}/page/..%2F..%2Fsecret.md"
@@ -277,7 +385,7 @@ def test_mcp(root: Path, home: Path) -> None:
     responses = [json.loads(process.stdout.readline()) for _ in range(3)]
     process.wait(timeout=10)
     require(
-        responses[0]["result"]["serverInfo"]["version"] == "0.2.0", "initialize failed"
+        responses[0]["result"]["serverInfo"]["version"] == "0.3.0", "initialize failed"
     )
     names = {x["name"] for x in responses[1]["result"]["tools"]}
     require(

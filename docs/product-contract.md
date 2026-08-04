@@ -1,31 +1,31 @@
 # LLM Wiki Lite Codex Plugin 产品契约
 
-- 状态：轻量架构 v0.2 基线
-- 日期：2026-07-20
-- 产品目录：`plugins/llmwiki-lite/`
-- 旧设计归档：the legacy repository `llmwiki-research-codex-plugin`
+- 当前基线：`0.3.0`
+- 日期：2026-08-03
+- Plugin：`plugins/llmwiki-lite/`
+- 独立仓库：`juedouwang/llmwiki-lite-codex-plugin`
 
 ## 1. 产品定义
 
-LLM Wiki 是一个可直接安装到 Codex 的本地 Plugin。它不实现独立科研 Agent，也不建设替代 LLM 推理的复杂 Research Core。
+LLM Wiki Lite 是可以直接安装进 Codex 的本地科研与项目知识助手。
 
-产品只包含四种简单构件：
+它只有四类组成：
 
-1. **Skill / Prompt**：指导 Codex 如何管理项目、理解项目、查询、维护 Wiki 和使用网站；
-2. **MCP 工具**：承担注册、扫描、搜索、读取、hash、增量检测、存储切换和 Wiki 写入等机械劳动；
-3. **Hook**：以 fail-open 方式记录可能发生变化的路径；
-4. **Web**：把 Markdown Wiki 完整、简洁地显示出来，并提供项目注册与存储位置设置。
+1. **Skill / Prompt**：告诉 Codex 如何注册、理解、查询、维护项目和使用网页；
+2. **MCP 工具**：承担注册、扫描、检索、读取、快照、状态、存储切换和安全 Wiki 写入等机械劳动；
+3. **Hook**：以 fail-open 方式记录可能发生变化的项目路径；
+4. **Web**：提供简体中文优先的科研知识浏览、检索和存储管理。
 
 核心原则：
 
-> Codex/LLM 负责理解、选择、推理和写作；程序只负责确定性的文件、注册、状态和展示操作。
+> Codex / LLM 负责语义理解、证据选择、推理和写作；程序只负责确定性的文件、注册、状态和展示操作。
 
-## 2. 验收形态
+## 2. 明确验收形态
 
-第一验收对象是一个合法、可安装、可被 Codex 发现的 Plugin：
+Plugin 必须具有 Codex 可发现的标准结构：
 
 ```text
-next/llmwiki-lite-codex-plugin/plugins/llmwiki-lite/
+plugins/llmwiki-lite/
 ├─ .codex-plugin/plugin.json
 ├─ .mcp.json
 ├─ skills/
@@ -33,6 +33,7 @@ next/llmwiki-lite-codex-plugin/plugins/llmwiki-lite/
 │  ├─ llmwiki-understand/
 │  ├─ llmwiki-query/
 │  ├─ llmwiki-maintain/
+│  ├─ llmwiki-literature/
 │  └─ llmwiki-web/
 ├─ hooks/
 ├─ scripts/
@@ -40,288 +41,211 @@ next/llmwiki-lite-codex-plugin/plugins/llmwiki-lite/
 └─ README.md
 ```
 
-安装后，用户直接对 Codex 说：
-
-- “注册当前项目，把 Wiki 放到指定目录。”
-- “理解这个项目并建立有实际内容的 Wiki。”
-- “这个实现具体如何工作？请核验代码。”
-- “只更新受最近变化影响的知识页。”
-- “打开 Wiki 网站。”
-
-Codex 是唯一任务执行主体。网站是阅读和设置入口，不是另一个 Agent。
+六个 Skill 必须可以独立执行，不能把全部流程塞进一个巨大 `SKILL.md`。
 
 ## 3. 职责边界
 
 ### 3.1 Codex / LLM
 
-Codex 负责所有语义工作：理解目标、判断项目类型、选择文件、阅读源码、追踪调用关系、总结事实、识别矛盾、决定页面结构、编写 Markdown、回答问题和判断何时停止。
+负责：
 
-任何“哪个文件重要”“项目创新是什么”“实验支持什么结论”等语义判断，不得由 Python 机械规则伪装完成。
+- 理解研究问题和真实项目；
+- 选择需要阅读的论文、笔记、代码、配置、测试、数据和实验记录；
+- 区分事实、推断、冲突和未知；
+- 创建少量有持续价值的 Markdown；
+- 回到真实来源核验精确数值、实现细节和实验结论；
+- 只更新受变化影响的页面。
 
-### 3.2 五个独立 Skill
+### 3.2 MCP
 
-不再把所有功能塞进一个大型 `SKILL.md`。五个 Skill 可以独立触发和执行：
+只提供可复用的机械工具，不替代科研推理：
 
-| Skill | 职责 |
-|---|---|
-| `llmwiki-projects` | 注册、列出、选择、取消注册和存储位置管理 |
-| `llmwiki-understand` | 首次理解项目并创建少量有用 Wiki |
-| `llmwiki-query` | 结合 Wiki 与真实源文件回答问题 |
-| `llmwiki-maintain` | 增量变化确认、影响分析和最小更新 |
-| `llmwiki-web` | 启动本地网站、浏览页面和修改存储位置 |
+- 项目注册、查询、选择、取消注册；
+- Wiki 与机器状态位置管理；
+- 有边界的文件枚举、搜索和读取；
+- 快照、哈希和变化提示；
+- Wiki 页面列表、结构检查和安全写入；
+- 本地网站启动。
 
-每个 Skill 只包含自己的工作方法和必要工具说明，避免每次加载一份臃肿总流程。
+### 3.3 Hook
 
-### 3.3 MCP
+Hook 只产生不可信的 dirty-path 提示。它不得自动注册、理解项目、改写 Wiki 或阻塞 Codex。
 
-MCP 只提供机械能力：
+### 3.4 Web
 
-- 全局项目注册表和当前项目选择；
-- `source_root`、`state_root`、`wiki_root` 配置；
-- 文件枚举、忽略规则、hash 与变化比较；
-- UTF-8 文本搜索和分段读取；
-- Wiki 页面安全写入、列出、断链和来源路径检查；
-- 全局设置更新；
-- loopback 网站启动。
+Web 是主要的人机浏览入口，但不是第二个知识引擎。它读取注册状态和 Markdown，不自行生成科研结论。
 
-MCP 返回事实，不生成固定知识包，不决定页面分类，不生成项目语义总结。
+## 4. 项目注册与存储
 
-### 3.4 Hook
+每个项目具有：
 
-Hook 只记录成功编辑后的 dirty-path 提示。它既不注册项目，也不扫描、总结或更新 Wiki。Hook 缺失、失败或数据不完整时，Codex 使用 snapshot 重新确认真实变化。
+- `source_root`：真实研究或代码项目；
+- `wiki_root`：人类可读 Markdown；
+- `state_root`：快照、哈希、事件和配置。
 
-### 3.5 Web
+规则：
 
-Web 是本地可视化层：
-
-- 读取注册表和 Markdown；
-- 显示项目、页面、状态和搜索结果；
-- 渲染 Markdown 的常用可见元素；
-- 修改全局默认 Wiki 根目录；
-- 注册项目；
-- 修改单个项目的 Wiki 和状态目录；
-- 取消注册但不删除文件。
-
-Web 不总结项目、不生成语义内容、不编辑 Markdown 正文，不成为新的知识真相源。
-
-## 4. 项目注册与存储模型
-
-### 4.1 LLM Wiki Home
-
-默认位置：
-
-- Windows：`%LOCALAPPDATA%\LLMWiki\`
-- 其他系统：`~/.local/share/llmwiki/`
-- 环境变量 `LLMWIKI_HOME` 可以覆盖。
-
-```text
-<LLMWIKI_HOME>/
-├─ registry.json
-├─ settings.json
-└─ projects/
-   └─ <project_id>/
-      └─ state/
-```
-
-注册记录保持简单：
-
-```json
-{
-  "id": "my-project-a13f72c8",
-  "name": "My Project",
-  "source_root": "E:\\GitHub\\my-project",
-  "state_root": "...\\projects\\my-project-a13f72c8\\state",
-  "wiki_root": "E:\\wiki_obsidian\\my-project-a13f72c8"
-}
-```
-
-项目 ID 使用名称 slug 加规范化源路径 hash，避免同名项目冲突。注册只建立身份和空存储，不等于扫描或理解完成。
-
-### 4.2 三个根目录
-
-- `source_root`：Codex 要理解的真实项目；
-- `state_root`：`config.json`、`manifest.json`、`events.jsonl` 等机器状态；
-- `wiki_root`：人和 Agent 阅读的 Markdown 与 Wiki 附件。
-
-三者必须明确分工。机器状态不得混入人类知识目录，人类总结不得写入机器状态目录。
-
-### 4.3 默认 Wiki 位置
-
-选择顺序：
-
-1. 用户注册时显式指定 `wiki_root`；
-2. 全局存在 `default_wiki_root` 时，使用 `<default-wiki-root>/<project_id>`；
-3. 其他新用户默认使用 Codex 打开项目下的 `<project-root>/wiki`。
-
-当前开发机器可把 `default_wiki_root` 配置为 `E:\wiki_obsidian`。该路径只属于本机设置，绝不写死成所有用户默认值。
-
-### 4.4 位置修改
-
-CLI/MCP 和网页都可以修改项目位置。默认规则：
-
-- 复制现有内容后切换；
-- 目标目录非空时拒绝合并或覆盖；
-- 旧目录保留；
-- 不删除源项目、旧 Wiki 或旧状态；
-- 取消注册也只删除注册关系，不删除文件。
+1. 注册只建立稳定项目身份和存储位置，不代表已扫描或理解；
+2. 新用户无全局设置时，默认 Wiki 为 `<project-root>/wiki`；
+3. 配置外部根目录后，每个项目使用独立子目录；
+4. 当前用户推荐示例是 `E:\wiki_obsidian`；
+5. 网页允许修改全局默认和项目级位置；
+6. 位置切换默认复制现有内容；
+7. 非空目标目录不得被静默合并覆盖；
+8. 旧目录永不自动删除。
 
 ## 5. Wiki 内容约定
 
-Wiki 不规定十五类页面。除自动维护的 `index.md` 外，只在有长期价值时创建页面。
-
-可选轻量 frontmatter：
-
-```yaml
----
-title: Model Architecture
-sources:
-  - src/model.py
-  - docs/method.md
-updated_at: 2026-07-20
-confidence: medium
----
-```
-
-正文可使用 `[[Page Name]]`、项目相对来源路径、事实/推断/未知说明和任意适合内容的结构。
-
-禁止：
-
-- 为满足模板建立空页面；
-- 把文件名猜测写成确定事实；
-- 用机械分类代替阅读；
-- 复制整份源码到 Markdown；
-- 用页面数量或扫描百分比冒充理解质量。
+- Markdown 是唯一人类可读知识源；
+- 默认使用简体中文，符合中国研究生阅读和科研写作习惯；
+- 代码、路径、命令、API/MCP 名、Schema 字段、算法名、模型名、论文标题、数据集名和精度敏感术语保留英文；
+- 页面应回答真实问题，并说明证据、条件、结论、局限和未知；
+- 优先少量高价值页面，不生成固定十五类页面或空模板；
+- 网页科研分类只是动态浏览视图，不约束实际目录和页面数量。
 
 ## 6. 核心工作流
 
 ### 6.1 注册
 
-1. 解析 Codex 当前目录；
-2. 如果未注册，确定 `source_root`；
-3. 按默认策略或用户指定路径确定 `wiki_root`；
-4. 确定独立 `state_root`；
-5. 写入注册表并初始化空机械状态；
-6. 明确说明尚未扫描或理解项目。
+`llmwiki-projects` 解析或注册项目，并确定三个根目录。停止在身份和位置管理边界。
 
-### 6.2 理解项目
+### 6.2 理解
 
-1. 读取已有 Wiki 和状态；
-2. 小范围浏览 README、入口、配置、测试和核心模块；
-3. 搜索与用户目标相关的符号；
-4. 由 Codex 选择并深读真实文件；
-5. 形成有来源的解释；
-6. 只创建少量有用页面；
-7. 检查链接和来源路径。
+`llmwiki-understand` 让 Codex 做有目标的调查，读取必要来源并创建最少但有用的页面。
 
 ### 6.3 查询
 
-1. 以 Wiki 为索引；
-2. 对代码行为、数字、配置、冲突和近期变化回到真实文件核验；
-3. 直接回答并给出项目相对依据；
-4. 仅在答案有长期价值时更新 Wiki。
+`llmwiki-query` 先用 Wiki 定位，再回到真实项目核验代码、配置、数字、实验条件和引用。
 
-### 6.4 增量维护
+### 6.4 维护
 
-1. 读取 Hook 提示；
-2. 用 snapshot hash 确认变化；
-3. 由 Codex 判断受影响页面；
-4. 只重读必要来源；
-5. 只更新必要页面。
+`llmwiki-maintain` 用快照确定变化候选，由 Codex 判断影响，只更新真正过期的页面。
 
-### 6.5 网站
+### 6.5 文献
 
-1. 通过 MCP 启动或复用本地服务；
-2. 浏览项目和所有 Markdown 页面；
-3. 搜索 Wiki；
-4. 在设置页修改默认或项目级存储位置；
-5. Markdown 内容继续由文件层维护。
+`llmwiki-literature` 独立完成文献调研推荐、等待用户选择、下载授权原文、中文精读、`paper_file` 绑定和网页呈现。推荐阶段不得擅自批量下载；下载必须保存到注册项目并遵守来源访问权限。
 
-## 7. MCP 工具清单
+### 6.6 网站
 
-项目与设置：
+`llmwiki-web` 启动或复用 loopback 服务，提供中文研究项目、文献中心、检索、阅读和存储设置。
 
-- `llmwiki_project_register`
-- `llmwiki_project_list`
-- `llmwiki_project_get`
-- `llmwiki_project_select`
-- `llmwiki_project_storage_update`
-- `llmwiki_project_unregister`
-- `llmwiki_settings_get`
-- `llmwiki_settings_update`
-- `llmwiki_web_start`
+## 7. 中文科研工作台验收
 
-文件与 Wiki：
+### 7.1 首页
 
-- `llmwiki_init`
-- `llmwiki_status`
-- `llmwiki_snapshot`
-- `llmwiki_files`
-- `llmwiki_search`
-- `llmwiki_read`
-- `llmwiki_wiki_write`
-- `llmwiki_wiki_list`
-- `llmwiki_wiki_check`
+必须显示：
 
-所有工具必须限制结果尺寸、验证参数、规范化路径并拒绝越界访问。
+- “中文科研知识工作台”；
+- “我的研究项目”；
+- 已注册项目数、知识页数、源文件数、待核对变化数；
+- 项目卡片、最近扫描和人类可读 Wiki 位置。
 
-## 8. 网站验收
+### 7.2 项目研究台
 
-网站必须：
+必须显示：
 
-- 仅绑定 `127.0.0.1` / loopback；
-- 页面简洁、无不必要动画和装饰；
-- 显示全部注册项目和三个根目录；
-- 显示 Wiki 页面列表、最近快照和变化提示；
-- 支持跨项目及项目内搜索；
-- 直观显示 frontmatter、标题、段落、无序/有序列表、任务列表、引用、Obsidian callout、代码块、行内代码、链接、图片、表格、分隔线与 `[[wikilinks]]`；
-- 转义原始 HTML，防止 Markdown 注入脚本；
-- 阻止路径穿越；
-- 支持网页修改全局默认 Wiki 根目录和项目 `wiki_root` / `state_root`；
-- 默认复制后切换且保留旧目录；
-- 不编辑 Markdown 正文。
+- 项目研究台和研究内容；
+- 按路径与标题关键词动态归类的科研流程视图；
+- 最近更新；
+- 待核对变化；
+- 建议下一步；
+- 可复制给 Codex 的简体中文维护 Prompt；
+- 折叠显示源项目、Wiki 和机器状态路径。
 
-## 9. 安全边界
+分类可包含研究总览、文献与阅读、方法与实现、数据与样本、实验记录、结果与分析、结论与问题、计划与待办、论文与成果、决策记录、资料索引、研究笔记和其他页面，但只作为浏览视图。
 
-- 源项目路径、状态路径、Wiki 路径和网站附件路径都必须规范化；
-- Wiki 写入只发生在配置的 `wiki_root`；
-- 搜索和读取必须有条数、文件大小、行数和字符上限；
-- 网站只在 loopback 提供服务；
-- 服务端不进行独立外部网络发送；
-- 远程 Markdown 图片不自动加载，只显示为外部链接；
-- Hook 永远 fail-open；
-- 存储切换和取消注册永远不删除旧文件。
+### 7.3 文献中心
 
-## 10. 明确不做
+必须支持：
+
+- 使用类似 Obsidian 文件库的固定左侧栏，按“全部文献、已精读、待精读”和文献类型快速筛选；
+- 支持搜索、筛选后结果计数以及卡片/列表视图切换；
+- 自动发现注册项目 `source_root` 中的 PDF、EPUB、DOCX、HTML/HTM 文献，并保持原文件只读；
+- 把文献标识为学术论文、补充材料、专利文献、报告或其他文献格式；
+- PDF 在站内直接阅读，支持浏览器 Range 请求和新窗口打开；
+- 原文与 Codex 生成的简体中文辅助阅读 Markdown 左右双栏对照，窄屏时上下排列；
+- 同一论文存在多份可靠候选笔记时允许切换；
+- 优先使用辅助阅读 frontmatter 中的 `paper_file`、`paper_path`、`source_file` 或 `sources` 精确关联；
+- 没有显式关联时只做保守的标题/路径匹配，置信度不足必须保留为“待关联”，不得强行配对；
+- 没有辅助阅读时提供可复制给 Codex 的简体中文精读 Prompt；
+- 辅助阅读应区分论文原文事实、LLM 解释和待验证推断，精确公式、表格、数值与引用仍需回到原文核验；
+- 不自动翻译或改写 PDF，不把 LLM 笔记伪装成论文原文；
+- 提供“推荐 → 选择 → 下载 → 精读 → 对照阅读”的可复制 Codex 工作流，其中用户选择是下载前的明确边界。
+
+推荐的辅助阅读 frontmatter：
+
+```yaml
+---
+title: "Exact Paper Title 中文精读"
+type: literature-note
+language: zh-CN
+paper_file: references/path/to/paper.pdf
+sources:
+  - references/path/to/paper.pdf
+---
+```
+
+### 7.4 Markdown 阅读
+
+必须支持：
+
+- 完整 UTF-8 Markdown 正文；
+- frontmatter、标题、段落、列表、任务、引用、callout、表格、代码、链接、图片和 `[[wikilinks]]`；
+- 中文面包屑和返回项目研究台；
+- 项目页面筛选和科研类别分组；
+- 本页目录、更新时间、字词数、预计阅读时长；
+- 复制页面路径和打印/导出 PDF。
+
+### 7.5 科研检索
+
+必须支持：
+
+- 跨项目或按项目筛选；
+- 检索标题、路径和 Markdown 正文；
+- 中文结果说明和科研类别标签；
+- 对论文、方法、实验、结果、结论和计划的中文示例引导。
+
+### 7.6 存储设置
+
+必须使用用户可理解的名称：
+
+- 人类可读 Wiki 默认根目录；
+- 人类可读 Wiki 目录；
+- 机器状态目录（高级设置）；
+- 项目目录。
+
+## 8. 安全边界
+
+- 网站只绑定 `127.0.0.1`、`localhost` 或 `::1`；
+- 所有路径必须规范化并阻止穿越；
+- Wiki 写入只发生在 `wiki_root`；
+- Wiki 附件只来自对应 `wiki_root`；
+- 文献原文可以从对应注册项目的 `source_root` 读取，但只允许 PDF、EPUB、DOCX、HTML/HTM 白名单；
+- 文献读取必须拒绝路径穿越和路径中的符号链接；PDF 只以内嵌方式流式读取并支持 Range，非 PDF 作为附件，源项目 HTML 不得在站内执行；
+- 文献原文始终只读，网站不得修改、移动或删除；
+- Markdown 原始 HTML 必须转义，不能执行注入脚本；
+- 读取、搜索、表单和文件大小都有边界；
+- 不独立发送外部网络请求；
+- 存储切换和取消注册不删除旧文件。
+
+## 9. 明确不做
 
 - 不实现独立聊天机器人；
-- 不实现无 LLM 的项目理解 Core；
-- 不要求十五类知识页面；
-- 不实现 Claim/Evidence 生命周期；
-- 不实现复杂任务授权和计划状态机；
-- 不实现任意文件 Web 编辑器；
-- 不实现跨用户云服务或外部数据库；
-- 不在当前版本打包私有 Python Runtime；
-- 不为了未来可能需求预建中间层。
+- 不实现替代 LLM 的 Research Core；
+- 不要求固定十五类知识页；
+- 不批量生成空页面；
+- 不实现任意 Markdown 网页编辑器；
+- 不引入 React、Vue、Node 构建链、数据库或外部 CDN；
+- 不实现跨用户云服务；
+- 不为了未来可能需求预建复杂中间层。
 
-## 11. 最低验收场景
+## 10. 最低验证
 
-1. Plugin、五个 Skill、MCP 和 Hook 能被 Codex 发现；
-2. 同一源项目重复注册保持稳定身份；
-3. 未配置全局根目录的新用户得到 `<project>/wiki`；
-4. 本机配置外部根目录后，新项目得到其独立子目录；
-5. Wiki 和状态目录可安全复制后切换，旧目录保留；
-6. Codex 能读取真实项目并建立少量有内容页面；
-7. 查询能回到真实源文件核验；
-8. 增量维护只更新受影响页面；
-9. 网站能展示 Markdown、搜索页面和修改位置；
-10. 路径穿越、非 loopback 绑定和非空目录覆盖被拒绝。
+```powershell
+ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests
+python -B plugins/llmwiki-lite/tests/smoke_test.py
+python C:/Users/lyn/.codex/skills/.system/skill-creator/scripts/quick_validate.py <skill-dir>
+python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/llmwiki-lite
+```
 
-## 12. 开发判断原则
-
-每项新功能都先回答：
-
-1. 这是 LLM 的语义工作，还是程序的机械工作？
-2. 当前真实用户任务没有它是否无法完成？
-3. 能否用一个 Skill 规则或一个小工具完成？
-
-语义工作交给 Codex；没有真实阻塞不实现；小工具足够时不建立新框架。
+还必须检查所有产品文件为无 BOM 的严格 UTF-8，不含 `U+FFFD` 或乱码文本。

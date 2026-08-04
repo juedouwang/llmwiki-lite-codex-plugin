@@ -19,5 +19,6 @@ Use this skill for identity and location management only. Registration is not pr
 - For a new user with no configured default, the default is `<project-root>/wiki`.
 - A configured default is a parent: each project receives `<default-wiki-root>/<project-id>` unless an explicit `wiki_root` is supplied.
 - Machine state belongs in `state_root`; human-readable Markdown belongs in `wiki_root`.
+- Explain these locations in Simplified Chinese by default, using “人类可读 Wiki 目录” and “机器状态目录” in user-facing text.
 
 Use `llmwiki_project_list`, `llmwiki_project_select`, `llmwiki_project_storage_update`, `llmwiki_settings_update`, and `llmwiki_project_unregister` as needed. Keep `copy_existing=true` unless the user explicitly wants an empty location. Explain that old directories are preserved. Never infer that registration means the project has been understood.

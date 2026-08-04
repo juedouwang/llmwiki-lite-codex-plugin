@@ -35,7 +35,7 @@ from llmwiki_registry import (  # noqa: E402
 from web_server import start_background  # noqa: E402
 
 SERVER_NAME = "llmwiki"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.3.0"
 SUPPORTED_PROTOCOL = "2025-03-26"
 
 
