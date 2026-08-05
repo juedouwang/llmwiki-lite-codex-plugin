@@ -1,6 +1,6 @@
 # Changelog
 
-## Next
+## 0.3.2 — 2026-08-05
 
 - 新增独立 `llmwiki-research-record` Skill：只有用户明确触发时，才把 Codex 讨论整理为简洁的阶段性科研记录。
 - 新增 `llmwiki_record_write`、`llmwiki_record_list` 和 `llmwiki_record_read` MCP 工具；记录按 `records/YYYY/MM/YYYY-MM-DD.md` 一日一档保存，同一天追加条目并通过 `#entry_key` 单独读取。

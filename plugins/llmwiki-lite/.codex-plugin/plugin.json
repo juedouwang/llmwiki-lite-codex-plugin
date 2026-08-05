@@ -1,6 +1,6 @@
 {
   "name": "llmwiki-lite",
-  "version": "0.3.1+codex.20260805011808",
+  "version": "0.3.2",
   "description": "A lightweight Codex plugin for LLM-led research and project understanding, useful Markdown Wikis, explicit research process records, literature reading, and a Chinese-first local research cockpit.",
   "author": {
     "name": "LLM Wiki Agent contributors",
