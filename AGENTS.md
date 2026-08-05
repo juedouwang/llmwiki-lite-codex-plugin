@@ -4,7 +4,7 @@ This marketplace contains the new lightweight implementation. Do not copy the le
 
 The installable Plugin is `plugins/llmwiki-lite/`. Its intentionally small product surface is:
 
-- six independent workflow Skills;
+- seven independent workflow Skills;
 - deterministic MCP filesystem and project-registry tools;
 - an optional fail-open change Hook;
 - a loopback-only Markdown website with storage settings.

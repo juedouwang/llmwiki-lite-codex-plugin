@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 from collections import Counter
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -157,75 +158,98 @@ def _normalized_path(value: str) -> str:
     return value.strip().strip('"\'').replace("\\", "/").lstrip("./").casefold()
 
 
+_LIBRARY_CACHE: dict[str, tuple[float, dict[str, list[dict[str, Any]]]]] = {}
+_LIBRARY_CACHE_TTL = 15.0
+
+
 def discover_literature(project: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """文献扫描结果缓存：同一项目 15 秒内复用，避免翻页时反复全量扫描。"""
+    pid = str(project["id"])
+    now = time.monotonic()
+    cached = _LIBRARY_CACHE.get(pid)
+    if cached and now - cached[0] < _LIBRARY_CACHE_TTL:
+        return cached[1]
+    data = _scan_literature(project)
+    _LIBRARY_CACHE[pid] = (now, data)
+    return data
+
+
+def _scan_literature(project: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     source_root = Path(str(project["source_root"])).resolve(strict=False)
     wiki_root = Path(str(project["wiki_root"])).resolve(strict=False)
+    wiki_key = wiki_root.as_posix().lower()
     papers: list[dict[str, Any]] = []
     source_notes: list[dict[str, Any]] = []
     scanned = 0
-    for current, directories, files in os.walk(source_root, followlinks=False):
-        current_path = Path(current).resolve(strict=False)
-        directories[:] = [
-            name
-            for name in directories
-            if name.lower() not in SKIP_DIRECTORIES
-            and not (current_path / name).is_symlink()
-            and (current_path / name).resolve(strict=False) != wiki_root
-        ]
-        for name in files:
-            scanned += 1
-            if scanned > MAX_DISCOVERED_FILES:
-                break
-            path = current_path / name
-            if path.is_symlink() or not path.is_file():
-                continue
-            try:
-                relative = _relative(path, source_root)
-                stat = path.stat()
-            except (OSError, ValueError):
-                continue
-            suffix = path.suffix.lower()
-            if suffix in PAPER_EXTENSIONS and len(papers) < MAX_PAPERS:
-                papers.append(
+    stack = [source_root]
+    while stack and scanned < MAX_DISCOVERED_FILES:
+        current = stack.pop()
+        try:
+            entries = os.scandir(current)
+        except OSError:
+            continue
+        with entries as iterator:
+            for entry in iterator:
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir():
+                    if entry.name.lower() not in SKIP_DIRECTORIES and Path(
+                        entry.path
+                    ).as_posix().lower() != wiki_key:
+                        stack.append(Path(entry.path))
+                    continue
+                scanned += 1
+                if scanned > MAX_DISCOVERED_FILES:
+                    break
+                suffix = os.path.splitext(entry.name)[1].lower()
+                if suffix not in PAPER_EXTENSIONS and suffix != ".md":
+                    continue
+                try:
+                    relative = os.path.relpath(entry.path, source_root).replace(
+                        os.sep, "/"
+                    )
+                    stat = entry.stat()
+                except (OSError, ValueError):
+                    continue
+                if suffix in PAPER_EXTENSIONS and len(papers) < MAX_PAPERS:
+                    papers.append(
+                        {
+                            "path": relative,
+                            "title": _display_title(relative),
+                            "extension": suffix,
+                            "bytes": int(stat.st_size),
+                            "updated": datetime.fromtimestamp(stat.st_mtime).strftime(
+                                "%Y-%m-%d %H:%M"
+                            ),
+                            "kind": _paper_kind(relative),
+                            "inline": suffix in INLINE_EXTENSIONS,
+                        }
+                    )
+                    continue
+                if len(source_notes) >= MAX_SOURCE_NOTES:
+                    continue
+                normalized = relative.lower()
+                if not any(hint in normalized for hint in NOTE_NAME_HINTS):
+                    continue
+                if stat.st_size > NOTE_MAX_BYTES:
+                    continue
+                try:
+                    text = Path(entry.path).read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    continue
+                source_notes.append(
                     {
+                        "id": f"source:{relative}",
+                        "location": "source",
                         "path": relative,
-                        "title": _display_title(relative),
-                        "extension": suffix,
-                        "bytes": int(stat.st_size),
+                        "title": _note_title(text, _display_title(relative)),
+                        "text": text,
+                        "declared_sources": _frontmatter_paths(text),
                         "updated": datetime.fromtimestamp(stat.st_mtime).strftime(
                             "%Y-%m-%d %H:%M"
                         ),
-                        "kind": _paper_kind(relative),
-                        "inline": suffix in INLINE_EXTENSIONS,
                     }
                 )
-                continue
-            if suffix != ".md" or len(source_notes) >= MAX_SOURCE_NOTES:
-                continue
-            normalized = relative.lower()
-            if not any(hint in normalized for hint in NOTE_NAME_HINTS):
-                continue
-            if stat.st_size > NOTE_MAX_BYTES:
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            source_notes.append(
-                {
-                    "id": f"source:{relative}",
-                    "location": "source",
-                    "path": relative,
-                    "title": _note_title(text, _display_title(relative)),
-                    "text": text,
-                    "declared_sources": _frontmatter_paths(text),
-                    "updated": datetime.fromtimestamp(stat.st_mtime).strftime(
-                        "%Y-%m-%d %H:%M"
-                    ),
-                }
-            )
-        if scanned > MAX_DISCOVERED_FILES:
-            break
     wiki_notes: list[dict[str, Any]] = []
     pages = wiki_list(
         str(project["source_root"]), state_root=str(project["state_root"])
@@ -263,7 +287,7 @@ def discover_literature(project: dict[str, Any]) -> dict[str, list[dict[str, Any
     papers.sort(key=lambda item: (str(item["kind"]), str(item["path"]).lower()))
     notes = wiki_notes + source_notes
     notes.sort(key=lambda item: (str(item["location"]), str(item["title"]).lower()))
-    return {"papers": papers, "notes": notes}
+    return {"papers": papers, "notes": notes, "note_index": _build_note_index(notes)}
 
 
 def _distinctive_tokens(value: str) -> set[str]:
@@ -303,15 +327,10 @@ def _distinctive_tokens(value: str) -> set[str]:
     }
 
 
-def note_match_score(paper: dict[str, Any], note: dict[str, Any]) -> int:
+def _fuzzy_note_score(paper: dict[str, Any], note: dict[str, Any]) -> int:
+    """\u672a\u58f0\u660e paper_file \u7684\u65e7\u7b14\u8bb0\uff1a\u7528\u6587\u4ef6\u540d\u4e0e\u6807\u9898\u7684\u76f8\u4f3c\u5ea6\u515c\u5e95\u5339\u914d\u3002"""
     paper_path = _normalized_path(str(paper["path"]))
-    paper_name = Path(paper_path).name
     paper_stem = Path(paper_path).stem
-    declared = {_normalized_path(str(item)) for item in note["declared_sources"]}
-    if paper_path in declared:
-        return 100
-    if paper_name in {Path(item).name for item in declared}:
-        return 90
     note_identity = _normalized_path(f'{note["path"]} {note["title"]}')
     compact_stem = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", paper_stem)
     compact_note = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", note_identity)
@@ -327,12 +346,62 @@ def note_match_score(paper: dict[str, Any], note: dict[str, Any]) -> int:
         return min(85, 60 + 12 * (len(strong) - 1))
     return 60 if len(shared) >= 2 else 30
 
-def matched_notes(
-    paper: dict[str, Any], notes: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    matches = []
+
+def note_match_score(paper: dict[str, Any], note: dict[str, Any]) -> int:
+    """\u5224\u65ad\u7b14\u8bb0\u662f\u5426\u5c5e\u4e8e\u8be5\u6587\u732e\uff1afrontmatter \u58f0\u660e\u4f18\u5148\uff1b\u58f0\u660e\u8fc7\u5176\u4ed6\u6587\u732e\u7684\u7b14\u8bb0\u4e0d\u518d\u53c2\u4e0e\u6a21\u7cca\u5339\u914d\u3002"""
+    paper_path = _normalized_path(str(paper["path"]))
+    paper_name = Path(paper_path).name
+    declared = {_normalized_path(str(item)) for item in note["declared_sources"]}
+    if paper_path in declared:
+        return 100
+    if paper_name in {Path(item).name for item in declared}:
+        return 90
+    if declared:
+        return 0
+    return _fuzzy_note_score(paper, note)
+
+
+def _build_note_index(notes: list[dict[str, Any]]) -> dict[str, Any]:
+    """\u628a\u7b14\u8bb0\u7684 paper_file \u58f0\u660e\u5efa\u6210\u53cd\u67e5\u7d22\u5f15\uff1a\u58f0\u660e\u8fc7\u7684\u7b14\u8bb0\u6309\u8def\u5f84 O(1) \u547d\u4e2d\uff0c\u672a\u58f0\u660e\u7684\u65e7\u7b14\u8bb0\u8fdb\u515c\u5e95\u5217\u8868\u3002"""
+    by_path: dict[str, list[dict[str, Any]]] = {}
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    loose: list[dict[str, Any]] = []
     for note in notes:
-        score = note_match_score(paper, note)
+        declared = [
+            _normalized_path(str(item))
+            for item in note["declared_sources"]
+            if str(item).strip()
+        ]
+        if not declared:
+            loose.append(note)
+            continue
+        for item in declared:
+            by_path.setdefault(item, []).append(note)
+            by_name.setdefault(Path(item).name, []).append(note)
+    return {"by_path": by_path, "by_name": by_name, "loose": loose}
+
+
+def matched_notes(
+    paper: dict[str, Any],
+    notes: list[dict[str, Any]],
+    index: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """\u8fd4\u56de\u8be5\u6587\u732e\u7684\u5173\u8054\u7b14\u8bb0\uff1a\u58f0\u660e\u547d\u4e2d O(1)\uff0c\u672a\u58f0\u660e\u65e7\u7b14\u8bb0\u624d\u8d70\u6a21\u7cca\u5339\u914d\u3002"""
+    index = index or _build_note_index(notes)
+    paper_path = _normalized_path(str(paper["path"]))
+    paper_name = Path(paper_path).name
+    matches: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for note in index["by_path"].get(paper_path, []):
+        if note["id"] not in seen:
+            seen.add(note["id"])
+            matches.append({**note, "match_score": 100})
+    for note in index["by_name"].get(paper_name, []):
+        if note["id"] not in seen:
+            seen.add(note["id"])
+            matches.append({**note, "match_score": 90})
+    for note in index["loose"]:
+        score = _fuzzy_note_score(paper, note)
         if score >= 55:
             matches.append({**note, "match_score": score})
     return sorted(
@@ -390,7 +459,9 @@ sources:
   - {paper["path"]}
 ---
 
-正文按以下结构组织：文献信息、一句话结论、研究问题、方法概览、关键公式或机制、实验设计、主要结果、局限、与本课题关系、复现线索、待验证问题。保留论文原标题、算法名、数据集名与准确数值；把原文事实、你的解释和待验证推断明确区分。'''
+正文按以下结构组织：文献信息、一句话结论、研究问题、方法概览、关键公式或机制、实验设计、主要结果、局限、与本课题关系、复现线索、待验证问题。保留论文原标题、算法名、数据集名与准确数值；把原文事实、你的解释和待验证推断明确区分。
+
+注意：frontmatter 的 paper_file 必须精确填写这篇文献相对项目根目录的路径（与上方一致），网页文献中心只通过这个字段把笔记关联到原文；路径不匹配或漏填会导致笔记无法与原文对照。'''
 
 
 def literature_library_page(home: str, project_id: str) -> str:
@@ -403,7 +474,7 @@ def literature_library_page(home: str, project_id: str) -> str:
     cards: list[str] = []
     matched_papers = 0
     for paper in papers:
-        matches = matched_notes(paper, notes)
+        matches = matched_notes(paper, notes, library.get("note_index"))
         matched_note_ids.update(str(item["id"]) for item in matches)
         if matches:
             matched_papers += 1
@@ -491,7 +562,7 @@ def literature_read_page(home: str, project_id: str, paper_path: str) -> str:
         "inline": target.suffix.lower() in INLINE_EXTENSIONS,
     }
     library = discover_literature(project)
-    matches = matched_notes(paper, library["notes"])
+    matches = matched_notes(paper, library["notes"], library.get("note_index"))
     compare = (
         f'<a class="button primary" href="{_paper_url(project_id, "compare", str(paper["path"]))}?note={quote(str(matches[0]["id"]), safe="")}">原文 + LLM 辅助阅读</a>'
         if matches and paper["inline"]
@@ -519,7 +590,7 @@ def literature_compare_page(
     if not paper["inline"]:
         return literature_read_page(home, project_id, paper_path)
     library = discover_literature(project)
-    matches = matched_notes(paper, library["notes"])
+    matches = matched_notes(paper, library["notes"], library.get("note_index"))
     selected: dict[str, Any] | None = None
     if note_id:
         candidate = load_note(project, note_id, library=library)

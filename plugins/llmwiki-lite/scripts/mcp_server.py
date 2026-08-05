@@ -32,6 +32,7 @@ from llmwiki_registry import (  # noqa: E402
     update_project_storage,
     update_settings,
 )
+from research_records import list_records, read_record, write_record  # noqa: E402
 from web_server import start_background  # noqa: E402
 
 SERVER_NAME = "llmwiki"
@@ -238,6 +239,51 @@ TOOLS = [
             {"project_root": ROOT, "state_root": STATE}, ["project_root"]
         ),
     },
+    {
+        "name": "llmwiki_record_write",
+        "description": "Append one Codex-authored research process entry to the configured daily Markdown file records/YYYY/MM/YYYY-MM-DD.md. Never overwrites an existing entry.",
+        "inputSchema": schema(
+            {
+                "project_root": ROOT,
+                "state_root": STATE,
+                "project_id": {"type": "string"},
+                "title": {"type": "string", "minLength": 1},
+                "discussion_context": {"type": "string"},
+                "understanding": {"type": "string", "minLength": 1},
+                "evidence": {"type": "array", "items": {"type": "string"}},
+                "conclusion": {"type": "string"},
+                "decisions": {"type": "array", "items": {"type": "string"}},
+                "open_questions": {"type": "array", "items": {"type": "string"}},
+                "next_steps": {"type": "array", "items": {"type": "string"}},
+                "related_files": {"type": "array", "items": {"type": "string"}},
+                "related_pages": {"type": "array", "items": {"type": "string"}},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "recorded_at": {"type": "string"},
+            },
+            ["project_root", "title", "understanding"],
+        ),
+    },
+    {
+        "name": "llmwiki_record_list",
+        "description": "List chronological research process records for a project, with bounded summaries and metadata.",
+        "inputSchema": schema(
+            {
+                "project_root": ROOT,
+                "state_root": STATE,
+                "query": {"type": "string"},
+                "max_records": {"type": "integer", "minimum": 1, "maximum": 500},
+            },
+            ["project_root"],
+        ),
+    },
+    {
+        "name": "llmwiki_record_read",
+        "description": "Read one research process entry by its records-relative ID; use #entry_key for a multi-entry daily file.",
+        "inputSchema": schema(
+            {"project_root": ROOT, "state_root": STATE, "record_id": {"type": "string", "minLength": 1}},
+            ["project_root", "record_id"],
+        ),
+    },
 ]
 TOOL_NAMES = {x["name"] for x in TOOLS}
 
@@ -334,6 +380,34 @@ def dispatch(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "llmwiki_wiki_check":
         only(args, {"project_root", "state_root"})
         return wiki_check(**args)
+    if name == "llmwiki_record_write":
+        only(
+            args,
+            {
+                "project_root",
+                "state_root",
+                "project_id",
+                "title",
+                "discussion_context",
+                "understanding",
+                "evidence",
+                "conclusion",
+                "decisions",
+                "open_questions",
+                "next_steps",
+                "related_files",
+                "related_pages",
+                "tags",
+                "recorded_at",
+            },
+        )
+        return write_record(**args)
+    if name == "llmwiki_record_list":
+        only(args, {"project_root", "state_root", "query", "max_records"})
+        return list_records(**args)
+    if name == "llmwiki_record_read":
+        only(args, {"project_root", "state_root", "record_id"})
+        return read_record(**args)
     raise LLMWikiError(f"Unknown tool: {name}")
 
 

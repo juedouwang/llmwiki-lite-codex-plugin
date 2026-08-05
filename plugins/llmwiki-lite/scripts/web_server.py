@@ -46,6 +46,8 @@ from research_web_ui import (  # noqa: E402
     page_view,
     project_page,
     purl,
+    record_view,
+    records_page,
     safe_path,
     search_page,
     settings_page,
@@ -198,6 +200,18 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 match = re.fullmatch(r"/project/([^/]+)/literature", parsed.path)
                 if match:
                     self.html(literature_library_page(home, unquote(match.group(1))))
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/records", parsed.path)
+                if match:
+                    self.html(records_page(home, unquote(match.group(1)), params))
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/records/(.+)", parsed.path)
+                if match:
+                    self.html(
+                        record_view(
+                            home, unquote(match.group(1)), unquote(match.group(2))
+                        )
+                    )
                     return
                 match = re.fullmatch(
                     r"/project/([^/]+)/literature/read/(.+)", parsed.path

@@ -74,6 +74,8 @@ sources:
 ---
 ```
 
+`paper_file` 是网页文献中心把这条笔记关联到原文的唯一依据，必须填第 3 节记录的下载文件的项目相对路径，并逐字一致（包含大小写、目录层级、扩展名）。漏填或填错时，笔记不会出现在这篇论文的关联列表里，只会进入“待关联”列表（只有不带 paper_file 的旧笔记才会被网页用文件名/标题做模糊匹配）。写完笔记后必须用 `llmwiki_wiki_check` 校验。
+
 Run `llmwiki_wiki_check` after writing. Do not create a fixed taxonomy, duplicate empty pages, or copy the PDF into Markdown.
 
 ## 6. Present the result
@@ -81,6 +83,6 @@ Run `llmwiki_wiki_check` after writing. Do not create a fixed taxonomy, duplicat
 1. Start or reuse the local website with `llmwiki_web_start`.
 2. Tell the user to open the project's 文献中心.
 3. Confirm the paper appears as 已精读 and that 原文 + LLM 辅助阅读 opens the side-by-side view.
-4. If automatic pairing is not exact, correct `paper_file`; do not loosen matching until an unrelated note is accepted.
+4. If pairing fails, the cause is almost always a `paper_file` path mismatch: correct the field to the exact project-relative path. Do not loosen matching to accept an unrelated note.
 
 Stop when the selected paper is downloaded, read, explained, bound, validated, and visible in the literature center.

@@ -15,6 +15,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PLUGIN_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from llmwiki_core import (  # noqa: E402
+    LLMWikiError,
     init_project,
     read_file,
     search,
@@ -33,6 +34,7 @@ from llmwiki_registry import (  # noqa: E402
     update_settings,
 )
 from markdown_renderer import render_markdown  # noqa: E402
+from research_records import list_records, read_record, write_record  # noqa: E402
 from web_server import create_server  # noqa: E402
 
 
@@ -169,6 +171,80 @@ def test_renderer() -> None:
         require(token in rendered, f"renderer missing {token}")
 
 
+def test_research_records(source: Path, record: dict) -> dict:
+    first = write_record(
+        str(source),
+        title="\u9636\u6bb5\u6027\u7406\u89e3\uff1a\u5b9e\u9a8c\u8bbe\u8ba1",
+        understanding="\u5f53\u524d\u8bc1\u636e\u652f\u6301\u5148\u8c03\u6574\u91c7\u6837\u65b9\u6848\uff0c\u518d\u8fdb\u884c\u4e0b\u4e00\u8f6e\u5bf9\u7167\u5b9e\u9a8c\u3002",
+        discussion_context="\u56f4\u7ed5\u5b9e\u9a8c\u53d8\u91cf\u3001\u6837\u672c\u91cf\u548c\u4e0b\u4e00\u8f6e\u9a8c\u8bc1\u65b9\u5f0f\u4e0e Codex \u8ba8\u8bba\u3002",
+        evidence=["src/main.py", "references/demo-paper.pdf"],
+        conclusion="\u5148\u5b8c\u6210\u5c0f\u89c4\u6a21\u590d\u73b0\u5b9e\u9a8c\uff0c\u518d\u51b3\u5b9a\u662f\u5426\u6269\u5927\u6837\u672c\u3002",
+        decisions=["\u4fdd\u7559\u5f53\u524d\u57fa\u7ebf", "\u4e0b\u4e00\u8f6e\u589e\u52a0\u5bf9\u7167\u7ec4"],
+        open_questions=["\u91c7\u6837\u504f\u5dee\u662f\u5426\u4f1a\u5f71\u54cd\u7ed3\u8bba\uff1f"],
+        next_steps=["\u8865\u5145\u5b9e\u9a8c\u8bb0\u5f55", "\u6838\u5bf9\u8bba\u6587\u4e2d\u7684\u8bc4\u4ef7\u6307\u6807"],
+        related_files=["src/main.py"],
+        related_pages=["guide.md"],
+        tags=["\u5b9e\u9a8c", "\u9636\u6bb5\u6027\u7406\u89e3"],
+        project_id=record["id"],
+        recorded_at="2026-08-04T12:30:00Z",
+        state_root=record["state_root"],
+    )
+    second = write_record(
+        str(source),
+        title="\u9636\u6bb5\u6027\u7406\u89e3\uff1a\u5b9e\u9a8c\u8bbe\u8ba1",
+        understanding="\u8ffd\u52a0\u8bb0\u5f55\uff1a\u9700\u8981\u5148\u6838\u5bf9\u8bc4\u4ef7\u6307\u6807\u5b9a\u4e49\u3002",
+        project_id=record["id"],
+        recorded_at="2026-08-04T12:30:00Z",
+        state_root=record["state_root"],
+    )
+    first_path = Path(record["wiki_root"]) / first["record"]["path"]
+    second_path = Path(record["wiki_root"]) / second["record"]["path"]
+    require(first_path.is_file() and second_path.is_file(), "research record files missing")
+    require(first_path == second_path, "same-day records should share one daily file")
+    require(
+        first["record"]["path"] == second["record"]["path"] == "records/2026/08/2026-08-04.md",
+        "daily record path is not YYYY/MM/YYYY-MM-DD.md",
+    )
+    require(
+        first["record"]["id"] != second["record"]["id"]
+        and first["record"].get("entry_key") != second["record"].get("entry_key"),
+        "same-day entries should have distinct fragment IDs",
+    )
+    daily_text = first_path.read_text(encoding="utf-8")
+    require(
+        daily_text.count("## 12:30\uff5c\u9636\u6bb5\u6027\u7406\u89e3\uff1a\u5b9e\u9a8c\u8bbe\u8ba1") == 2
+        and daily_text.count("<!-- llmwiki-record-entry ") == 2,
+        "daily record did not append both entries",
+    )
+    listed_all = list_records(str(source), state_root=record["state_root"], max_records=20)
+    require(listed_all["count"] == 2, "daily record listing should expose both entries")
+    listed = list_records(
+        str(source), state_root=record["state_root"], query="\u91c7\u6837", max_records=20
+    )
+    require(listed["count"] == 1, "research record search failed")
+    loaded = read_record(
+        str(source), first["record"]["id"], state_root=record["state_root"]
+    )
+    require(
+        "\u9636\u6bb5\u6027\u7406\u89e3" in loaded["record"]["content"]
+        and "\u8c03\u6574\u91c7\u6837\u65b9\u6848" in loaded["record"]["content"],
+        "research record content failed",
+    )
+    try:
+        read_record(str(source), first["record"]["path"], state_root=record["state_root"])
+    except LLMWikiError:
+        pass
+    else:
+        raise AssertionError("reading a multi-entry daily file without #entry_key should fail")
+    try:
+        read_record(str(source), "../../secret.md", state_root=record["state_root"])
+    except LLMWikiError:
+        pass
+    else:
+        raise AssertionError("research record path traversal was not rejected")
+    return first
+
+
 def request(
     connection: HTTPConnection,
     method: str,
@@ -184,7 +260,9 @@ def request(
     return response.status, response.read(), dict(response.headers)
 
 
-def test_web(root: Path, home: Path, source: Path, record: dict) -> None:
+def test_web(
+    root: Path, home: Path, source: Path, record: dict, research_record: dict
+) -> None:
     wiki_write(
         str(source), "other-page.md", "# Other Page\n", state_root=record["state_root"]
     )
@@ -233,6 +311,52 @@ def test_web(root: Path, home: Path, source: Path, record: dict) -> None:
         require("进入文献中心" in project_text, "project literature entry missing")
         for token in ("console-breadcrumbs", "console-nav-item is-active"):
             require(token in project_text, f"project console navigation missing {token}")
+        records_base = f"/project/{record['id']}/records"
+        code, body, _ = request(connection, "GET", records_base)
+        records_text = body.decode("utf-8")
+        for token in (
+            "\u79d1\u7814\u8bb0\u5f55",
+            "\u8bb0\u5f55\u521a\u624d\u7684\u8ba8\u8bba",
+            "\u9636\u6bb5\u6027\u7406\u89e3\uff1a\u5b9e\u9a8c\u8bbe\u8ba1",
+            "\u660e\u786e\u89e6\u53d1\uff0c\u4e0d\u81ea\u52a8\u6293\u53d6",
+            "records-timeline",
+            "timeline-marker",
+            "2026\u5e7408\u670804\u65e5",
+            "2 \u6761\u8bb0\u5f55",
+        ):
+            require(
+                code == 200 and token in records_text,
+                f"research records page missing {token}",
+            )
+        record_id = str(research_record["record"]["id"])
+        record_name = record_id.split("/", 1)[-1]
+        encoded_record = quote(record_name, safe="/")
+        require("/records/records/" not in records_text, "record links duplicated the records prefix")
+        code, body, _ = request(connection, "GET", "/static/style.css")
+        style_text = body.decode("utf-8")
+        require(
+            code == 200
+            and ".timeline-items::before" in style_text
+            and ".timeline-marker" in style_text,
+            "research records timeline connector CSS missing",
+        )
+        code, body, _ = request(connection, "GET", f"{records_base}/{encoded_record}")
+        record_text = body.decode("utf-8")
+        for token in ("\u79d1\u7814\u8fc7\u7a0b\u8bb0\u5f55", "\u9636\u6bb5\u6027\u7406\u89e3", "\u8c03\u6574\u91c7\u6837\u65b9\u6848", "\u5173\u8054\u6750\u6599"):
+            require(
+                code == 200 and token in record_text,
+                f"research record view missing {token}",
+            )
+        search_query = quote(chr(0x91C7) + chr(0x6837))
+        code, body, _ = request(connection, "GET", f"{records_base}?q={search_query}")
+        require(
+            code == 200 and "\u9636\u6bb5\u6027\u7406\u89e3\uff1a\u5b9e\u9a8c\u8bbe\u8ba1" in body.decode("utf-8"),
+            "research record search page failed",
+        )
+        code, _, _ = request(
+            connection, "GET", f"{records_base}/..%2F..%2Fsecret.md"
+        )
+        require(code in {400, 404}, "research record path traversal was not rejected")
         literature_base = f"/project/{record['id']}/literature"
         code, body, _ = request(connection, "GET", literature_base)
         library_text = body.decode("utf-8")
@@ -354,7 +478,9 @@ def test_web(root: Path, home: Path, source: Path, record: dict) -> None:
         thread.join(timeout=5)
 
 
-def test_mcp(root: Path, home: Path) -> None:
+def test_mcp(
+    root: Path, home: Path, source: Path, record: dict, research_record: dict
+) -> None:
     process = subprocess.Popen(
         [sys.executable, "-I", "-B", str(SCRIPTS / "mcp_server.py")],
         stdin=subprocess.PIPE,
@@ -384,21 +510,62 @@ def test_mcp(root: Path, home: Path) -> None:
             "method": "tools/call",
             "params": {"name": "llmwiki_project_list", "arguments": {}},
         },
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "llmwiki_record_list",
+                "arguments": {
+                    "project_root": str(source),
+                    "state_root": record["state_root"],
+                    "query": "\u91c7\u6837",
+                },
+            },
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "llmwiki_record_read",
+                "arguments": {
+                    "project_root": str(source),
+                    "state_root": record["state_root"],
+                    "record_id": research_record["record"]["id"],
+                },
+            },
+        },
     ]
     for message in messages:
-        process.stdin.write(json.dumps(message) + "\n")
+        process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
     process.stdin.close()
-    responses = [json.loads(process.stdout.readline()) for _ in range(3)]
+    responses = [json.loads(process.stdout.readline()) for _ in range(5)]
     process.wait(timeout=10)
     require(
         responses[0]["result"]["serverInfo"]["version"] == "0.3.0", "initialize failed"
     )
     names = {x["name"] for x in responses[1]["result"]["tools"]}
     require(
-        len(names) == 18 and "llmwiki_web_start" in names and "llmwiki_search" in names,
+        len(names) == 21
+        and "llmwiki_web_start" in names
+        and "llmwiki_search" in names
+        and {"llmwiki_record_write", "llmwiki_record_list", "llmwiki_record_read"}.issubset(names),
         "tool catalog failed",
     )
     require(responses[2]["result"]["isError"] is False, "registry MCP call failed")
+    record_list_payload = json.loads(responses[3]["result"]["content"][0]["text"])
+    require(
+        responses[3]["result"]["isError"] is False
+        and record_list_payload["count"] == 1,
+        "record list MCP call failed",
+    )
+    record_read_payload = json.loads(responses[4]["result"]["content"][0]["text"])
+    require(
+        responses[4]["result"]["isError"] is False
+        and "\u9636\u6bb5\u6027\u7406\u89e3" in record_read_payload["record"]["content"],
+        "record read MCP call failed",
+    )
 
 
 def test_hook(home: Path, source: Path, record: dict) -> None:
@@ -433,9 +600,10 @@ def main() -> int:
         test_core(root)
         home, source, record = test_registry(root)
         test_renderer()
-        test_web(root, home, source, record)
+        research_record = test_research_records(source, record)
+        test_web(root, home, source, record, research_record)
         record = get_project(current_path=str(source), home=str(home))["project"]
-        test_mcp(root, home)
+        test_mcp(root, home, source, record, research_record)
         test_hook(home, source, record)
     print("LLM Wiki smoke test passed")
     return 0

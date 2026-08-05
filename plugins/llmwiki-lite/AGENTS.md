@@ -7,7 +7,7 @@ These instructions apply only inside `plugins/llmwiki-lite/` and replace the leg
 This directory is a standalone Codex Plugin.
 
 - Codex/LLM performs project understanding, semantic selection, reasoning, synthesis, and Wiki writing.
-- Six independent Skills cover project registration, understanding, query, maintenance, literature workflows, and web visualization.
+- Seven independent Skills cover project registration, understanding, query, maintenance, literature workflows, explicit research records, and web visualization.
 - MCP tools perform deterministic filesystem, registry, storage, and local-server mechanics only.
 - Hooks record optional dirty-path hints and remain fail-open.
 - The website is a loopback-only Markdown viewer and storage-settings UI, not a second reasoning system.
@@ -28,6 +28,7 @@ skills/llmwiki-query/
 skills/llmwiki-maintain/
 skills/llmwiki-literature/
 skills/llmwiki-web/
+skills/llmwiki-research-record/
 hooks/hooks.json
 scripts/llmwiki_core.py
 scripts/llmwiki_registry.py

@@ -1,7 +1,7 @@
 {
   "name": "llmwiki-lite",
-  "version": "0.3.1",
-  "description": "A lightweight Codex plugin for LLM-led research and project understanding, useful Markdown Wikis, incremental maintenance, and a Chinese-first local research cockpit with direct PDF and assisted-reading comparison.",
+  "version": "0.3.1+codex.20260805011808",
+  "description": "A lightweight Codex plugin for LLM-led research and project understanding, useful Markdown Wikis, explicit research process records, literature reading, and a Chinese-first local research cockpit.",
   "author": {
     "name": "LLM Wiki Agent contributors",
     "url": "https://github.com/juedouwang/llmwiki-lite-codex-plugin"
@@ -20,9 +20,9 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "LLM Wiki Lite 科研助手",
-    "shortDescription": "让 Codex 理解科研项目并维护实用的中文 Markdown Wiki 与本地研究工作台。",
-    "longDescription": "通过六个独立 Skill 指导 Codex 完成项目注册、研究理解、证据核验、增量维护、文献推荐下载精读和网页浏览；MCP 只承担文件读取、检索、快照、状态和安全写入等机械劳动，网页端提供中文研究项目、文献中心、PDF 原文阅读、中文辅助阅读对照、方法、实验、结果、结论和计划视图。",
+    "displayName": "LLM Wiki Lite \u79d1\u7814\u52a9\u624b",
+    "shortDescription": "\u8ba9 Codex \u7406\u89e3\u79d1\u7814\u9879\u76ee\u5e76\u7ef4\u62a4\u5b9e\u7528\u7684\u4e2d\u6587 Markdown Wiki \u4e0e\u672c\u5730\u7814\u7a76\u5de5\u4f5c\u53f0\u3002",
+    "longDescription": "\u901a\u8fc7\u4e03\u4e2a\u72ec\u7acb Skill \u6307\u5bfc Codex \u5b8c\u6210\u9879\u76ee\u6ce8\u518c\u3001\u7814\u7a76\u7406\u89e3\u3001\u8bc1\u636e\u6838\u9a8c\u3001\u589e\u91cf\u7ef4\u62a4\u3001\u6587\u732e\u63a8\u8350\u4e0b\u8f7d\u7cbe\u8bfb\u3001\u660e\u786e\u89e6\u53d1\u7684\u79d1\u7814\u8fc7\u7a0b\u8bb0\u5f55\u548c\u7f51\u9875\u6d4f\u89c8\uff1bMCP \u53ea\u627f\u62c5\u6587\u4ef6\u8bfb\u53d6\u3001\u68c0\u7d22\u3001\u5feb\u7167\u3001\u72b6\u6001\u3001\u79d1\u7814\u8bb0\u5f55\u8ffd\u52a0/\u8bfb\u53d6\u548c\u5b89\u5168\u5199\u5165\u7b49\u673a\u68b0\u52b3\u52a8\uff0c\u7f51\u9875\u7aef\u63d0\u4f9b\u4e2d\u6587\u7814\u7a76\u9879\u76ee\u3001\u6587\u732e\u4e2d\u5fc3\u3001PDF \u539f\u6587\u9605\u8bfb\u3001\u4e2d\u6587\u8f85\u52a9\u9605\u8bfb\u5bf9\u7167\u3001\u79d1\u7814\u8bb0\u5f55\u65f6\u95f4\u7ebf\u4ee5\u53ca\u65b9\u6cd5\u3001\u5b9e\u9a8c\u3001\u7ed3\u679c\u3001\u7ed3\u8bba\u548c\u8ba1\u5212\u89c6\u56fe\u3002",
     "developerName": "LLM Wiki Lite contributors",
     "category": "Productivity",
     "capabilities": [
@@ -33,9 +33,10 @@
       "Literature recommendation and ingestion",
       "PDF literature reading",
       "Assisted-reading comparison",
+      "Research process records",
       "MCP tools",
       "Optional change hook"
     ],
-    "defaultPrompt": "注册并理解当前研究项目，使用简体中文创建少量真正有用、可核验、可持续维护的 Markdown Wiki 页面，然后打开中文科研知识工作台。"
+    "defaultPrompt": "\u6ce8\u518c\u5e76\u7406\u89e3\u5f53\u524d\u7814\u7a76\u9879\u76ee\uff0c\u4f7f\u7528\u7b80\u4f53\u4e2d\u6587\u521b\u5efa\u5c11\u91cf\u771f\u6b63\u6709\u7528\u3001\u53ef\u6838\u9a8c\u3001\u53ef\u6301\u7eed\u7ef4\u62a4\u7684 Markdown Wiki \u9875\u9762\uff1b\u5f53\u6211\u660e\u786e\u8bf4\u201c\u8bb0\u5f55\u521a\u624d\u7684\u8ba8\u8bba\u201d\u65f6\uff0c\u518d\u628a\u9636\u6bb5\u6027\u7406\u89e3\u3001\u4f9d\u636e\u3001\u51b3\u7b56\u548c\u4e0b\u4e00\u6b65\u5199\u5165\u79d1\u7814\u8bb0\u5f55\uff0c\u7136\u540e\u6253\u5f00\u4e2d\u6587\u79d1\u7814\u77e5\u8bc6\u5de5\u4f5c\u53f0\u3002"
   }
 }
