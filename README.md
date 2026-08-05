@@ -65,28 +65,23 @@ https://github.com/juedouwang/llmwiki-research-codex-plugin
 
 两条发布线使用不同仓库名、Marketplace 名和 Plugin 名，可以并行维护。
 
-## 本地测试 Marketplace
+## GitHub Marketplace
 
-当前工作区已注册为独立的 `llmwiki-lite-local-test` marketplace，不会覆盖 GitHub 正式版：
-
-```powershell
-codex plugin marketplace add E:\GitHub\llm-wiki-agent\next\llmwiki-lite-codex-plugin
-codex plugin add llmwiki-lite@llmwiki-lite-local-test
-```
-
-测试时应新开 Codex 对话，让新安装的 Skill 和 MCP 配置生效。当前本机已停用同名 GitHub 正式插件，避免两个版本同时加载。
-
-## 本地更新
-
-修改源码后执行以下命令刷新本地插件缓存：
+本机使用 GitHub Marketplace，不再使用本地 Marketplace：
 
 ```powershell
-python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py plugins/llmwiki-lite
-codex plugin add llmwiki-lite@llmwiki-lite-local-test
+codex plugin marketplace add https://github.com/juedouwang/llmwiki-lite-codex-plugin
+codex plugin add llmwiki-lite@llmwiki-lite
 ```
 
-脚本只更新本地测试版的 Codex cachebuster，不会推送 GitHub。满意后再恢复正式 marketplace 并执行发布流程。
+修改并推送到 GitHub 后，刷新 Marketplace 并重新安装插件：
 
+```powershell
+codex plugin marketplace upgrade llmwiki-lite
+codex plugin add llmwiki-lite@llmwiki-lite
+```
+
+重新安装后请新开 Codex 对话，让新的 Skill 和 MCP 配置生效。插件的界面元数据未改动，因此继续使用当前图标。
 
 发布维护以 `main` 分支和版本标签（例如 `v0.3.1`）为准。每次推送 `main` 或提交版本标签都会由 GitHub Actions 自动执行验证；版本标签通过验证后自动创建 GitHub Release。
 

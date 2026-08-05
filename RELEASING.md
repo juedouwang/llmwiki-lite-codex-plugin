@@ -20,9 +20,11 @@ The installed Codex client still needs a Marketplace refresh; GitHub Actions val
 
 ## User update flow
 
+After pushing a change to GitHub, refresh the Git Marketplace:
+
 ```powershell
 codex plugin marketplace upgrade llmwiki-lite
 codex plugin add llmwiki-lite@llmwiki-lite
 ```
 
-For local development, use the local marketplace path in `README.md` instead of the GitHub URL.
+Start a new Codex conversation after the refresh so new Skill and MCP files are loaded.

@@ -1,7 +1,7 @@
 {
-  "name": "llmwiki-lite-local-test",
+  "name": "llmwiki-lite",
   "interface": {
-    "displayName": "LLM Wiki Lite（本地测试版）"
+    "displayName": "LLM Wiki Lite"
   },
   "plugins": [
     {
