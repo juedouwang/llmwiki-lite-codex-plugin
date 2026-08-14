@@ -22,7 +22,7 @@ IMAGE_MIME_TYPES = {
 
 STYLE = """/* LLM Wiki Lite 中文科研工作台 — 单一样式系统 */
 :root{--accent:#1677ff;--accent-dark:#0958d9;--bg:#f5f7fa;--panel:#fff;--text:#1f2329;--muted:#86909c;--line:#e5e6eb;--soft:#f2f3f5;--danger:#a43434;--success:#eaf6ee;--sidebar:#fff;--sidebar-muted:#7c8796;--sidebar-active:#eaf3ff;--sidebar-line:#e6ebf2;--shadow:0 1px 2px rgba(31,35,41,.04)}
-*{box-sizing:border-box}html{scroll-behavior:smooth}html,body{min-height:100%}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif}body.console-locked{overflow:hidden}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}code{font-family:Consolas,"SFMono-Regular",monospace}
+*{box-sizing:border-box}[hidden]{display:none!important}html{scroll-behavior:smooth}html,body{min-height:100%}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif}body.console-locked{overflow:hidden}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}code{font-family:Consolas,"SFMono-Regular",monospace}
 
 /* ---------- 通用组件 ---------- */
 .button,button{display:inline-block;border:1px solid #b8c4d1;border-radius:4px;min-height:34px;padding:6px 12px;background:#fff;color:var(--text);font:inherit;font-size:13px;line-height:1.5;cursor:pointer;text-decoration:none}
@@ -293,7 +293,7 @@ body.lightbox-open{overflow:hidden}
 .todo-done-details{margin-top:18px}
 .todo-done-details>summary{cursor:pointer;font-weight:650;font-size:15px;list-style:none;display:flex;align-items:center;gap:6px}
 .todo-done-details>summary::-webkit-details-marker{display:none}
-.todo-done-details>summary::before{content:"\25B8";transition:transform .15s;color:var(--muted)}
+.todo-done-details>summary::before{content:"▸";transition:transform .15s;color:var(--muted)}
 .todo-done-details[open]>summary::before{transform:rotate(90deg)}
 .record-pager{display:flex;justify-content:space-between;gap:10px;margin:18px 0}
 .record-pager .button:first-child{margin-right:auto}
