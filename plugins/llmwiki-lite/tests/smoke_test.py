@@ -342,7 +342,7 @@ def test_web(
         )
         code, body, _ = request(connection, "GET", f"{records_base}/{encoded_record}")
         record_text = body.decode("utf-8")
-        for token in ("\u79d1\u7814\u8fc7\u7a0b\u8bb0\u5f55", "\u9636\u6bb5\u6027\u7406\u89e3", "\u8c03\u6574\u91c7\u6837\u65b9\u6848", "\u5173\u8054\u6750\u6599"):
+        for token in ("\u8bb0\u5f55\u65f6\u95f4", "\u9636\u6bb5\u6027\u7406\u89e3", "\u8c03\u6574\u91c7\u6837\u65b9\u6848", "\u5173\u8054\u6750\u6599"):
             require(
                 code == 200 and token in record_text,
                 f"research record view missing {token}",

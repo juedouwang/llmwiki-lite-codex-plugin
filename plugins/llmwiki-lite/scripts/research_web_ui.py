@@ -21,27 +21,27 @@ IMAGE_MIME_TYPES = {
 }
 
 STYLE = """/* LLM Wiki Lite 中文科研工作台 — 单一样式系统 */
-:root{--accent:#1677ff;--accent-dark:#0958d9;--bg:#f5f7fa;--panel:#fff;--text:#1f2329;--muted:#86909c;--line:#e5e6eb;--soft:#f2f3f5;--danger:#a43434;--success:#eaf6ee;--sidebar:#fff;--sidebar-muted:#7c8796;--sidebar-active:#eaf3ff;--sidebar-line:#e6ebf2;--shadow:0 1px 2px rgba(31,35,41,.04)}
-*{box-sizing:border-box}[hidden]{display:none!important}html{scroll-behavior:smooth}html,body{min-height:100%}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif}body.console-locked{overflow:hidden}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}code{font-family:Consolas,"SFMono-Regular",monospace}
+:root{--accent:#8b3a3a;--accent-dark:#6b2d2d;--bg:#f5f0eb;--panel:#fffbf5;--text:#2d2118;--muted:#786a5e;--line:#ddd5cc;--soft:#ece1d3;--danger:#8b3a3a;--success:#e9f2eb;--sidebar:#faf5ee;--sidebar-muted:#8a7d6e;--sidebar-active:#f0e4d6;--sidebar-line:#ddd5cc;--shadow:0 1px 2px rgba(45,33,24,.05);--font:Georgia,"Times New Roman","Songti SC","STSong","SimSun","Noto Serif CJK SC",serif;--font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif}
+*{box-sizing:border-box}[hidden]{display:none!important}html{scroll-behavior:smooth}html,body{min-height:100%}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.7 var(--font)}body.console-locked{overflow:hidden}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline;color:var(--accent-dark)}code{font-family:Consolas,"SFMono-Regular",monospace}
 
 /* ---------- 通用组件 ---------- */
-.button,button{display:inline-block;border:1px solid #b8c4d1;border-radius:4px;min-height:34px;padding:6px 12px;background:#fff;color:var(--text);font:inherit;font-size:13px;line-height:1.5;cursor:pointer;text-decoration:none}
-.button:hover,button:hover{background:#f6f8fa;text-decoration:none}
-.button.primary,.primary{color:#fff!important;background:var(--accent)!important;border-color:var(--accent)!important;box-shadow:0 1px 2px rgba(22,119,255,.18)}
+.button,button{display:inline-block;border:1px solid var(--line);border-radius:4px;min-height:34px;padding:6px 12px;background:var(--panel);color:var(--text);font-family:var(--font-ui);font-size:13px;line-height:1.5;cursor:pointer;text-decoration:none}
+.button:hover,button:hover{background:var(--soft);text-decoration:none}
+.button.primary,.primary{color:#fff!important;background:var(--accent)!important;border-color:var(--accent)!important}
 .primary:hover{background:var(--accent-dark)!important}
-.danger{color:var(--danger)!important;border-color:#d8abab!important}
-label{display:block;font-weight:650;margin:12px 0 5px}
-input[type=text],input[type=number],input[type=search],select{width:100%;padding:7px 10px;border:1px solid #c8d0d9;border-radius:4px;min-height:36px;background:#fff;font:inherit;font-size:13px}
-input[type=text]:focus,input[type=number]:focus,input[type=search]:focus,select:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 2px rgba(22,119,255,.12)}
+.danger{color:var(--danger)!important;border-color:var(--accent)!important}
+label{display:block;font-weight:650;margin:12px 0 5px;font-family:var(--font-ui)}
+input[type=text],input[type=number],input[type=search],select{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:4px;min-height:36px;background:var(--panel);font-family:var(--font-ui);font-size:13px}
+input[type=text]:focus,input[type=number]:focus,input[type=search]:focus,select:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 2px rgba(139,58,58,.1)}
 input[type=checkbox]{width:auto;margin-right:7px}
-.notice{padding:10px 13px;background:var(--success);border:1px solid #bddcc8;border-radius:5px;margin:10px 0 14px}
-.notice.error{background:#fff0f0;border-color:#e2b8b8}
-.help{padding:11px 14px;background:#f0f7ff;border:1px solid #cfe4ff;border-left:3px solid #9db6cf;color:#4e5969;font-size:13px;border-radius:5px}
-.badge,.category-tag{display:inline-block;padding:2px 8px;background:var(--soft);border:1px solid #dbe8f4;border-radius:99px;font-size:12px;margin:0 5px 4px 0}
-.badge.warn{background:#fff8e8;border-color:#eadbad}
-.meta,.muted{color:var(--muted);font-size:13px}
+.notice{padding:10px 13px;background:var(--success);border:1px solid var(--line);border-radius:4px;margin:10px 0 14px}
+.notice.error{background:#fbf0ec;border-color:var(--line)}
+.help{padding:11px 14px;background:var(--soft);border:1px solid var(--line);border-left:3px solid var(--accent);color:var(--text);font-size:13px;border-radius:4px}
+.badge,.category-tag{display:inline-block;padding:2px 8px;background:var(--soft);border:1px solid var(--line);border-radius:99px;font-size:12px;margin:0 5px 4px 0;font-family:var(--font-ui)}
+.badge.warn{background:#f6ead8;border-color:var(--line)}
+.meta,.muted{color:var(--muted);font-size:13px;font-family:var(--font-ui)}
 .path{font-family:Consolas,"SFMono-Regular",monospace;overflow-wrap:anywhere}
-.panel,.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px;box-shadow:var(--shadow)}
+.panel,.card{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:18px}
 .panel h2,.panel h3,.card h2{line-height:1.35;margin-top:0}
 .panel h2{font-size:17px}.panel h3{font-size:14px}
 .empty{padding:30px;text-align:center;color:var(--muted)}
@@ -81,15 +81,15 @@ details.settings summary{cursor:pointer;font-weight:650}
 .console-sidebar::-webkit-scrollbar{width:5px}.console-sidebar::-webkit-scrollbar-thumb{background:#d9e0e8;border-radius:99px}
 .console-sidebar-brand{display:flex;align-items:center;gap:10px;height:60px;padding:0 10px;margin-bottom:14px;border-bottom:1px solid var(--sidebar-line);color:#1f2329;text-decoration:none}
 .console-sidebar-brand:hover{text-decoration:none}
-.console-sidebar-brand .console-brand-mark{width:30px;height:30px;background:#1677ff}
-.console-brand-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:6px;background:#1677ff;color:#fff;font-size:12px;font-weight:800;letter-spacing:-.04em;flex:0 0 auto}
+.console-sidebar-brand .console-brand-mark{width:30px;height:30px;background:var(--accent)}
+.console-brand-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:6px;background:var(--accent);color:#fff;font-size:12px;font-weight:800;letter-spacing:-.04em;flex:0 0 auto}
 .console-sidebar-brand strong{display:block;font-size:14px;line-height:1.25}
 .console-sidebar-brand small{display:block;margin-top:2px;color:var(--muted);font-size:11px}
 .console-sidebar-project-switcher{position:relative;margin:0 2px 17px}
 .console-sidebar-project-switcher summary{display:flex;align-items:center;gap:8px;min-height:44px;padding:7px 9px;border:1px solid var(--sidebar-line);border-radius:6px;background:#f8fafc;cursor:pointer;list-style:none}
 .console-sidebar-project-switcher summary::-webkit-details-marker{display:none}
-.console-sidebar-project-switcher summary:hover{border-color:#b7c7e5;background:#f4f8ff}
-.console-project-switcher-icon{display:grid;place-items:center;width:22px;height:22px;border-radius:5px;background:#e8f3ff;color:var(--accent);font-size:8px;flex:0 0 auto}
+.console-sidebar-project-switcher summary:hover{border-color:var(--accent);background:var(--soft)}
+.console-project-switcher-icon{display:grid;place-items:center;width:22px;height:22px;border-radius:5px;background:var(--soft);color:var(--accent);font-size:8px;flex:0 0 auto}
 .console-project-switcher-icon::before{content:"";display:block;width:6px;height:6px;border-radius:1px;background:currentColor}
 .console-switcher-copy{min-width:0;flex:1}
 .console-project-switcher-label{display:block;color:var(--muted);font-size:10px;line-height:1.1}
@@ -98,8 +98,8 @@ details.settings summary{cursor:pointer;font-weight:650}
 .console-sidebar-project-switcher[open] .console-project-switcher-chevron{transform:rotate(180deg)}
 .console-project-menu{position:static;width:auto;margin-top:6px;padding:4px;background:#fff;border:1px solid var(--sidebar-line);border-radius:6px;box-shadow:0 5px 15px rgba(31,35,41,.08)}
 .console-project-menu a{display:block;padding:8px 9px;border-radius:4px;color:var(--text);font-size:12px}
-.console-project-menu a:hover{background:#f2f7ff;text-decoration:none}
-.console-project-menu a.is-current{background:#e8f3ff;color:#0958d9;font-weight:650}
+.console-project-menu a:hover{background:var(--soft);text-decoration:none}
+.console-project-menu a.is-current{background:var(--soft);color:var(--accent-dark);font-weight:650}
 .console-project-menu .path{display:block;margin-top:2px;color:var(--muted);font-size:11px;font-weight:400}
 .console-project-empty{display:block;padding:8px 9px;color:var(--muted);font-size:12px}
 .console-navigation{display:flex;flex-direction:column;gap:2px}
@@ -143,7 +143,7 @@ details.settings summary{cursor:pointer;font-weight:650}
 .console-project-table-head{background:#f7f8fa;border-bottom:1px solid var(--line);color:#86909c;font-size:12px}
 .console-project-row{min-height:78px;border-bottom:1px solid #f0f1f3}
 .console-project-row:last-child{border-bottom:0}
-.console-project-row:hover{background:#fafcff}
+.console-project-row:hover{background:#faf5ef}
 .console-project-main{min-width:0}
 .console-project-main h2{font-size:15px;margin:0 0 4px}
 .console-project-main h2 a{color:#1f2329}
@@ -173,7 +173,7 @@ details.settings summary{cursor:pointer;font-weight:650}
 .page-list li:last-child{border-bottom:0}
 .page-list a{display:block;line-height:1.4}
 .page-filter{margin-bottom:10px}
-.prompt{position:relative;padding:14px 52px 14px 14px;background:#f7f9fb;border:1px solid var(--line);border-radius:7px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
+.prompt{position:relative;padding:14px 52px 14px 14px;background:#f4eee6;border:1px solid var(--line);border-radius:7px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
 .prompt button{position:absolute;right:8px;top:8px;padding:4px 8px;font-family:inherit;font-size:12px}
 .recent-list{list-style:none;margin:0;padding:0}
 .recent-list li{padding:8px 0;border-bottom:1px solid #edf0f3}
@@ -194,7 +194,7 @@ details.settings summary{cursor:pointer;font-weight:650}
 .code-block{position:relative;margin:1em 0}
 .code-language{position:absolute;right:10px;top:6px;color:#aab6c4;font-size:11px}
 .document blockquote{margin:1em 0;padding:3px 16px;border-left:4px solid #b8c3d0;color:#4e5966}
-.callout{margin:1em 0;border:1px solid #bfd0e7;border-left:4px solid var(--accent);background:#f5f9ff;border-radius:6px;padding:12px 15px}
+.callout{margin:1em 0;border:1px solid var(--line);border-left:4px solid var(--accent);background:var(--soft);border-radius:6px;padding:12px 15px}
 .callout-title{font-weight:700}
 .frontmatter{background:#f8fafc;border:1px solid var(--line);border-radius:7px;padding:9px 12px;margin-bottom:20px}
 .frontmatter summary{cursor:pointer;font-weight:600}
@@ -207,7 +207,7 @@ th{background:#f1f4f7}
 figure{margin:1em 0}
 figure img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}
 figcaption{color:var(--muted);font-size:12px}
-.wikilink{background:#eef4ff;padding:0 3px;border-radius:3px}
+.wikilink{background:var(--soft);padding:0 3px;border-radius:3px}
 .toc{font-size:13px}
 .toc ul{list-style:none;margin:0;padding:0}
 .toc li{margin:5px 0}
@@ -225,7 +225,7 @@ figcaption{color:var(--muted);font-size:12px}
 .records-count{color:var(--muted);font-size:13px;white-space:nowrap}
 .record-empty{padding:32px 20px;text-align:center}
 .record-empty h2{margin-top:0}
-.record-callout{margin-bottom:18px;padding:12px 14px;background:#f7faff;border-left:3px solid #91caff;border-radius:6px;color:#526174}
+.record-callout{margin-bottom:18px;padding:12px 14px;background:var(--soft);border-left:3px solid var(--accent);border-radius:6px;color:var(--text)}
 .record-callout code{font-size:12px}
 .records-timeline{padding:4px 2px 18px}
 .timeline-day{margin:0 0 25px}
@@ -239,7 +239,7 @@ figcaption{color:var(--muted);font-size:12px}
 .timeline-marker{position:absolute;left:2px;top:18px;width:16px;height:16px;border:3px solid var(--panel);border-radius:50%;background:#8ea9c4;box-shadow:0 0 0 2px #8ea9c4;z-index:1}
 .timeline-entry:first-child .timeline-marker{background:var(--accent);box-shadow:0 0 0 2px var(--accent),0 0 0 5px #245b9120}
 .timeline-card{display:block;padding:16px 18px;background:#fff;border:1px solid var(--line);border-radius:9px;color:var(--text);text-decoration:none;cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
-.timeline-card:hover{border-color:#b7c7e5;box-shadow:0 5px 16px rgba(31,35,41,.08);transform:translateY(-1px);text-decoration:none}
+.timeline-card:hover{border-color:var(--accent);box-shadow:0 5px 16px rgba(31,35,41,.08);transform:translateY(-1px);text-decoration:none}
 .timeline-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px}
 .timeline-time{font-family:Consolas,"SFMono-Regular",monospace;color:var(--accent);font-size:12px;font-weight:700}
 .timeline-card h2{font-size:17px;line-height:1.45;margin:4px 0 7px}
@@ -279,7 +279,7 @@ body.lightbox-open{overflow:hidden}
 
 /* ---------- 科研记录筛选与待办 ---------- */
 .tag-cloud{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
-.tag-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid #dbe8f4;border-radius:99px;background:var(--soft);color:var(--text);font-size:12px}
+.tag-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid var(--line);border-radius:99px;background:var(--soft);color:var(--text);font-size:12px}
 .tag-chip:hover{border-color:var(--accent);text-decoration:none}
 .tag-chip.is-active{background:var(--sidebar-active);border-color:var(--accent);color:var(--accent);font-weight:650}
 .todo-record-card{margin:0 0 16px;padding:16px 18px}
@@ -309,13 +309,13 @@ body.lightbox-open{overflow:hidden}
 .library-title{display:flex;align-items:center;gap:9px;padding:4px 8px 13px;border-bottom:1px solid var(--line);margin-bottom:12px}
 .library-title strong{display:block;line-height:1.3}
 .library-title span:last-child{display:block;color:var(--muted);font-size:11px}
-.library-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:7px;background:#1677ff;color:#fff;font-weight:800;font-size:13px;flex:0 0 auto}
+.library-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:7px;background:var(--accent);color:#fff;font-weight:800;font-size:13px;flex:0 0 auto}
 .library-search{margin:0 4px 12px;background:#fff}
 .library-nav-group{margin:13px 0}
 .library-nav-group h2{padding:0 9px;margin:0 0 4px;color:#86909c;font-size:11px;line-height:1.5;letter-spacing:.08em;text-transform:uppercase}
 .library-nav-item{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;border:0;border-radius:6px;padding:6px 9px;background:transparent;color:#1f2329;text-align:left;font-size:13px;line-height:1.4;cursor:pointer}
-.library-nav-item:hover{background:#f2f7ff;text-decoration:none}
-.library-nav-item.is-active{background:#e8f3ff;color:#0958d9;font-weight:700}
+.library-nav-item:hover{background:var(--soft);text-decoration:none}
+.library-nav-item.is-active{background:var(--soft);color:var(--accent-dark);font-weight:700}
 .library-nav-item .nav-count{color:#86909c;font-size:11px;font-variant-numeric:tabular-nums}
 .library-nav-separator{height:1px;background:var(--line);margin:12px 8px}
 .library-sidebar-help{padding:10px 9px;color:var(--muted);font-size:11px;line-height:1.55}
@@ -336,7 +336,7 @@ body.lightbox-open{overflow:hidden}
 .literature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px}
 .literature-grid.is-list{grid-template-columns:1fr}
 .paper-card{position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;padding:15px 16px;display:flex;flex-direction:column;min-height:260px;transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
-.paper-card:hover{border-color:#b7c7e5;box-shadow:0 3px 10px rgba(31,35,41,.08);transform:translateY(-1px)}
+.paper-card:hover{border-color:var(--accent);box-shadow:0 3px 10px rgba(31,35,41,.08);transform:translateY(-1px)}
 .paper-card h2{font-size:16px;line-height:1.45;margin:8px 0 5px}
 .paper-card .actions{margin-top:auto}
 .paper-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
@@ -344,10 +344,10 @@ body.lightbox-open{overflow:hidden}
 .fav-button{border:0;background:transparent;font-size:20px;line-height:1;color:#c9cdd4;cursor:pointer;padding:0 2px;min-height:0}
 .fav-button:hover{color:#f5a623}
 .fav-button.is-fav{color:#f5a623}
-.paper-file-type{display:inline-grid;place-items:center;min-width:34px;height:22px;border-radius:4px;background:#e8f3ff;color:#0958d9;font-size:10px;font-weight:800;letter-spacing:.04em}
+.paper-file-type{display:inline-grid;place-items:center;min-width:34px;height:22px;border-radius:4px;background:var(--soft);color:var(--accent-dark);font-size:10px;font-weight:800;letter-spacing:.04em}
 .reading-state{font-size:11px;color:#4e765b}
 .reading-state.pending{color:#9a6b20}
-.paper-notes{margin:10px 0;padding:9px 11px;background:#f7faff;border-radius:6px;border-left:3px solid #91caff}
+.paper-notes{margin:10px 0;padding:9px 11px;background:var(--soft);border-radius:6px;border-left:3px solid var(--accent)}
 .paper-notes ul{margin:4px 0 0;padding-left:18px}
 .paper-prompt{margin:10px 0}
 .paper-prompt summary{cursor:pointer;font-weight:650;color:var(--accent)}
@@ -819,10 +819,8 @@ def layout(
         + '</nav>'
         '<div class="console-sidebar-footer">'
         + _console_nav_item("/settings", "设置", "&#9881;", "settings", active)
-        + '<div class="console-sidebar-note">把研究过程沉淀为 Markdown 知识页，由人类与 Codex 共同维护。</div>'
-        '</div></aside>'
+        + '</div></aside>'
     )
-    runtime = '<span class="console-runtime-dot"></span><span>本地服务</span>'
     return (
         '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -832,7 +830,6 @@ def layout(
         '<button class="console-menu-button" type="button" aria-label="打开导航菜单" onclick="toggleConsoleSidebar()">&#9776;</button>'
         f'<div class="console-topbar-title"><span>当前页面</span><strong>{esc(title)}</strong></div>'
         f'<form class="console-global-search" action="/search"><input type="search" name="q" value="{esc(query)}" placeholder="检索论文、方法、实验和结论"><button class="button">搜索</button></form>'
-        + f'<div class="console-runtime">{runtime}</div>'
         + '</div></header><div class="console-body">'
         + sidebar
         + '<div class="console-overlay" id="console-overlay"></div><div class="console-content">'
@@ -929,9 +926,9 @@ def home_page(home: str, params: dict[str, list[str]]) -> str:
             else '<span class="status-dot"></span>状态稳定'
         )
         rows.append(
-            f'''<div class="console-project-row"><div class="console-project-main"><h2><a href="{purl(project["id"])}">{esc(project["name"])}</a></h2><div class="path" title="{esc(project["source_root"])}">{esc(project["source_root"])}</div><div class="meta">Wiki：{esc(project["wiki_root"])} - 最近扫描：{esc(format_time(state.get("snapshot_at")))}</div></div><div class="console-project-metric"><strong>{pages}</strong><span>知识页</span></div><div class="console-project-metric"><strong>{files}</strong><span>源文件</span></div><div class="console-project-status">{status_label}</div><div class="console-project-actions"><a class="button primary" href="{purl(project["id"])}">进入研究台</a><a class="button" href="{purl(project["id"])}/literature">文献中心</a><a class="button" href="/search?project={quote(project["id"], safe='')}">检索</a></div></div>'''
+            f'''<div class="console-project-row"><div class="console-project-main"><h2><a href="{purl(project["id"])}">{esc(project["name"])}</a></h2></div><div class="console-project-metric"><strong>{pages}</strong><span>知识页</span></div><div class="console-project-metric"><strong>{files}</strong><span>源文件</span></div><div class="console-project-status">{status_label}</div><div class="console-project-actions"><a class="button primary" href="{purl(project["id"])}">进入研究台</a><a class="button" href="{purl(project["id"])}/literature">文献中心</a><a class="button" href="/search?project={quote(project["id"], safe='')}">检索</a></div></div>'''
         )
-    stats = f'''<section class="stats"><div class="stat"><strong>{len(projects)}</strong><span>已注册研究项目</span></div><div class="stat"><strong>{total_pages}</strong><span>可阅读知识页</span></div><div class="stat"><strong>{total_files}</strong><span>已记录源文件</span></div><div class="stat"><strong>{total_dirty}</strong><span>待核对变更提示</span></div></section>'''
+    stats = f'''<section class="stats"><div class="stat"><strong>{len(projects)}</strong><span>已注册研究项目</span></div><div class="stat"><strong>{total_pages}</strong><span>可阅读知识页</span></div></section>'''
     empty = '''<div class="panel empty"><h2>还没有研究项目</h2><p>先注册 Codex 当前打开的项目。注册只建立项目身份和存储位置，不会假装已经完成分析。</p><a class="button primary" href="/settings">注册第一个研究项目</a></div>'''
     project_table = (
         f'<section class="panel console-project-table"><div class="console-project-table-head"><span>研究项目</span><span>知识页</span><span>源文件</span><span>当前状态</span><span>操作</span></div>{"".join(rows)}</section>'
@@ -986,7 +983,7 @@ def project_page(home: str, project_id: str, params: dict[str, list[str]]) -> st
     step_html = "".join(f'<li>{esc(step)}</li>' for step in next_steps(records, state))
     prompt_text = f'''请维护研究项目“{project["name"]}”的 LLM Wiki。先检查最近变化，阅读必要源码与已有 Wiki，只更新真正受影响的页面。请用简体中文写给研究生阅读，保留代码、路径、API、算法名和必要英文术语；不要批量生成空模板。最后说明更新了什么、依据是什么、还有哪些不确定问题。'''
     dirty_badge = f'<span class="badge warn">{len(dirty_paths)} 项待核对变化</span>' if dirty_paths else '<span class="badge">知识库状态稳定</span>'
-    content = f'''{notice(params)}<section class="hero"><div><div class="eyebrow">项目研究台</div><h1>{esc(project["name"])}</h1><p>围绕真实研究问题组织知识，而不是按固定模板堆页面。</p></div><div class="actions"><a class="button primary" href="{purl(project_id)}/literature">进入文献中心</a><a class="button" href="/search?project={quote(project_id, safe='')}">检索本项目</a><a class="button" href="#research-content">查看研究内容</a></div></section><section class="stats"><div class="stat"><strong>{len(records)}</strong><span>知识页</span></div><div class="stat"><strong>{int(state.get("snapshot_file_count",0))}</strong><span>源文件记录</span></div><div class="stat"><strong>{len([v for v in groups.values() if v])}</strong><span>已有研究主题</span></div><div class="stat"><strong>{len(dirty_paths)}</strong><span>待核对变化</span></div></section><div class="research-layout"><div><section class="panel" id="research-content"><h2>研究内容</h2><p class="muted">网页按科研流程自动归类现有 Markdown；不会改变真实文件目录，也不会强制生成固定类型页面。</p><p class="meta">浏览视图：研究总览 · 文献与阅读 · 方法与实现 · 数据与样本 · 实验记录 · 结果与分析 · 结论与问题 · 计划与待办。</p><div class="workflow-grid">{"".join(workflow_cards) if workflow_cards else '<div class="empty">暂无知识页。可以把下方 Prompt 交给 Codex 开始理解项目。</div>'}</div></section><h2 class="section-title">建议下一步</h2><section class="panel"><ol>{step_html}</ol><h3>交给 Codex 的维护指令</h3><div class="prompt" id="project-prompt">{esc(prompt_text)}<button onclick="copyText('project-prompt',this)">复制</button></div></section><h2 class="section-title">最近更新</h2><section class="panel"><ul class="recent-list">{recent_html}</ul></section></div><aside><section class="panel sidebar"><h2>全部知识页</h2><input class="page-filter" type="search" oninput="filterPages(this)" placeholder="筛选标题或路径">{all_pages}</section></aside></div><section class="panel section-title"><div>{dirty_badge}</div><details class="settings"><summary>待核对变化与项目存储位置</summary><div class="split"><div><h3>待核对变化</h3><ul>{dirty_html}</ul></div><div><h3>存储位置</h3><p class="meta">源项目（只读理解）</p><div class="path">{esc(project["source_root"])}</div><p class="meta">人类可读 Wiki</p><div class="path">{esc(project["wiki_root"])}</div><p class="meta">机器状态</p><div class="path">{esc(project["state_root"])}</div><p class="meta">最近扫描：{esc(format_time(state.get("snapshot_at")))}</p><a class="button" href="/settings#project-{quote(project_id, safe='')}">修改存储位置</a></div></div></details></section>'''
+    content = f'''{notice(params)}<section class="hero"><div><div class="eyebrow">项目研究台</div><h1>{esc(project["name"])}</h1><p>围绕真实研究问题组织知识，而不是按固定模板堆页面。</p></div><div class="actions"><a class="button primary" href="{purl(project_id)}/literature">进入文献中心</a><a class="button" href="/search?project={quote(project_id, safe='')}">检索本项目</a><a class="button" href="#research-content">查看研究内容</a></div></section><section class="stats"><div class="stat"><strong>{len(records)}</strong><span>知识页</span></div><div class="stat"><strong>{int(state.get("snapshot_file_count",0))}</strong><span>源文件记录</span></div><div class="stat"><strong>{len([v for v in groups.values() if v])}</strong><span>已有研究主题</span></div><div class="stat"><strong>{len(dirty_paths)}</strong><span>待核对变化</span></div></section><div class="research-layout"><div><section class="panel" id="research-content"><h2>研究内容</h2><p class="muted">网页按科研流程自动归类现有 Markdown；不会改变真实文件目录，也不会强制生成固定类型页面。</p><p class="meta">浏览视图：研究总览 · 文献与阅读 · 方法与实现 · 数据与样本 · 实验记录 · 结果与分析 · 结论与问题 · 计划与待办。</p><div class="workflow-grid">{"".join(workflow_cards) if workflow_cards else '<div class="empty">暂无知识页。可以把下方 Prompt 交给 Codex 开始理解项目。</div>'}</div></section><h2 class="section-title">建议下一步</h2><section class="panel"><ol>{step_html}</ol><h3>交给 Codex 的维护指令</h3><div class="prompt" id="project-prompt">{esc(prompt_text)}<button onclick="copyText('project-prompt',this)">复制</button></div></section><h2 class="section-title">最近更新</h2><section class="panel"><ul class="recent-list">{recent_html}</ul></section></div><aside><section class="panel sidebar"><h2>全部知识页</h2><input class="page-filter" type="search" oninput="filterPages(this)" placeholder="筛选标题或路径">{all_pages}</section></aside></div><section class="panel section-title"><div>{dirty_badge}</div><details class="settings"><summary>待核对变化</summary><ul>{dirty_html}</ul></details></section>'''
     return layout(str(project["name"]), content, project_id=project_id, active="overview", home=home)
 
 
@@ -1398,7 +1395,7 @@ def record_view(home: str, project_id: str, record_id: str) -> str:
         else ""
     )
     pager_html = f'<div class="record-pager">{prev_link}{next_link}</div>' if (prev_link or next_link) else ""
-    body = f'''<div class="doc-toolbar"><div class="breadcrumbs"><a href="{purl(project_id)}/records">科研记录</a> / {esc(record["title"])}</div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回记录列表</a></div></div><section class="record-document"><div class="document-meta"><span class="category-tag">科研过程记录</span><span class="meta">记录时间：{esc(format_time(str(record.get("recorded_at") or "")))}</span><span class="meta path">{esc(record["path"])}</span>{tags_html}</div><article class="document">{rendered}</article>{pager_html}{extra}</section>'''
+    body = f'''<div class="doc-toolbar"><div class="breadcrumbs"><a href="{purl(project_id)}/records">科研记录</a> / {esc(record["title"])}</div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回记录列表</a></div></div><section class="record-document"><div class="document-meta"><span class="meta">记录时间：{esc(format_time(str(record.get("recorded_at") or "")))}</span><span class="meta path">{esc(record["path"])}</span>{tags_html}</div><article class="document">{rendered}</article>{pager_html}{extra}</section>'''
     return layout(str(record["title"]), body, project_id=project_id, active="records", home=home)
 
 def heading_slug(text: str) -> str:
@@ -1442,12 +1439,8 @@ def page_view(home: str, project_id: str, relative: str) -> str:
     )
     headings = extract_headings(text)
     toc = "".join(f'<li class="level-{level}"><a href="#{esc(slug)}">{esc(title)}</a></li>' for level, title, slug in headings)
-    chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
-    latin_words = len(re.findall(r"\b[A-Za-z0-9_]+\b", text))
-    reading_units = chinese_chars + latin_words * 2
-    minutes = max(1, (reading_units + 499) // 500)
     rendered = render_markdown(text, project_id, relative)
-    body = f'''<div class="doc-toolbar"><div class="breadcrumbs"><a href="/">研究项目</a> / <a href="{purl(project_id)}">{esc(project["name"])}</a> / {esc(current["title"])}</div><div class="actions"><button onclick="navigator.clipboard.writeText({esc(repr(relative))})">复制页面路径</button><button onclick="window.print()">打印 / 导出 PDF</button></div></div><div class="reading-layout"><aside class="panel sidebar"><h2>项目知识页</h2><input class="page-filter" type="search" oninput="filterPages(this)" placeholder="筛选页面">{page_groups}<a class="button mobile-only" href="{purl(project_id)}">返回项目研究台</a></aside><article class="document"><div class="meta"><span class="category-tag">{esc(current["category"])}</span> 最近更新 {esc(current["updated"])} · 约 {reading_units} 字词 · 预计阅读 {minutes} 分钟</div>{rendered}</article><aside class="panel sidebar toc toc-panel"><h2>本页目录</h2>{f'<ul>{toc}</ul>' if toc else '<p class="muted">本页暂无标题目录</p>'}<div class="actions"><a class="button" href="{purl(project_id)}">返回项目研究台</a></div></aside></div>'''
+    body = f'''<div class="doc-toolbar"><div class="breadcrumbs"><a href="/">研究项目</a> / <a href="{purl(project_id)}">{esc(project["name"])}</a> / {esc(current["title"])}</div><div class="actions"><button onclick="navigator.clipboard.writeText({esc(repr(relative))})">复制页面路径</button><button onclick="window.print()">打印 / 导出 PDF</button></div></div><div class="reading-layout"><aside class="panel sidebar"><h2>项目知识页</h2><input class="page-filter" type="search" oninput="filterPages(this)" placeholder="筛选页面">{page_groups}<a class="button mobile-only" href="{purl(project_id)}">返回项目研究台</a></aside><article class="document"><div class="meta"><span class="category-tag">{esc(current["category"])}</span> 最近更新 {esc(current["updated"])}</div>{rendered}</article><aside class="panel sidebar toc toc-panel"><h2>本页目录</h2>{f'<ul>{toc}</ul>' if toc else '<p class="muted">本页暂无标题目录</p>'}<div class="actions"><a class="button" href="{purl(project_id)}">返回项目研究台</a></div></aside></div>'''
     return layout(str(current["title"]), body, project_id=project_id, active="pages", home=home)
 
 
