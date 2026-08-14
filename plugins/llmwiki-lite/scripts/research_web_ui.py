@@ -760,7 +760,7 @@ def layout(
     current_name = str(project["name"]) if project else "尚未选择项目"
     project_menu = "".join(
         f'<a class="{"is-current" if str(item.get("id")) == str(current_id) else ""}" href="{purl(str(item["id"]))}">'
-        f'{esc(item.get("name", item.get("id", "")))}<span class="path">{esc(item.get("source_root", ""))}</span></a>'
+        f'{esc(item.get("name", item.get("id", "")))}</a>'
         for item in projects
     )
     if not project_menu:
