@@ -12,7 +12,7 @@ from urllib.parse import quote
 from llmwiki_core import LLMWikiError, status, wiki_list
 from llmwiki_registry import get_project, list_projects, load_settings
 from markdown_renderer import render_markdown
-from research_records import list_records, read_record
+from research_records import MAX_LIST_RECORDS, list_records, read_record
 
 IMAGE_MIME_TYPES = {
     ".png": "image/png",
@@ -276,6 +276,21 @@ figcaption{color:var(--muted);font-size:12px}
 .lightbox-prev{left:20px}
 .lightbox-next{right:20px}
 body.lightbox-open{overflow:hidden}
+
+/* ---------- 科研记录筛选与待办 ---------- */
+.tag-cloud{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.tag-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid #dbe8f4;border-radius:99px;background:var(--soft);color:var(--text);font-size:12px}
+.tag-chip:hover{border-color:var(--accent);text-decoration:none}
+.tag-chip.is-active{background:var(--sidebar-active);border-color:var(--accent);color:var(--accent);font-weight:650}
+.todo-record-card{margin:0 0 16px;padding:16px 18px}
+.todo-record-card h3{margin:0 0 4px}
+.todo-section-title{font-size:13px;font-weight:700;color:var(--muted);margin:12px 0 4px}
+.todo-item{display:flex;gap:8px;align-items:flex-start;margin:5px 0;font-size:14px;line-height:1.55}
+.todo-item input{margin-top:4px}
+.todo-item input:checked + span{color:var(--muted);text-decoration:line-through}
+.todo-decision{padding:5px 0 5px 16px;border-left:3px solid #dbe8f4;margin:5px 0;color:#4e5969}
+.record-pager{display:flex;justify-content:space-between;gap:10px;margin:18px 0}
+.record-pager .button:first-child{margin-right:auto}
 
 /* ---------- 检索结果 ---------- */
 .search-result{padding:14px 0;border-bottom:1px solid var(--line)}
@@ -562,10 +577,20 @@ function initLightbox() {
     else if (e.key === 'ArrowRight') stepLightbox(1);
   });
 }
+function initTodos() {
+  document.querySelectorAll('input[data-todo-id]').forEach(cb => {
+    const key = 'llmwiki-todo-' + cb.dataset.todoId;
+    try { cb.checked = localStorage.getItem(key) === '1'; } catch (_) {}
+    cb.addEventListener('change', function() {
+      try { localStorage.setItem(key, cb.checked ? '1' : '0'); } catch (_) {}
+    });
+  });
+}
 document.addEventListener('DOMContentLoaded', () => {
   initConsoleShell();
   initLiterature();
   initLightbox();
+  initTodos();
 });
 """
 
@@ -622,13 +647,14 @@ def _console_breadcrumbs(
     title: str, project: dict[str, Any] | None, active: str
 ) -> str:
     parts = ['<a href="/">控制台</a>']
-    if project and active in {"overview", "literature", "records", "pages"}:
+    if project and active in {"overview", "literature", "records", "pages", "todos"}:
         project_id = str(project["id"])
         parts.append(f'<a href="{purl(project_id)}">{esc(project["name"])}</a>')
     breadcrumb_title = {
         "overview": "研究总览",
         "pages": "知识页面",
         "records": "科研记录",
+        "todos": "研究待办",
     }.get(active, title)
     if active == "literature" and title.endswith("· 文献中心"):
         breadcrumb_title = "文献中心"
@@ -676,7 +702,7 @@ def layout(
         pid = str(project["id"])
         overview_active = "overview" if active in {"overview", "pages"} else active
         project_section = (
-            f'<details class="console-nav-group"{" open" if active in {"overview", "literature", "records", "pages"} else ""}>'
+            f'<details class="console-nav-group"{" open" if active in {"overview", "literature", "records", "pages", "todos"} else ""}>'
             '<summary class="console-nav-group-summary">'
             '<span class="console-nav-icon" aria-hidden="true">&#9635;</span>'
             '<span>当前项目</span><span class="console-nav-chevron" aria-hidden="true">&#8964;</span>'
@@ -684,6 +710,7 @@ def layout(
             + _console_nav_item(purl(pid), "研究总览", "&#8962;", "overview", overview_active)
             + _console_nav_item(f"{purl(pid)}/literature", "文献中心", "&#9634;", "literature", active)
             + _console_nav_item(f"{purl(pid)}/records", "科研记录", "&#9998;", "records", active)
+            + _console_nav_item(f"{purl(pid)}/todos", "研究待办", "&#10003;", "todos", active)
             + '</div></details>'
         )
     else:
@@ -918,29 +945,45 @@ def _record_day_groups(records: list[dict[str, Any]]) -> list[tuple[str, str, li
 def records_page(home: str, project_id: str, params: dict[str, list[str]]) -> str:
     project = get_project(project_id, home=home)["project"]
     query = (params.get("q") or [""])[0].strip()
+    tag = (params.get("tag") or [""])[0].strip()
+    try:
+        limit = max(1, min(int((params.get("limit") or ["60"])[0]), MAX_LIST_RECORDS))
+    except ValueError:
+        limit = 60
+
+    universe = list_records(
+        str(project["source_root"]),
+        state_root=str(project["state_root"]),
+        max_records=MAX_LIST_RECORDS,
+    )
+    all_tags = sorted(
+        {
+            str(tag_value)
+            for record in universe.get("records") or []
+            for tag_value in (record.get("tags") or [])
+            if str(tag_value).strip()
+        }
+    )
+
     result = list_records(
         str(project["source_root"]),
         state_root=str(project["state_root"]),
         query=query,
-        max_records=200,
+        tag=tag,
+        max_records=limit,
     )
     records = list(result.get("records") or [])
+    total_count = int(result.get("count") or 0)
+    truncated = bool(result.get("truncated"))
     day_groups = _record_day_groups(records)
-    tags = sorted(
-        {
-            str(tag)
-            for record in records
-            for tag in (record.get("tags") or [])
-            if str(tag).strip()
-        }
-    )
+
     timeline_days: list[str] = []
     for _, day_label, day_records in day_groups:
         entries: list[str] = []
         for record in day_records:
             record_id = str(record["id"])
             tags_html = "".join(
-                f'<span class="badge">{esc(tag)}</span>' for tag in record.get("tags") or []
+                f'<span class="badge">{esc(tag_value)}</span>' for tag_value in record.get("tags") or []
             )
             summary = str(record.get("summary") or "").strip()
             related_count = len(record.get("related_files") or []) + len(record.get("related_pages") or [])
@@ -961,13 +1004,144 @@ def records_page(home: str, project_id: str, params: dict[str, list[str]]) -> st
         )
     if timeline_days:
         record_html = '<div class="records-timeline">' + "".join(timeline_days) + "</div>"
-    elif query:
-        record_html = '<section class="panel record-empty"><h2>没有找到匹配的科研记录</h2><p class="muted">可以尝试研究问题、论文名、实验名或记录标题。</p></section>'
+    elif query or tag:
+        record_html = '<section class="panel record-empty"><h2>没有找到匹配的科研记录</h2><p class="muted">可以尝试研究问题、论文名、实验名或记录标题，或清除标签筛选。</p></section>'
     else:
         record_html = '<section class="panel record-empty"><h2>还没有科研记录</h2><p class="muted">和 Codex 讨论后说“记录刚才的讨论”、就会在当天的日档中追加一条新的阶段性记录。</p></section>'
-    tag_hint = "、".join(tags[:6]) if tags else "阶段性理解、实验、文献、决策"
-    body = f"""<section class="hero"><div><div class="eyebrow">当前项目 · 科研过程</div><h1>科研记录</h1><p>按天归档，把和 Codex 讨论后形成的阶段性理解、决策和待验证问题串成一条研究工作流。</p></div><div class="actions"><a class="button primary" href="{purl(project_id)}">返回研究总览</a></div></section><div class="records-layout"><aside class="records-sidebar"><section class="panel"><h2>记录方式</h2><p class="records-guide"><strong>明确触发，不自动抓取。</strong></p><p class="records-guide">讨论结束后直接告诉 Codex：</p><div class="record-callout"><code>记录刚才的讨论</code></div><p class="records-guide">同一天的多次记录会追加到同一个 Markdown 日档，不覆盖历史，也不把不同主题强行合并。</p><p class="records-guide">当前标签：{esc(tag_hint)}</p></section></aside><section><section class="panel records-toolbar"><form action="{purl(project_id)}/records"><input type="search" name="q" value="{esc(query)}" placeholder="搜索记录标题、阶段性理解或标签"><button class="button primary">检索</button></form><span class="records-count">共 {len(records)} 条记录 · {len(day_groups)} 个日档</span></section>{record_html}</section></div>"""
+
+    tag_chips: list[str] = []
+    for tag_value in all_tags:
+        if tag_value == tag:
+            tag_chips.append(f'<span class="tag-chip is-active">{esc(tag_value)}</span>')
+        else:
+            tag_chips.append(
+                f'<a class="tag-chip" href="{purl(project_id)}/records?tag={quote(tag_value, safe="")}">{esc(tag_value)}</a>'
+            )
+    tag_cloud_html = (
+        '<div class="tag-cloud">' + "".join(tag_chips) + "</div>"
+        if tag_chips
+        else '<p class="muted">暂无标签</p>'
+    )
+    clear_html = (
+        f'<div class="actions"><a class="button" href="{purl(project_id)}/records?q={quote(query, safe="")}">清除标签筛选</a></div>'
+        if tag
+        else ""
+    )
+
+    load_more_html = ""
+    if truncated:
+        params_parts = [f"limit={min(limit + 60, MAX_LIST_RECORDS)}"]
+        if query:
+            params_parts.append(f"q={quote(query, safe='')}")
+        if tag:
+            params_parts.append(f"tag={quote(tag, safe='')}")
+        load_more_url = f"{purl(project_id)}/records?{'&'.join(params_parts)}"
+        load_more_html = (
+            f'<div class="actions" style="justify-content:center"><a class="button" href="{load_more_url}">'
+            f"加载更多（已显示 {len(records)} / 共 {total_count} 条）</a></div>"
+        )
+
+    body = f"""<section class="hero"><div><div class="eyebrow">当前项目 · 科研过程</div><h1>科研记录</h1><p>按天归档，把和 Codex 讨论后形成的阶段性理解、决策和待验证问题串成一条研究工作流。</p></div><div class="actions"><a class="button primary" href="{purl(project_id)}">返回研究总览</a><a class="button" href="{purl(project_id)}/todos">研究待办</a></div></section><div class="records-layout"><aside class="records-sidebar"><section class="panel"><h2>记录方式</h2><p class="records-guide"><strong>明确触发，不自动抓取。</strong></p><p class="records-guide">讨论结束后直接告诉 Codex：</p><div class="record-callout"><code>记录刚才的讨论</code></div><p class="records-guide">同一天的多次记录会追加到同一个 Markdown 日档，不覆盖历史，也不把不同主题强行合并。</p></section><section class="panel"><h2>按标签筛选</h2>{tag_cloud_html}{clear_html}</section></aside><section><section class="panel records-toolbar"><form action="{purl(project_id)}/records"><input type="search" name="q" value="{esc(query)}" placeholder="搜索记录标题、阶段性理解或标签"><button class="button primary">检索</button></form><span class="records-count">共 {total_count} 条记录 · {len(day_groups)} 个日档</span></section>{record_html}{load_more_html}</section></div>"""
     return layout("科研记录 · " + str(project["name"]), body, query=query, project_id=project_id, active="records", home=home)
+
+
+def _section_bullets(content: str, section_title: str) -> list[str]:
+    text = content.replace("\r\n", "\n").replace("\r", "\n")
+    match = re.search(
+        rf"(?ms)^###\s+{re.escape(section_title)}\s*\n(.*?)(?=^###\s|\Z)", text
+    )
+    if not match:
+        return []
+    items: list[str] = []
+    for line in match.group(1).splitlines():
+        bullet = re.match(r"^\s*[-+*]\s+(.+?)\s*$", line)
+        if bullet and bullet.group(1).strip():
+            items.append(bullet.group(1).strip())
+    return items
+
+
+def _todo_items_html(record_id: str, section: str, items: list[str]) -> str:
+    if not items:
+        return ""
+    rows: list[str] = []
+    for index, item in enumerate(items):
+        todo_id = f"{record_id}::{section}::{index}"
+        rows.append(
+            f'<label class="todo-item"><input type="checkbox" data-todo-id="{esc(todo_id)}"><span>{esc(item)}</span></label>'
+        )
+    return "".join(rows)
+
+
+def todos_page(home: str, project_id: str, params: dict[str, list[str]]) -> str:
+    project = get_project(project_id, home=home)["project"]
+    result = list_records(
+        str(project["source_root"]),
+        state_root=str(project["state_root"]),
+        max_records=MAX_LIST_RECORDS,
+        include_content=True,
+    )
+    records = list(result.get("records") or [])
+    todo_records: list[dict[str, Any]] = []
+    open_count = 0
+    next_count = 0
+    decision_count = 0
+    for record in records:
+        content = str(record.get("content") or "")
+        open_questions = _section_bullets(content, "尚未解决的问题")
+        next_steps = _section_bullets(content, "下一步行动")
+        decisions = _section_bullets(content, "科研决策")
+        open_count += len(open_questions)
+        next_count += len(next_steps)
+        decision_count += len(decisions)
+        if open_questions or next_steps or decisions:
+            todo_records.append(
+                {
+                    "record": record,
+                    "open_questions": open_questions,
+                    "next_steps": next_steps,
+                    "decisions": decisions,
+                }
+            )
+
+    cards: list[str] = []
+    for entry in todo_records:
+        record = entry["record"]
+        record_id = str(record["id"])
+        title_html = (
+            f'<a href="{recordurl(project_id, record_id)}">{esc(record["title"])}</a>'
+        )
+        date_html = esc(format_time(str(record.get("recorded_at") or "")))
+        parts: list[str] = []
+        if entry["open_questions"]:
+            parts.append(
+                '<div class="todo-section-title">尚未解决的问题</div>'
+                + _todo_items_html(record_id, "open", entry["open_questions"])
+            )
+        if entry["next_steps"]:
+            parts.append(
+                '<div class="todo-section-title">下一步行动</div>'
+                + _todo_items_html(record_id, "next", entry["next_steps"])
+            )
+        if entry["decisions"]:
+            decisions_html = "".join(
+                f'<div class="todo-decision">{esc(x)}</div>' for x in entry["decisions"]
+            )
+            parts.append('<div class="todo-section-title">科研决策</div>' + decisions_html)
+        cards.append(
+            f'<section class="panel todo-record-card"><h3>{title_html}<span class="meta"> · {date_html}</span></h3>{"".join(parts)}</section>'
+        )
+
+    stats = (
+        '<section class="stats">'
+        f'<div class="stat"><strong>{len(todo_records)}</strong><span>含待办记录</span></div>'
+        f'<div class="stat"><strong>{open_count}</strong><span>未解决问题</span></div>'
+        f'<div class="stat"><strong>{next_count}</strong><span>下一步行动</span></div>'
+        f'<div class="stat"><strong>{decision_count}</strong><span>科研决策</span></div>'
+        "</section>"
+    )
+    cards_html = "".join(cards) if cards else '<section class="panel empty"><h2>暂无待办</h2><p class="muted">科研记录里还没有「尚未解决的问题」或「下一步行动」。</p></section>'
+    body = f'''<section class="hero"><div><div class="eyebrow">当前项目 · 研究进程</div><h1>研究待办</h1><p>汇总所有科研记录中的未解决问题、下一步行动与科研决策，追踪研究推进。</p></div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回科研记录</a><a class="button primary" href="{purl(project_id)}">返回研究总览</a></div></section>{stats}<div>{cards_html}</div>'''
+    return layout("研究待办 · " + str(project["name"]), body, project_id=project_id, active="todos", home=home)
 
 
 MATERIAL_THUMBNAIL_SENTINEL = "LLMWIKIMATERIALTHUMBNAILS7F31E9C4"
@@ -1114,6 +1288,23 @@ def _material_panel(
     return '<section class="panel record-related"><h2>关联材料</h2>' + "".join(parts) + "</section>"
 
 
+def _record_neighbors(
+    project_root: str, state_root: str | None, current_id: str
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Return (older, newer) neighbors for chronological record paging."""
+    result = list_records(
+        project_root, state_root=state_root, max_records=MAX_LIST_RECORDS
+    )
+    records = list(reversed(list(result.get("records") or [])))
+    ids = [str(item["id"]) for item in records]
+    if current_id not in ids:
+        return None, None
+    index = ids.index(current_id)
+    prev_record = records[index - 1] if index > 0 else None
+    next_record = records[index + 1] if index + 1 < len(records) else None
+    return prev_record, next_record
+
+
 def record_view(home: str, project_id: str, record_id: str) -> str:
     project = get_project(project_id, home=home)["project"]
     result = read_record(
@@ -1147,7 +1338,21 @@ def record_view(home: str, project_id: str, record_id: str) -> str:
     tags_html = "".join(
         f'<span class="badge">{esc(tag)}</span>' for tag in record.get("tags") or []
     )
-    body = f'''<div class="doc-toolbar"><div class="breadcrumbs"><a href="{purl(project_id)}/records">科研记录</a> / {esc(record["title"])}</div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回记录列表</a></div></div><section class="record-document"><div class="document-meta"><span class="category-tag">科研过程记录</span><span class="meta">记录时间：{esc(format_time(str(record.get("recorded_at") or "")))}</span><span class="meta path">{esc(record["path"])}</span>{tags_html}</div><article class="document">{rendered}</article>{extra}</section>'''
+    prev_record, next_record = _record_neighbors(
+        str(project["source_root"]), str(project["state_root"]), str(record["id"])
+    )
+    prev_link = (
+        f'<a class="button" href="{recordurl(project_id, str(prev_record["id"]))}" title="{esc(prev_record["title"])}">&larr; 上一篇</a>'
+        if prev_record
+        else ""
+    )
+    next_link = (
+        f'<a class="button" href="{recordurl(project_id, str(next_record["id"]))}" title="{esc(next_record["title"])}">下一篇 &rarr;</a>'
+        if next_record
+        else ""
+    )
+    pager_html = f'<div class="record-pager">{prev_link}{next_link}</div>' if (prev_link or next_link) else ""
+    body = f'''<div class="doc-toolbar"><div class="breadcrumbs"><a href="{purl(project_id)}/records">科研记录</a> / {esc(record["title"])}</div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回记录列表</a></div></div><section class="record-document"><div class="document-meta"><span class="category-tag">科研过程记录</span><span class="meta">记录时间：{esc(format_time(str(record.get("recorded_at") or "")))}</span><span class="meta path">{esc(record["path"])}</span>{tags_html}</div><article class="document">{rendered}</article>{pager_html}{extra}</section>'''
     return layout(str(record["title"]), body, project_id=project_id, active="records", home=home)
 
 def heading_slug(text: str) -> str:

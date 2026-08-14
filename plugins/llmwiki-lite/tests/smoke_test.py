@@ -543,7 +543,7 @@ def test_mcp(
     responses = [json.loads(process.stdout.readline()) for _ in range(5)]
     process.wait(timeout=10)
     require(
-        responses[0]["result"]["serverInfo"]["version"] == "0.3.0", "initialize failed"
+        responses[0]["result"]["serverInfo"]["version"] == "0.3.3", "initialize failed"
     )
     names = {x["name"] for x in responses[1]["result"]["tools"]}
     require(

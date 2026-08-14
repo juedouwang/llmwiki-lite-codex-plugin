@@ -52,6 +52,7 @@ from research_web_ui import (  # noqa: E402
     safe_path,
     search_page,
     settings_page,
+    todos_page,
 )
 
 MAX_FORM_BYTES = 65_536
@@ -209,7 +210,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             params = parse_qs(parsed.query)
             try:
                 if parsed.path == "/health":
-                    self.json({"ok": True, "service": "llmwiki-web", "version": "0.3.0"})
+                    self.json({"ok": True, "service": "llmwiki-web", "version": "0.3.3"})
                     return
                 if parsed.path == "/static/style.css":
                     raw = STYLE.encode("utf-8")
@@ -232,6 +233,10 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 match = re.fullmatch(r"/project/([^/]+)/records", parsed.path)
                 if match:
                     self.html(records_page(home, unquote(match.group(1)), params))
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/todos", parsed.path)
+                if match:
+                    self.html(todos_page(home, unquote(match.group(1)), params))
                     return
                 match = re.fullmatch(r"/project/([^/]+)/records/(.+)", parsed.path)
                 if match:

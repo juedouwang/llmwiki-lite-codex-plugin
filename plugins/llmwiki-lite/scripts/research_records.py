@@ -506,7 +506,9 @@ def list_records(
     *,
     state_root: str | None = None,
     query: str = "",
+    tag: str = "",
     max_records: int = 200,
+    include_content: bool = False,
 ) -> dict[str, Any]:
     root, records_root = _project_wiki_root(project_root, state_root)
     max_records = max(1, min(int(max_records), MAX_LIST_RECORDS))
@@ -532,6 +534,13 @@ def list_records(
                 ]
             ).lower()
         ]
+    tag = _text(tag, "tag", single_line=True).lower()
+    if tag:
+        records = [
+            item
+            for item in records
+            if any(str(value).lower() == tag for value in item.get("tags") or [])
+        ]
     records.sort(
         key=lambda item: (
             str(item.get("recorded_at") or ""),
@@ -540,8 +549,9 @@ def list_records(
         ),
         reverse=True,
     )
-    for item in records:
-        item.pop("content", None)
+    if not include_content:
+        for item in records:
+            item.pop("content", None)
     return {
         "ok": True,
         "wiki_root": str(root),
