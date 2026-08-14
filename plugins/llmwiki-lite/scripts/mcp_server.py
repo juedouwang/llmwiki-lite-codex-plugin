@@ -14,6 +14,7 @@ from llmwiki_core import (  # noqa: E402
     LLMWikiError,
     init_project,
     list_files,
+    plugin_version,
     read_file,
     search,
     snapshot,
@@ -36,7 +37,7 @@ from research_records import list_records, read_record, write_record  # noqa: E4
 from web_server import start_background  # noqa: E402
 
 SERVER_NAME = "llmwiki"
-SERVER_VERSION = "0.3.3"
+SERVER_VERSION = plugin_version()
 SUPPORTED_PROTOCOL = "2025-03-26"
 
 

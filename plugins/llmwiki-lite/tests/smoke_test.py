@@ -542,8 +542,12 @@ def test_mcp(
     process.stdin.close()
     responses = [json.loads(process.stdout.readline()) for _ in range(5)]
     process.wait(timeout=10)
+    manifest = json.loads(
+        (PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
+    )
     require(
-        responses[0]["result"]["serverInfo"]["version"] == "0.3.3", "initialize failed"
+        responses[0]["result"]["serverInfo"]["version"] == str(manifest.get("version", "")),
+        "initialize failed",
     )
     names = {x["name"] for x in responses[1]["result"]["tools"]}
     require(

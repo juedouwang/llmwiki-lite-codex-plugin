@@ -22,7 +22,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from llmwiki_core import LLMWikiError  # noqa: E402
+from llmwiki_core import LLMWikiError, plugin_version  # noqa: E402
 from literature_web import (  # noqa: E402
     literature_compare_page,
     literature_library_page,
@@ -210,7 +210,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             params = parse_qs(parsed.query)
             try:
                 if parsed.path == "/health":
-                    self.json({"ok": True, "service": "llmwiki-web", "version": "0.3.3"})
+                    self.json({"ok": True, "service": "llmwiki-web", "version": plugin_version()})
                     return
                 if parsed.path == "/static/style.css":
                     raw = STYLE.encode("utf-8")

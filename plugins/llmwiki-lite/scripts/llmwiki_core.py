@@ -16,7 +16,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-PLUGIN_VERSION = "0.1.0"
+def plugin_version() -> str:
+    """Return the plugin version from the manifest, falling back to a safe default."""
+    manifest = Path(__file__).resolve().parent.parent / ".codex-plugin" / "plugin.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        version = str(data.get("version") or "").strip()
+        if version:
+            return version
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+    return "0.0.0"
+
+
 DEFAULT_STATE_DIR = ".llmwiki"
 DEFAULT_WIKI_DIR = "wiki"
 DEFAULT_HASH_LIMIT = 10 * 1024 * 1024
@@ -245,7 +257,7 @@ def init_project(
     wiki.mkdir(parents=True, exist_ok=True)
     config = {
         "version": 1,
-        "plugin_version": PLUGIN_VERSION,
+        "plugin_version": plugin_version(),
         "project_root": str(project),
         "state_root": str(state),
         "wiki_root": str(wiki),

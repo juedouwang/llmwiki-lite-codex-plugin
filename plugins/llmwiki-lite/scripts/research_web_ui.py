@@ -77,9 +77,9 @@ details.settings summary{cursor:pointer;font-weight:650}
 .console-runtime{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;white-space:nowrap}
 .console-runtime-dot{width:7px;height:7px;border-radius:50%;background:#27ae60;box-shadow:0 0 0 3px #e9f8ee}
 .console-body{min-height:100vh}
-.console-sidebar{position:fixed;left:0;top:60px;bottom:0;width:248px;z-index:45;display:flex;flex-direction:column;overflow-y:auto;background:var(--sidebar);color:#1f2329;border-right:1px solid var(--sidebar-line);padding:16px 12px 18px}
+.console-sidebar{position:fixed;left:0;top:0;bottom:0;width:248px;z-index:45;display:flex;flex-direction:column;overflow-y:auto;background:var(--sidebar);color:#1f2329;border-right:1px solid var(--sidebar-line);padding:0 12px 18px}
 .console-sidebar::-webkit-scrollbar{width:5px}.console-sidebar::-webkit-scrollbar-thumb{background:#d9e0e8;border-radius:99px}
-.console-sidebar-brand{display:flex;align-items:center;gap:10px;padding:2px 10px 17px;margin-bottom:14px;border-bottom:1px solid var(--sidebar-line);color:#1f2329;text-decoration:none}
+.console-sidebar-brand{display:flex;align-items:center;gap:10px;height:60px;padding:0 10px;margin-bottom:14px;border-bottom:1px solid var(--sidebar-line);color:#1f2329;text-decoration:none}
 .console-sidebar-brand:hover{text-decoration:none}
 .console-sidebar-brand .console-brand-mark{width:30px;height:30px;background:#1677ff}
 .console-brand-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:6px;background:#1677ff;color:#fff;font-size:12px;font-weight:800;letter-spacing:-.04em;flex:0 0 auto}
@@ -284,11 +284,17 @@ body.lightbox-open{overflow:hidden}
 .tag-chip.is-active{background:var(--sidebar-active);border-color:var(--accent);color:var(--accent);font-weight:650}
 .todo-record-card{margin:0 0 16px;padding:16px 18px}
 .todo-record-card h3{margin:0 0 4px}
-.todo-section-title{font-size:13px;font-weight:700;color:var(--muted);margin:12px 0 4px}
+.todo-section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.todo-section-head h2{margin:0}
+.todo-list{display:flex;flex-direction:column}
 .todo-item{display:flex;gap:8px;align-items:flex-start;margin:5px 0;font-size:14px;line-height:1.55}
 .todo-item input{margin-top:4px}
 .todo-item input:checked + span{color:var(--muted);text-decoration:line-through}
-.todo-decision{padding:5px 0 5px 16px;border-left:3px solid #dbe8f4;margin:5px 0;color:#4e5969}
+.todo-done-details{margin-top:18px}
+.todo-done-details>summary{cursor:pointer;font-weight:650;font-size:15px;list-style:none;display:flex;align-items:center;gap:6px}
+.todo-done-details>summary::-webkit-details-marker{display:none}
+.todo-done-details>summary::before{content:"\25B8";transition:transform .15s;color:var(--muted)}
+.todo-done-details[open]>summary::before{transform:rotate(90deg)}
 .record-pager{display:flex;justify-content:space-between;gap:10px;margin:18px 0}
 .record-pager .button:first-child{margin-right:auto}
 
@@ -334,6 +340,10 @@ body.lightbox-open{overflow:hidden}
 .paper-card h2{font-size:16px;line-height:1.45;margin:8px 0 5px}
 .paper-card .actions{margin-top:auto}
 .paper-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.paper-card-top-right{display:flex;align-items:center;gap:8px}
+.fav-button{border:0;background:transparent;font-size:20px;line-height:1;color:#c9cdd4;cursor:pointer;padding:0 2px;min-height:0}
+.fav-button:hover{color:#f5a623}
+.fav-button.is-fav{color:#f5a623}
 .paper-file-type{display:inline-grid;place-items:center;min-width:34px;height:22px;border-radius:4px;background:#e8f3ff;color:#0958d9;font-size:10px;font-weight:800;letter-spacing:.04em}
 .reading-state{font-size:11px;color:#4e765b}
 .reading-state.pending{color:#9a6b20}
@@ -462,7 +472,7 @@ function filterPages(input) {
     el.style.display = el.dataset.pageTitle.includes(q) ? '' : 'none';
   });
 }
-const literatureState = {status: 'all', kind: 'all', query: ''};
+const literatureState = {status: 'all', kind: 'all', query: '', favorite: false};
 function setLiteratureFilter(group, value, button) {
   literatureState[group] = value;
   document.querySelectorAll(`[data-filter-group="${group}"]`).forEach(el => el.classList.remove('is-active'));
@@ -479,8 +489,9 @@ function applyLiteratureFilters() {
   cards.forEach(card => {
     const statusOK = literatureState.status === 'all' || card.dataset.literatureStatus === literatureState.status;
     const kindOK = literatureState.kind === 'all' || card.dataset.literatureKind === literatureState.kind;
+    const favOK = !literatureState.favorite || card.dataset.favorite === '1';
     const queryOK = !literatureState.query || card.dataset.pageTitle.includes(literatureState.query);
-    const show = statusOK && kindOK && queryOK;
+    const show = statusOK && kindOK && favOK && queryOK;
     card.hidden = !show;
     if (show) visible += 1;
   });
@@ -488,6 +499,32 @@ function applyLiteratureFilters() {
   if (count) count.textContent = String(visible);
   const empty = document.getElementById('literature-filter-empty');
   if (empty) empty.classList.toggle('is-visible', cards.length > 0 && visible === 0);
+}
+function toggleFavorites(button) {
+  literatureState.favorite = !literatureState.favorite;
+  if (button) button.classList.toggle('is-active', literatureState.favorite);
+  applyLiteratureFilters();
+}
+function initFavorites() {
+  const buttons = Array.from(document.querySelectorAll('.fav-button'));
+  const setFav = (btn, on) => {
+    btn.textContent = on ? '★' : '☆';
+    btn.classList.toggle('is-fav', on);
+    const card = btn.closest('[data-literature-card]');
+    if (card) card.dataset.favorite = on ? '1' : '0';
+  };
+  buttons.forEach(btn => {
+    const key = 'llmwiki-fav-' + btn.dataset.favPath;
+    try { setFav(btn, localStorage.getItem(key) === '1'); } catch (_) {}
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const on = !btn.classList.contains('is-fav');
+      setFav(btn, on);
+      try { localStorage.setItem(key, on ? '1' : '0'); } catch (_) {}
+      applyLiteratureFilters();
+    });
+  });
 }
 function setLiteratureView(view, button) {
   const list = document.getElementById('literature-list');
@@ -577,20 +614,63 @@ function initLightbox() {
     else if (e.key === 'ArrowRight') stepLightbox(1);
   });
 }
+function todoIsDone(id) {
+  try { return localStorage.getItem('llmwiki-todo-' + id) === '1'; } catch (_) { return false; }
+}
+function todoSetDone(id, done) {
+  try { localStorage.setItem('llmwiki-todo-' + id, done ? '1' : '0'); } catch (_) {}
+}
+function reorderTodoCard(card) {
+  const items = Array.from(card.querySelectorAll('.todo-item'));
+  items.sort((a, b) => (a.querySelector('input').checked ? 1 : 0) - (b.querySelector('input').checked ? 1 : 0));
+  const container = card.querySelector('.todo-items');
+  items.forEach(el => container.appendChild(el));
+}
+function cardAllDone(card) {
+  const boxes = Array.from(card.querySelectorAll('input[type=checkbox]'));
+  return boxes.length > 0 && boxes.every(b => b.checked);
+}
+function placeTodoCard(card) {
+  const active = document.getElementById('todos-active-list');
+  const done = document.getElementById('todos-done-list');
+  (cardAllDone(card) ? done : active).appendChild(card);
+  updateTodoCounts();
+}
+function updateTodoCounts() {
+  const active = document.getElementById('todos-active-list');
+  const done = document.getElementById('todos-done-list');
+  const activeCount = active ? active.querySelectorAll('.todo-record-card').length : 0;
+  const doneCount = done ? done.querySelectorAll('.todo-record-card').length : 0;
+  const doneCountEl = document.getElementById('todos-done-count');
+  if (doneCountEl) doneCountEl.textContent = String(doneCount);
+  const empty = document.getElementById('todos-active-empty');
+  if (empty) empty.hidden = activeCount !== 0;
+  const remaining = Array.from(document.querySelectorAll('.todo-item input')).filter(b => !b.checked).length;
+  const totalEl = document.getElementById('todos-total-count');
+  if (totalEl) totalEl.textContent = remaining + ' 项';
+}
 function initTodos() {
-  document.querySelectorAll('input[data-todo-id]').forEach(cb => {
-    const key = 'llmwiki-todo-' + cb.dataset.todoId;
-    try { cb.checked = localStorage.getItem(key) === '1'; } catch (_) {}
-    cb.addEventListener('change', function() {
-      try { localStorage.setItem(key, cb.checked ? '1' : '0'); } catch (_) {}
+  const cards = Array.from(document.querySelectorAll('.todo-record-card'));
+  cards.forEach(card => {
+    card.querySelectorAll('input[type=checkbox]').forEach(box => {
+      box.checked = todoIsDone(box.dataset.todoId);
+      box.addEventListener('change', function() {
+        todoSetDone(box.dataset.todoId, box.checked);
+        reorderTodoCard(card);
+        placeTodoCard(card);
+      });
     });
+    reorderTodoCard(card);
+    placeTodoCard(card);
   });
+  updateTodoCounts();
 }
 document.addEventListener('DOMContentLoaded', () => {
   initConsoleShell();
   initLiterature();
   initLightbox();
   initTodos();
+  initFavorites();
 });
 """
 
@@ -1060,12 +1140,10 @@ def _section_bullets(content: str, section_title: str) -> list[str]:
     return items
 
 
-def _todo_items_html(record_id: str, section: str, items: list[str]) -> str:
-    if not items:
-        return ""
+def _todo_items_html(record_id: str, items: list[str]) -> str:
     rows: list[str] = []
     for index, item in enumerate(items):
-        todo_id = f"{record_id}::{section}::{index}"
+        todo_id = f"{record_id}::{index}"
         rows.append(
             f'<label class="todo-item"><input type="checkbox" data-todo-id="{esc(todo_id)}"><span>{esc(item)}</span></label>'
         )
@@ -1082,26 +1160,15 @@ def todos_page(home: str, project_id: str, params: dict[str, list[str]]) -> str:
     )
     records = list(result.get("records") or [])
     todo_records: list[dict[str, Any]] = []
-    open_count = 0
-    next_count = 0
-    decision_count = 0
+    total_items = 0
     for record in records:
         content = str(record.get("content") or "")
-        open_questions = _section_bullets(content, "尚未解决的问题")
-        next_steps = _section_bullets(content, "下一步行动")
-        decisions = _section_bullets(content, "科研决策")
-        open_count += len(open_questions)
-        next_count += len(next_steps)
-        decision_count += len(decisions)
-        if open_questions or next_steps or decisions:
-            todo_records.append(
-                {
-                    "record": record,
-                    "open_questions": open_questions,
-                    "next_steps": next_steps,
-                    "decisions": decisions,
-                }
-            )
+        items = _section_bullets(content, "尚未解决的问题") + _section_bullets(
+            content, "下一步行动"
+        )
+        total_items += len(items)
+        if items:
+            todo_records.append({"record": record, "items": items})
 
     cards: list[str] = []
     for entry in todo_records:
@@ -1111,36 +1178,15 @@ def todos_page(home: str, project_id: str, params: dict[str, list[str]]) -> str:
             f'<a href="{recordurl(project_id, record_id)}">{esc(record["title"])}</a>'
         )
         date_html = esc(format_time(str(record.get("recorded_at") or "")))
-        parts: list[str] = []
-        if entry["open_questions"]:
-            parts.append(
-                '<div class="todo-section-title">尚未解决的问题</div>'
-                + _todo_items_html(record_id, "open", entry["open_questions"])
-            )
-        if entry["next_steps"]:
-            parts.append(
-                '<div class="todo-section-title">下一步行动</div>'
-                + _todo_items_html(record_id, "next", entry["next_steps"])
-            )
-        if entry["decisions"]:
-            decisions_html = "".join(
-                f'<div class="todo-decision">{esc(x)}</div>' for x in entry["decisions"]
-            )
-            parts.append('<div class="todo-section-title">科研决策</div>' + decisions_html)
         cards.append(
-            f'<section class="panel todo-record-card"><h3>{title_html}<span class="meta"> · {date_html}</span></h3>{"".join(parts)}</section>'
+            f'<section class="panel todo-record-card" data-record-id="{esc(record_id)}">'
+            f'<h3>{title_html}<span class="meta"> · {date_html}</span></h3>'
+            f'<div class="todo-items">{_todo_items_html(record_id, entry["items"])}</div>'
+            "</section>"
         )
 
-    stats = (
-        '<section class="stats">'
-        f'<div class="stat"><strong>{len(todo_records)}</strong><span>含待办记录</span></div>'
-        f'<div class="stat"><strong>{open_count}</strong><span>未解决问题</span></div>'
-        f'<div class="stat"><strong>{next_count}</strong><span>下一步行动</span></div>'
-        f'<div class="stat"><strong>{decision_count}</strong><span>科研决策</span></div>'
-        "</section>"
-    )
-    cards_html = "".join(cards) if cards else '<section class="panel empty"><h2>暂无待办</h2><p class="muted">科研记录里还没有「尚未解决的问题」或「下一步行动」。</p></section>'
-    body = f'''<section class="hero"><div><div class="eyebrow">当前项目 · 研究进程</div><h1>研究待办</h1><p>汇总所有科研记录中的未解决问题、下一步行动与科研决策，追踪研究推进。</p></div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回科研记录</a><a class="button primary" href="{purl(project_id)}">返回研究总览</a></div></section>{stats}<div>{cards_html}</div>'''
+    cards_html = "".join(cards)
+    body = f'''<section class="hero"><div><div class="eyebrow">当前项目 · 研究进程</div><h1>研究待办</h1><p>把科研记录中的未解决问题和下一步行动汇总成待办，勾选即归档到「已完成」。</p></div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回科研记录</a><a class="button primary" href="{purl(project_id)}">返回研究总览</a></div></section><section class="panel"><div class="todo-section-head"><h2>待办</h2><span class="meta" id="todos-total-count">{total_items} 项</span></div><div class="todo-list" id="todos-active-list">{cards_html}</div><div class="empty" id="todos-active-empty" hidden>当前没有待办事项 🎉</div></section><details class="panel todo-done-details" id="todos-done"><summary>已完成（<span id="todos-done-count">0</span>）</summary><div class="todo-list" id="todos-done-list"></div></details>'''
     return layout("研究待办 · " + str(project["name"]), body, project_id=project_id, active="todos", home=home)
 
 
