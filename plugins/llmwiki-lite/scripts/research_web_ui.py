@@ -14,6 +14,12 @@ from llmwiki_registry import get_project, list_projects, load_settings
 from markdown_renderer import render_markdown
 from research_records import list_records, read_record
 
+IMAGE_MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+}
+
 STYLE = """/* LLM Wiki Lite 中文科研工作台 — 单一样式系统 */
 :root{--accent:#1677ff;--accent-dark:#0958d9;--bg:#f5f7fa;--panel:#fff;--text:#1f2329;--muted:#86909c;--line:#e5e6eb;--soft:#f2f3f5;--danger:#a43434;--success:#eaf6ee;--sidebar:#fff;--sidebar-muted:#7c8796;--sidebar-active:#eaf3ff;--sidebar-line:#e6ebf2;--shadow:0 1px 2px rgba(31,35,41,.04)}
 *{box-sizing:border-box}html{scroll-behavior:smooth}html,body{min-height:100%}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif}body.console-locked{overflow:hidden}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}code{font-family:Consolas,"SFMono-Regular",monospace}
@@ -245,6 +251,31 @@ figcaption{color:var(--muted);font-size:12px}
 .record-related{margin-top:18px}
 .record-related ul{margin:8px 0 0;padding-left:20px}
 .record-related li{margin:4px 0}
+.record-related .related-file-list{margin:8px 0 0;padding-left:20px}
+.record-material-block{margin:6px 0 16px}
+.material-grid-hint{color:var(--muted);font-size:12px;margin:0 0 8px}
+.record-material-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:0;padding:0;list-style:none}
+.material-thumb{margin:0}
+.material-thumb-button{display:flex;flex-direction:column;width:100%;min-height:0;padding:0;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:zoom-in;overflow:hidden;text-align:left;box-shadow:var(--shadow)}
+.material-thumb-button:hover{border-color:var(--accent);box-shadow:0 4px 14px rgba(31,35,41,.1);text-decoration:none}
+.material-thumb-button img{display:block;width:100%;height:112px;object-fit:contain;background:#f5f7fa;border-bottom:1px solid var(--line)}
+.material-thumb-caption{display:block;padding:6px 8px 7px;font-size:12px;line-height:1.4;color:var(--text)}
+.material-thumb-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:Consolas,"SFMono-Regular",monospace}
+.material-thumb-dir{display:block;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
+
+/* ---------- 图片灯箱 ---------- */
+.lightbox{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:26px;background:rgba(13,18,26,.86);cursor:zoom-out}
+.lightbox[hidden]{display:none}
+.lightbox-stage{display:flex;flex-direction:column;align-items:center;max-width:94vw}
+.lightbox-image{max-width:94vw;max-height:80vh;object-fit:contain;background:#10141a;border-radius:6px;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.lightbox-caption{margin-top:13px;max-width:88vw;color:#e6ecf3;font-size:13px;font-family:Consolas,"SFMono-Regular",monospace;overflow-wrap:anywhere;text-align:center}
+.lightbox-close{position:absolute;top:18px;right:22px;width:44px;height:44px;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-size:24px;line-height:1;cursor:pointer}
+.lightbox-close:hover{background:rgba(255,255,255,.22)}
+.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:64px;border:0;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-size:30px;line-height:1;cursor:pointer}
+.lightbox-nav:hover{background:rgba(255,255,255,.22)}
+.lightbox-prev{left:20px}
+.lightbox-next{right:20px}
+body.lightbox-open{overflow:hidden}
 
 /* ---------- 检索结果 ---------- */
 .search-result{padding:14px 0;border-bottom:1px solid var(--line)}
@@ -391,6 +422,11 @@ def recordurl(project_id: str, record_id: str) -> str:
     return f"{purl(project_id)}/records/{quote(normalized, safe='/')}"
 
 
+def source_asset_url(project_id: str, relative: str) -> str:
+    normalized = relative.replace(chr(92), "/").lstrip("/")
+    return f"{purl(project_id)}/source-asset/{quote(normalized, safe='/')}"
+
+
 
 SCRIPT = """
 function copyText(id, button) {
@@ -471,11 +507,78 @@ function initLiterature() {
   setLiteratureView(view, button);
   applyLiteratureFilters();
 }
+let lightboxGroup = [];
+let lightboxIndex = 0;
+function openLightbox(src, caption) {
+  const lb = document.getElementById('lightbox');
+  if (!lb) return;
+  lightboxGroup = Array.from(document.querySelectorAll('[data-lightbox-src]'));
+  lightboxIndex = Math.max(0, lightboxGroup.findIndex(el => el.dataset.lightboxSrc === src));
+  renderLightbox(src, caption);
+  lb.hidden = false;
+  document.body.classList.add('lightbox-open');
+}
+function renderLightbox(src, caption) {
+  const img = document.getElementById('lightbox-image');
+  const cap = document.getElementById('lightbox-caption');
+  if (img) { img.src = src; img.alt = caption || ''; }
+  if (cap) cap.textContent = caption || '';
+}
+function closeLightbox() {
+  const lb = document.getElementById('lightbox');
+  if (lb) lb.hidden = true;
+  document.body.classList.remove('lightbox-open');
+}
+function stepLightbox(delta) {
+  if (!lightboxGroup.length) return;
+  lightboxIndex = (lightboxIndex + delta + lightboxGroup.length) % lightboxGroup.length;
+  const el = lightboxGroup[lightboxIndex];
+  if (el) renderLightbox(el.dataset.lightboxSrc, el.dataset.lightboxTitle || '');
+}
+function initLightbox() {
+  const lb = document.getElementById('lightbox');
+  if (!lb) return;
+  document.addEventListener('click', function(e) {
+    const trigger = e.target.closest('[data-lightbox-src]');
+    if (trigger) {
+      e.preventDefault();
+      openLightbox(trigger.dataset.lightboxSrc, trigger.dataset.lightboxTitle || '');
+    }
+  });
+  lb.addEventListener('click', function(e) {
+    if (e.target.closest('.lightbox-nav') || e.target.closest('.lightbox-close')) return;
+    closeLightbox();
+  });
+  const closeBtn = lb.querySelector('.lightbox-close');
+  const prevBtn = lb.querySelector('.lightbox-prev');
+  const nextBtn = lb.querySelector('.lightbox-next');
+  if (closeBtn) closeBtn.addEventListener('click', closeLightbox);
+  if (prevBtn) prevBtn.addEventListener('click', function() { stepLightbox(-1); });
+  if (nextBtn) nextBtn.addEventListener('click', function() { stepLightbox(1); });
+  document.addEventListener('keydown', function(e) {
+    if (lb.hidden) return;
+    if (e.key === 'Escape') closeLightbox();
+    else if (e.key === 'ArrowLeft') stepLightbox(-1);
+    else if (e.key === 'ArrowRight') stepLightbox(1);
+  });
+}
 document.addEventListener('DOMContentLoaded', () => {
   initConsoleShell();
   initLiterature();
+  initLightbox();
 });
 """
+
+LIGHTBOX_HTML = (
+    '<div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="图片预览">'
+    '<button class="lightbox-close" type="button" aria-label="关闭预览">&times;</button>'
+    '<button class="lightbox-nav lightbox-prev" type="button" aria-label="上一张">&#8249;</button>'
+    '<button class="lightbox-nav lightbox-next" type="button" aria-label="下一张">&#8250;</button>'
+    '<div class="lightbox-stage">'
+    '<img class="lightbox-image" id="lightbox-image" src="" alt="" draggable="false">'
+    '<div class="lightbox-caption" id="lightbox-caption"></div>'
+    '</div></div>'
+)
 
 def _layout_context(
     home: str | None, project_id: str | None
@@ -628,7 +731,7 @@ def layout(
         + '<div class="console-overlay" id="console-overlay"></div><div class="console-content">'
         + _console_breadcrumbs(title, project, active)
         + f'<main>{body}</main><footer>本机 LLM Wiki · 知识页为 Markdown · 仅监听 127.0.0.1 · 不对外发布</footer>'
-        + '</div></div></div><script>'
+        + '</div></div></div>' + LIGHTBOX_HTML + '<script>'
         + SCRIPT
         + '</script></body></html>'
     )
@@ -867,6 +970,150 @@ def records_page(home: str, project_id: str, params: dict[str, list[str]]) -> st
     return layout("科研记录 · " + str(project["name"]), body, query=query, project_id=project_id, active="records", home=home)
 
 
+MATERIAL_THUMBNAIL_SENTINEL = "LLMWIKIMATERIALTHUMBNAILS7F31E9C4"
+EVIDENCE_SECTION_TITLE = "依据与关联材料"
+
+
+def _material_path(item: str) -> str:
+    """Normalize a bullet body into a source-relative path when possible."""
+    item = item.strip()
+    if item.startswith("!") and "](" in item:
+        item = item.split("](", 1)[1].rstrip(")").strip()
+    elif item.startswith("[") and "](" in item:
+        item = item.split("](", 1)[1].rstrip(")").strip()
+    return item.strip("` ").replace("\\", "/")
+
+
+def _is_image_path(item: str) -> bool:
+    return Path(_material_path(item)).suffix.lower() in IMAGE_MIME_TYPES
+
+
+def _format_bytes(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def material_thumbnail(
+    project: dict[str, Any], project_id: str, item: str
+) -> str | None:
+    """Render a small, lazily loaded, click-to-enlarge thumbnail."""
+    normalized = _material_path(item).lstrip("/")
+    if Path(normalized).suffix.lower() not in IMAGE_MIME_TYPES:
+        return None
+    try:
+        target = safe_path(
+            Path(str(project["source_root"])).resolve(strict=False), normalized
+        )
+    except (LLMWikiError, OSError, ValueError):
+        return None
+    if not target.is_file():
+        return None
+    url = esc(source_asset_url(project_id, normalized))
+    label = esc(normalized)
+    name = esc(Path(normalized).name)
+    parent = esc(str(Path(normalized).parent).replace("\\", "/")) or "/"
+    try:
+        size_label = _format_bytes(target.stat().st_size)
+    except OSError:
+        size_label = ""
+    dir_line = parent if not size_label else f"{parent} · {size_label}"
+    return (
+        f'<li class="material-thumb" role="listitem">'
+        f'<button type="button" class="material-thumb-button" '
+        f'data-lightbox-src="{url}" data-lightbox-title="{label}" title="{label}（点击放大）">'
+        f'<img src="{url}" alt="{label}" loading="lazy" decoding="async">'
+        f'<span class="material-thumb-caption">'
+        f'<span class="material-thumb-name">{name}</span>'
+        f'<span class="material-thumb-dir">{esc(dir_line)}</span>'
+        f'</span></button></li>'
+    )
+
+
+def _extract_evidence_image_bullets(content: str) -> tuple[str, list[str], bool]:
+    """Inline material images into the evidence section as thumbnails.
+
+    Image bullets inside the "依据与关联材料" section are collected and replaced
+    by a thumbnail placeholder; plain file bullets are wrapped in inline code so
+    underscores in paths are not interpreted as emphasis. Returns
+    (transformed_content, image_paths, has_evidence_section).
+    """
+    text = content.replace("\r\n", "\n").replace("\r", "\n")
+    out: list[str] = []
+    images: list[str] = []
+    in_evidence = False
+    sentinel_inserted = False
+    for line in text.split("\n"):
+        heading = re.match(r"^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$", line)
+        if heading:
+            in_evidence = heading.group(2).strip() == EVIDENCE_SECTION_TITLE
+            out.append(line)
+            if in_evidence and not sentinel_inserted:
+                out.extend(["", MATERIAL_THUMBNAIL_SENTINEL, ""])
+                sentinel_inserted = True
+            continue
+        if in_evidence:
+            bullet = re.match(
+                r"^(?P<indent>\s*)(?P<mark>[-+*])\s+(?P<body>.+?)\s*$", line
+            )
+            if bullet:
+                item = bullet.group("body").strip()
+                candidate = _material_path(item)
+                if candidate and Path(candidate).suffix.lower() in IMAGE_MIME_TYPES:
+                    images.append(candidate)
+                    continue
+                if "`" not in item and "[" not in item and "]" not in item:
+                    out.append(f'{bullet.group("indent")}{bullet.group("mark")} `{item}`')
+                    continue
+            out.append(line)
+        else:
+            out.append(line)
+    return "\n".join(out), images, sentinel_inserted
+
+
+def _material_gallery(
+    project: dict[str, Any], project_id: str, images: list[str]
+) -> str:
+    thumbs: list[str] = []
+    for item in images:
+        thumb = material_thumbnail(project, project_id, item)
+        if thumb:
+            thumbs.append(thumb)
+    if not thumbs:
+        return ""
+    return (
+        '<div class="record-material-block" role="group" aria-label="实验图片预览">'
+        f'<div class="material-grid-hint">实验图片 · {len(thumbs)} 张 · 点击放大，再次点击或按 Esc 关闭</div>'
+        f'<ul class="record-material-grid" role="list">{"".join(thumbs)}</ul>'
+        "</div>"
+    )
+
+
+def _material_panel(
+    project_id: str,
+    gallery: str,
+    text_files: list[str],
+    pages: list[str],
+) -> str:
+    """Fallback panel for materials that are not rendered inline in the body."""
+    parts: list[str] = []
+    if gallery:
+        parts.append(gallery)
+    if text_files:
+        items = "".join(f"<li><code>{esc(x)}</code></li>" for x in text_files)
+        parts.append(f'<h3>其他文件</h3><ul class="related-file-list">{items}</ul>')
+    if pages:
+        links = "".join(
+            f'<li><a href="{pageurl(project_id, x)}">{esc(x)}</a></li>' for x in pages
+        )
+        parts.append(f'<h3>Wiki 页面</h3><ul>{links}</ul>')
+    if not parts:
+        return ""
+    return '<section class="panel record-related"><h2>关联材料</h2>' + "".join(parts) + "</section>"
+
+
 def record_view(home: str, project_id: str, record_id: str) -> str:
     project = get_project(project_id, home=home)["project"]
     result = read_record(
@@ -876,21 +1123,31 @@ def record_view(home: str, project_id: str, record_id: str) -> str:
     )
     record = result["record"]
     content = str(record.get("content") or "")
-    rendered = render_markdown(content, project_id, str(record["path"]))
-    tags_html = "".join(f'<span class="badge">{esc(tag)}</span>' for tag in record.get("tags") or [])
-    files = [str(item) for item in record.get("related_files") or [] if str(item).strip()]
-    pages = [str(item) for item in record.get("related_pages") or [] if str(item).strip()]
-    files_html = "".join(f"<li><code>{esc(item)}</code></li>" for item in files)
-    pages_html = "".join(f'<li><a href="{pageurl(project_id, item)}">{esc(item)}</a></li>' for item in pages)
-    related_html = ""
-    if files or pages:
-        related_html = '<section class="panel record-related"><h2>关联材料</h2>'
-        if files:
-            related_html += '<h3>源文件或论文</h3><ul>' + files_html + "</ul>"
-        if pages:
-            related_html += '<h3>Wiki 页面</h3><ul>' + pages_html + "</ul>"
-        related_html += "</section>"
-    body = f'''<div class="doc-toolbar"><div class="breadcrumbs"><a href="{purl(project_id)}/records">科研记录</a> / {esc(record["title"])}</div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回记录列表</a></div></div><section class="record-document"><div class="document-meta"><span class="category-tag">科研过程记录</span><span class="meta">记录时间：{esc(format_time(str(record.get("recorded_at") or "")))}</span><span class="meta path">{esc(record["path"])}</span>{tags_html}</div><article class="document">{rendered}</article>{related_html}</section>'''
+
+    related_files = [str(x) for x in record.get("related_files") or [] if str(x).strip()]
+    images: list[str] = [x for x in related_files if _is_image_path(x)]
+    text_files: list[str] = [x for x in related_files if not _is_image_path(x)]
+    pages = [str(x) for x in record.get("related_pages") or [] if str(x).strip()]
+
+    content_for_render, evidence_images, has_evidence = _extract_evidence_image_bullets(content)
+    for item in evidence_images:
+        if item not in images:
+            images.append(item)
+
+    rendered = render_markdown(content_for_render, project_id, str(record["path"]))
+    gallery = _material_gallery(project, project_id, images)
+
+    if has_evidence:
+        rendered = rendered.replace(f"<p>{MATERIAL_THUMBNAIL_SENTINEL}</p>", gallery or "")
+        missing_text = [x for x in text_files if _material_path(x) not in content]
+        extra = _material_panel(project_id, "", missing_text, pages) if (missing_text or pages) else ""
+    else:
+        extra = _material_panel(project_id, gallery, text_files, pages)
+
+    tags_html = "".join(
+        f'<span class="badge">{esc(tag)}</span>' for tag in record.get("tags") or []
+    )
+    body = f'''<div class="doc-toolbar"><div class="breadcrumbs"><a href="{purl(project_id)}/records">科研记录</a> / {esc(record["title"])}</div><div class="actions"><a class="button" href="{purl(project_id)}/records">返回记录列表</a></div></div><section class="record-document"><div class="document-meta"><span class="category-tag">科研过程记录</span><span class="meta">记录时间：{esc(format_time(str(record.get("recorded_at") or "")))}</span><span class="meta path">{esc(record["path"])}</span>{tags_html}</div><article class="document">{rendered}</article>{extra}</section>'''
     return layout(str(record["title"]), body, project_id=project_id, active="records", home=home)
 
 def heading_slug(text: str) -> str:

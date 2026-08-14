@@ -39,6 +39,7 @@ from llmwiki_registry import (  # noqa: E402
     update_settings,
 )
 from research_web_ui import (  # noqa: E402
+    IMAGE_MIME_TYPES,
     STYLE,
     esc,
     home_page,
@@ -112,6 +113,33 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 raise LLMWikiError("表单必须使用 UTF-8 编码。") from exc
             parsed = parse_qs(body, keep_blank_values=True)
             return {key: values[-1] for key, values in parsed.items()}
+
+        def stream_source_image(self, project_id: str, relative: str) -> None:
+            project = get_project(project_id, home=home)["project"]
+            normalized = relative.replace("\\", "/")
+            target = safe_path(
+                Path(str(project["source_root"])).resolve(strict=False),
+                normalized,
+            )
+            content_type = IMAGE_MIME_TYPES.get(target.suffix.lower())
+            if content_type is None or not target.is_file():
+                raise FileNotFoundError(relative)
+            size = target.stat().st_size
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(size))
+            self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{quote(target.name, safe='')}")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.end_headers()
+            with target.open("rb") as stream:
+                while True:
+                    chunk = stream.read(64 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
 
         def stream_literature(self, project_id: str, relative: str) -> None:
             project = get_project(project_id, home=home)["project"]
@@ -253,6 +281,12 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 if match:
                     self.html(
                         page_view(home, unquote(match.group(1)), unquote(match.group(2)))
+                    )
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/source-asset/(.+)", parsed.path)
+                if match:
+                    self.stream_source_image(
+                        unquote(match.group(1)), unquote(match.group(2))
                     )
                     return
                 match = re.fullmatch(r"/project/([^/]+)/asset/(.+)", parsed.path)
