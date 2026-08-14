@@ -53,7 +53,7 @@ jobs:
           version = str(plugin.get('version', ''))
           assert plugin.get('name') == 'llmwiki-lite'
           assert re.fullmatch(r'\d+\.\d+\.\d+', version)
-          assert marketplace.get('name') == 'llmwiki-lite-local-test'
+          assert marketplace.get('name') == 'llmwiki-lite'
           assert marketplace['plugins'][0]['name'] == 'llmwiki-lite'
           assert marketplace['plugins'][0]['source']['path'] == './plugins/llmwiki-lite'
           print(f'Validated LLM Wiki Lite {version}')
