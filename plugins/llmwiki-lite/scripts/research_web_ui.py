@@ -380,6 +380,11 @@ body.lightbox-open{overflow:hidden}
 .note-pane{overflow:hidden}
 .note-document{padding:20px 26px;overflow:auto;flex:1}
 .note-document h1{font-size:25px}
+.paper-viewer-text{height:auto}
+.paper-text{padding:18px 4px 30px;font-size:16px;line-height:1.85;overflow-wrap:anywhere}
+.paper-text p{margin:0 0 13px}
+.compare-merged{display:grid;grid-template-columns:1fr;gap:18px;align-items:start}
+.compare-merged .note-document{overflow:visible;flex:none;padding:18px 26px}
 .note-selector{display:flex;align-items:end;gap:9px;margin:0 0 12px}
 .note-selector label{margin:0}
 .note-selector select{max-width:520px}

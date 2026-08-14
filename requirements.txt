@@ -1,0 +1,6 @@
+# Optional dependency for the local web reader only.
+# Enables native PDF text rendering (原文阅读 / 对照阅读 merge the PDF text
+# directly into the page). The web server falls back to the browser PDF viewer
+# automatically when pypdf is not installed, so the plugin core stays
+# dependency-free.
+pypdf>=3.0.0

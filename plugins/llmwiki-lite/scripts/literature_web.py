@@ -446,6 +446,43 @@ def _paper_url(project_id: str, action: str, path: str) -> str:
     return f"{purl(project_id)}/literature/{action}/{quote(path, safe='/')}"
 
 
+def _pdf_text(target: Path) -> str | None:
+    """Extract plain text from a PDF using pypdf when available."""
+    if target.suffix.lower() != ".pdf":
+        return None
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return None
+    try:
+        reader = PdfReader(str(target))
+        parts: list[str] = []
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            if text.strip():
+                parts.append(text.strip())
+        joined = "\n\n".join(parts).strip()
+        return joined or None
+    except Exception:
+        return None
+
+
+def _render_pdf_text(text: str) -> str:
+    """Render extracted PDF text as readable HTML paragraphs."""
+    def _mostly_cjk(block: str) -> bool:
+        cjk = sum(1 for ch in block if "\u4e00" <= ch <= "\u9fff")
+        return cjk > 0 and cjk / max(1, len(block)) > 0.3
+
+    blocks: list[str] = []
+    for block in re.split(r"\n\s*\n", text):
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        joined = "".join(lines) if _mostly_cjk(block) else " ".join(lines)
+        blocks.append(f"<p>{esc(joined)}</p>")
+    return "\n".join(blocks)
+
+
 def _prompt_for(paper: dict[str, Any]) -> str:
     return f'''请精读项目中的文献：{paper["path"]}
 
@@ -568,7 +605,14 @@ def literature_read_page(home: str, project_id: str, paper_path: str) -> str:
         if matches and paper["inline"]
         else ""
     )
-    body = f'''<div class="doc-toolbar"><div class="actions">{compare}<a class="button" href="{_paper_url(project_id, "source", str(paper["path"]))}">在新窗口打开原文</a></div></div><section class="paper-viewer"><div class="paper-viewer-head"><div><span class="category-tag">{esc(paper["kind"])}</span><h1>{esc(paper["title"])}</h1></div><p class="meta">{_format_size(int(paper["bytes"]))} · 更新于 {esc(paper["updated"])}<br><span class="path">{esc(paper["path"])}</span></p></div>{_paper_viewer(project_id, paper)}</section>'''
+    paper_text = _pdf_text(target)
+    viewer_class = "paper-viewer paper-viewer-text" if paper_text else "paper-viewer"
+    paper_content = (
+        f'<div class="paper-text">{_render_pdf_text(paper_text)}</div>'
+        if paper_text
+        else _paper_viewer(project_id, paper)
+    )
+    body = f'''<div class="doc-toolbar"><div class="actions">{compare}<a class="button" href="{_paper_url(project_id, "source", str(paper["path"]))}">在新窗口打开原文</a></div></div><section class="{viewer_class}"><div class="paper-viewer-head"><div><span class="category-tag">{esc(paper["kind"])}</span><h1>{esc(paper["title"])}</h1></div><p class="meta">{_format_size(int(paper["bytes"]))} · 更新于 {esc(paper["updated"])}<br><span class="path">{esc(paper["path"])}</span></p></div>{paper_content}</section>'''
     return layout(str(paper["title"]), body, project_id=project_id, active="literature", home=home)
 
 
@@ -604,19 +648,25 @@ def literature_compare_page(
         for note in matches
     )
     compare_url = _paper_url(project_id, "compare", str(paper["path"]))
+    source_url = _paper_url(project_id, "source", str(paper["path"]))
     if selected:
         rendered = render_markdown(
             str(selected["text"]), project_id, str(selected["path"])
         )
         source_label = "Wiki 知识库" if selected["location"] == "wiki" else "项目内只读记录"
-        note_html = f'''<div class="compare-pane-head"><div><div class="eyebrow">LLM 辅助阅读</div><h2>{esc(selected["title"])}</h2></div><span class="badge">{source_label}</span></div><article class="note-document">{rendered}</article>'''
+        note_section = f'''<section class="panel compare-merged-section"><div class="compare-pane-head"><div><div class="eyebrow">LLM 辅助阅读</div><h2>{esc(selected["title"])}</h2></div><span class="badge">{source_label}</span></div><article class="note-document">{rendered}</article></section>'''
     else:
         prompt_id = "compare-prompt"
-        note_html = f'''<div class="compare-pane-head"><div><div class="eyebrow">LLM 辅助阅读</div><h2>尚无匹配记录</h2></div></div><div class="empty"><p>把下面的指令复制给 Codex，即可生成可配对的中文精读 Markdown。</p><div class="prompt" id="{prompt_id}">{esc(_prompt_for(paper))}<button onclick="copyText('{prompt_id}',this)">复制</button></div></div>'''
+        note_section = f'''<section class="panel compare-merged-section"><div class="compare-pane-head"><div><div class="eyebrow">LLM 辅助阅读</div><h2>尚无匹配记录</h2></div></div><div class="empty"><p>把下面的指令复制给 Codex，即可生成可配对的中文精读 Markdown。</p><div class="prompt" id="{prompt_id}">{esc(_prompt_for(paper))}<button onclick="copyText('{prompt_id}',this)">复制</button></div></div></section>'''
+    paper_text = _pdf_text(target)
+    if paper_text:
+        paper_section = f'''<section class="panel compare-merged-section"><div class="compare-pane-head"><div><div class="eyebrow">论文原文</div><h2>{esc(paper["title"])}</h2></div><a class="button" href="{source_url}">打开 PDF</a></div><div class="paper-text">{_render_pdf_text(paper_text)}</div></section>'''
+    else:
+        paper_section = f'''<section class="compare-pane"><div class="compare-pane-head"><div><div class="eyebrow">论文原文</div><h2>{esc(paper["title"])}</h2></div><a class="button" href="{source_url}">新窗口打开</a></div>{_paper_viewer(project_id, paper)}</section>'''
     selector = (
         f'<form class="note-selector" method="get" action="{compare_url}"><label for="note">切换辅助阅读</label><select id="note" name="note">{options}</select><button>切换</button></form>'
         if matches
         else ""
     )
-    body = f'''<div class="doc-toolbar"><div class="actions"><a class="button" href="{_paper_url(project_id, "read", str(paper["path"]))}">只看原文</a></div></div>{selector}<div class="compare-layout"><section class="compare-pane"><div class="compare-pane-head"><div><div class="eyebrow">论文原文</div><h2>{esc(paper["title"])}</h2></div><a class="button" href="{_paper_url(project_id, "source", str(paper["path"]))}">新窗口打开</a></div>{_paper_viewer(project_id, paper)}</section><section class="compare-pane note-pane">{note_html}</section></div>'''
+    body = f'''<div class="doc-toolbar"><div class="actions"><a class="button" href="{_paper_url(project_id, "read", str(paper["path"]))}">只看原文</a></div></div>{selector}<div class="compare-merged">{note_section}{paper_section}</div>'''
     return layout(f'{paper["title"]} · 对照阅读', body, project_id=project_id, active="literature", home=home)
