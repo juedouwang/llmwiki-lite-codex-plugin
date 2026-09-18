@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -I -B \"${PLUGIN_ROOT}/scripts/record_change.py\"",
+            "command": "python -I -B -c \"import os,runpy,sys,pathlib;c=[r'${CLAUDE_PLUGIN_ROOT}',r'${PLUGIN_ROOT}',os.environ.get('CLAUDE_PLUGIN_ROOT'),os.environ.get('PLUGIN_ROOT'),os.getcwd()];s=next((pathlib.Path(x)/'scripts'/'record_change.py' for x in c if x and (pathlib.Path(x)/'scripts'/'record_change.py').is_file()),None);runpy.run_path(str(s),run_name='__main__') if s else None\"",
             "async": true
           }
         ]

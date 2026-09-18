@@ -5,7 +5,7 @@ description: "Manage the complete literature workflow for an LLM Wiki project: r
 
 # LLM Wiki Literature
 
-Run one focused literature workflow. Codex performs research judgment, source evaluation, paper reading, and explanation. Use tools only for registration, safe file operations, Wiki writes, and website startup.
+Run one focused literature workflow. You perform research judgment, source evaluation, paper reading, and explanation. Use tools only for registration, safe file operations, Wiki writes, and website startup.
 
 ## 1. Resolve the project
 
@@ -41,7 +41,7 @@ After explicit selection or authorization:
 4. Preserve exact paper title, author names, algorithm/model names, datasets, equations, metric names, table references, and numeric results where precision matters.
 5. Clearly separate:
    - 论文原文明确陈述；
-   - Codex 的解释或通俗化说明；
+   - 你的解释或通俗化说明；
    - 与当前课题的联系；
    - 尚未验证的推断或复现问题。
 

@@ -9,7 +9,7 @@ Use this skill for identity and location management only. Registration is not pr
 ## Resolve a project
 
 1. Use `llmwiki_project_get` with the current working directory as `current_path` when possible.
-2. If no record exists, use `llmwiki_project_register` with the Codex-opened project directory as `source_root`.
+2. If no record exists, use `llmwiki_project_register` with the current project directory as `source_root`.
 3. Do not scan, summarize, or create semantic pages just because a project was registered.
 4. Use the returned `source_root`, `state_root`, and `wiki_root` in later tool calls.
 

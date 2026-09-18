@@ -213,7 +213,7 @@ TOOLS = [
     },
     {
         "name": "llmwiki_wiki_write",
-        "description": "Write Codex-authored Markdown beneath the configured Wiki root and optionally refresh the generated index region.",
+        "description": "Write assistant-authored Markdown beneath the configured Wiki root and optionally refresh the generated index region.",
         "inputSchema": schema(
             {
                 "project_root": ROOT,
@@ -242,7 +242,7 @@ TOOLS = [
     },
     {
         "name": "llmwiki_record_write",
-        "description": "Append one Codex-authored research process entry to the configured daily Markdown file records/YYYY/MM/YYYY-MM-DD.md. Never overwrites an existing entry.",
+        "description": "Append one assistant-authored research process entry to the configured daily Markdown file records/YYYY/MM/YYYY-MM-DD.md. Never overwrites an existing entry.",
         "inputSchema": schema(
             {
                 "project_root": ROOT,
@@ -447,7 +447,7 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
                 else SUPPORTED_PROTOCOL,
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
-                "instructions": "Use registry and filesystem tools for mechanics. Codex remains responsible for reading, reasoning, and Wiki content.",
+                "instructions": "Use registry and filesystem tools for mechanics. The assistant remains responsible for reading, reasoning, and Wiki content.",
             },
         )
     if method in {"notifications/initialized", "notifications/cancelled"}:

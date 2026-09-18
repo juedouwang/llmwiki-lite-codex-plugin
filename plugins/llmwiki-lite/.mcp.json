@@ -5,7 +5,8 @@
       "args": [
         "-I",
         "-B",
-        "scripts/mcp_server.py"
+        "-c",
+        "import os,runpy,sys,pathlib;c=[r'${CLAUDE_PLUGIN_ROOT}',os.environ.get('CLAUDE_PLUGIN_ROOT'),os.environ.get('PLUGIN_ROOT'),os.getcwd()];s=next((pathlib.Path(x)/'scripts'/'mcp_server.py' for x in c if x and (pathlib.Path(x)/'scripts'/'mcp_server.py').is_file()),None);runpy.run_path(str(s),run_name='__main__') if s else sys.exit('llmwiki: scripts/mcp_server.py not found; reinstall the llmwiki-lite plugin')"
       ],
       "cwd": "."
     }

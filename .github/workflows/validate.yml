@@ -29,8 +29,8 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: |
-          ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests
-          python -m compileall -q plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests
+          ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/opencode plugins/llmwiki-lite/tests
+          python -m compileall -q plugins/llmwiki-lite/scripts plugins/llmwiki-lite/opencode plugins/llmwiki-lite/tests
 
       - name: Run smoke test
         env:
@@ -56,5 +56,22 @@ jobs:
           assert marketplace.get('name') == 'llmwiki-lite'
           assert marketplace['plugins'][0]['name'] == 'llmwiki-lite'
           assert marketplace['plugins'][0]['source']['path'] == './plugins/llmwiki-lite'
-          print(f'Validated LLM Wiki Lite {version}')
+
+          claude_plugin = json.loads(
+              Path('plugins/llmwiki-lite/.claude-plugin/plugin.json').read_text(encoding='utf-8')
+          )
+          claude_marketplace = json.loads(
+              Path('.claude-plugin/marketplace.json').read_text(encoding='utf-8')
+          )
+          assert claude_plugin.get('name') == 'llmwiki-lite'
+          assert claude_plugin.get('version') == version
+          assert claude_marketplace.get('name') == 'llmwiki-lite'
+          entries = [
+              entry
+              for entry in claude_marketplace.get('plugins', [])
+              if entry.get('name') == 'llmwiki-lite'
+          ]
+          assert len(entries) == 1
+          assert entries[0].get('source') == './plugins/llmwiki-lite'
+          print(f'Validated LLM Wiki Lite {version} for Codex, Claude Code, and opencode')
           PY

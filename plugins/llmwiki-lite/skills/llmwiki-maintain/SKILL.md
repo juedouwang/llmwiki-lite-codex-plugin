@@ -4,7 +4,7 @@ description: Maintain an existing LLM Wiki after project changes. Use for increm
 ---
 # Maintain a project Wiki
 
-Use deterministic tools for change detection and Codex for impact analysis.
+Use deterministic tools for change detection and your own reasoning for impact analysis.
 
 1. Resolve the project with `llmwiki_project_get`.
 2. Run `llmwiki_status` to inspect the last baseline and dirty-path hints.

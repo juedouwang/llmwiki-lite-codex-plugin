@@ -15,7 +15,7 @@ from urllib.parse import quote
 from llmwiki_core import LLMWikiError, wiki_list
 from llmwiki_registry import get_project
 from markdown_renderer import render_markdown
-from research_web_ui import esc, layout, pageurl, purl, safe_path
+from research_web_ui import esc, layout, page_header, pageurl, purl, safe_path, ui_icon
 
 PAPER_EXTENSIONS = {".pdf", ".epub", ".docx", ".html", ".htm"}
 INLINE_EXTENSIONS = {".pdf"}
@@ -528,9 +528,9 @@ def literature_library_page(home: str, project_id: str) -> str:
             str(paper["path"]).encode("utf-8")
         ).hexdigest()[:10]
         assistant = (
-            f'<div class="paper-notes"><strong>LLM 辅助阅读</strong><ul>{note_list}</ul></div>'
+            f'<details class="paper-notes"><summary>辅助阅读 · {len(matches)}</summary><ul>{note_list}</ul></details>'
             if matches
-            else f'<details class="paper-prompt"><summary>让 Codex 精读这篇论文</summary><div class="prompt" id="{prompt_id}">{esc(_prompt_for(paper))}<button onclick="copyText(\'{prompt_id}\',this)">复制</button></div></details>'
+            else f'<details class="paper-prompt"><summary>让 AI 助手精读这篇论文</summary><div class="prompt" id="{prompt_id}">{esc(_prompt_for(paper))}<button onclick="copyText(\'{prompt_id}\',this)">复制</button></div></details>'
         )
         compare_action = (
             f'<a class="button primary" href="{compare_url}?note={quote(str(matches[0]["id"]), safe="")}">原文 + LLM 辅助阅读</a>'
@@ -542,7 +542,7 @@ def literature_library_page(home: str, project_id: str) -> str:
             (str(paper["title"]) + " " + str(paper["path"])).casefold()
         )
         cards.append(
-            f'''<article class="paper-card" data-literature-card data-literature-kind="{esc(paper["kind"])}" data-literature-status="{status_key}" data-page-title="{search_value}"><div class="paper-card-top"><span class="paper-file-type">{esc(extension)}</span><div class="paper-card-top-right"><span class="reading-state{status_class}">{status_label}</span><button class="fav-button" type="button" data-fav-path="{esc(paper["path"])}" aria-label="收藏" title="收藏">&#9734;</button></div></div><h2>{esc(paper["title"])}</h2><div><span class="category-tag">{esc(paper["kind"])}</span></div><div class="paper-path path">{esc(paper["path"])}</div><p class="meta">{_format_size(int(paper["bytes"]))} · 更新于 {esc(paper["updated"])}</p>{assistant}<div class="actions"><a class="button" href="{read_url}">阅读原文</a>{compare_action}</div></article>'''
+            f'''<article class="paper-card" data-literature-card data-literature-kind="{esc(paper["kind"])}" data-literature-status="{status_key}" data-page-title="{search_value}"><div class="paper-row-heading"><span class="paper-file-type">{esc(extension)}</span><h2><a href="{read_url}">{esc(paper["title"])}</a></h2><span class="reading-state{status_class}">{status_label}</span><button class="fav-button" type="button" data-fav-path="{esc(project_id + ':' + str(paper["path"]))}" aria-label="收藏" title="收藏">{ui_icon("star")}</button></div><div class="paper-row-details"><span class="meta">{esc(paper["kind"])} · {_format_size(int(paper["bytes"]))}</span><div class="actions"><a class="button" href="{read_url}">阅读原文</a>{compare_action}</div></div>{assistant}</article>'''
         )
 
     unread_papers = len(papers) - matched_papers
@@ -557,10 +557,11 @@ def literature_library_page(home: str, project_id: str) -> str:
             f'<li>{title}<span class="meta"> · {esc(note["path"])} · {location}</span></li>'
         )
     unpaired_html = "".join(unpaired_parts)
-    kind_buttons = "".join(
-        f'''<button class="library-nav-item" data-filter-group="kind" onclick="setLiteratureFilter('kind','{esc(kind)}',this)"><span>{esc(kind)}</span><span class="nav-count">{count}</span></button>'''
-        for kind, count in sorted(kind_counts.items())
+    unpaired_section = (
+        f'<details class="subtle-details" id="unpaired-notes"><summary>待关联笔记 · {len(unpaired_notes)}</summary><ul class="recent-list">{unpaired_html}</ul><p class="meta">用 paper_file 关联论文原文。</p></details>'
+        if unpaired_notes else ""
     )
+    kind_options = ''.join(f'<option value="{esc(kind)}">{esc(kind)} · {count}</option>' for kind, count in sorted(kind_counts.items()))
     workflow_prompt = f'''请使用 llmwiki-literature 工作流处理当前项目“{project["name"]}”的文献任务：
 
 1. 围绕我的研究问题调研并推荐 5–8 篇高相关论文，说明推荐理由、优先级、年份、出处和可获取的原文来源；这一步先不要下载。
@@ -571,11 +572,11 @@ def literature_library_page(home: str, project_id: str) -> str:
 6. 完成后启动或刷新文献中心，并告诉我可以在哪里进行原文与 LLM 辅助阅读对照。'''
     workflow_prompt_id = "literature-workflow-prompt"
     empty_papers = (
-        '<section class="panel empty">项目目录中尚未发现文献。让 Codex 推荐论文并在你确认后下载，或把已有 PDF 放入项目目录。</section>'
+        '<section class="panel empty">项目目录中尚未发现文献。让 AI 助手推荐论文并在你确认后下载，或把已有 PDF 放入项目目录。</section>'
         if not papers
         else ""
     )
-    body = f'''<div class="literature-app"><aside class="literature-sidebar"><div class="library-title"><span class="library-mark">W</span><div><strong>文献库</strong><span>{esc(project["name"])}</span></div></div><input class="library-search" type="search" oninput="filterLiterature(this)" placeholder="搜索标题或路径"><nav class="library-nav" aria-label="文献快速筛选"><div class="library-nav-group"><h2>阅读状态</h2><button class="library-nav-item is-active" data-filter-group="status" onclick="setLiteratureFilter('status','all',this)"><span>全部文献</span><span class="nav-count">{len(papers)}</span></button><button class="library-nav-item" data-filter-group="status" onclick="setLiteratureFilter('status','read',this)"><span>已精读</span><span class="nav-count">{matched_papers}</span></button><button class="library-nav-item" data-filter-group="status" onclick="setLiteratureFilter('status','unread',this)"><span>待精读</span><span class="nav-count">{unread_papers}</span></button></div><div class="library-nav-group"><h2>收藏</h2><button class="library-nav-item" id="fav-toggle" type="button" onclick="toggleFavorites(this)"><span>只看收藏</span><span class="nav-count">★</span></button></div><div class="library-nav-group"><h2>文献类型</h2><button class="library-nav-item is-active" data-filter-group="kind" onclick="setLiteratureFilter('kind','all',this)"><span>全部类型</span><span class="nav-count">{len(papers)}</span></button>{kind_buttons}</div><div class="library-nav-group"><h2>辅助阅读</h2><a class="library-nav-item" href="#unpaired-notes"><span>待关联笔记</span><span class="nav-count">{len(unpaired_notes)}</span></a><a class="library-nav-item" href="#codex-literature-flow"><span>交给 Codex 调研</span><span class="nav-count">→</span></a></div></nav><div class="library-nav-separator"></div><div class="library-sidebar-help">论文原文保存在项目目录中并保持只读；中文精读保存在 Wiki，通过 <code>paper_file</code> 与原文精确关联。</div></aside><section class="literature-content"><section class="library-header"><div><div class="eyebrow">文献阅读工作台</div><h1>项目文献</h1><p>从待精读论文进入原文阅读，再与 Codex 生成的中文精读并排核对。</p></div><div class="library-header-actions"><a class="button" href="{purl(project_id)}">返回项目研究台</a><a class="button primary" href="#codex-literature-flow">推荐并入库论文</a></div></section><div class="library-results-head"><h2><span id="literature-result-count">{len(papers)}</span> 篇文献</h2><div class="view-switch" aria-label="切换文献显示方式"><button class="is-active" data-literature-view="grid" onclick="setLiteratureView('grid',this)">卡片</button><button data-literature-view="list" onclick="setLiteratureView('list',this)">列表</button></div></div>{empty_papers}<div class="literature-grid is-list" id="literature-list">{"".join(cards)}</div><div class="panel empty literature-filter-empty" id="literature-filter-empty">当前筛选条件下没有文献。可以清除搜索词或切换左侧分类。</div><section class="panel literature-support" id="codex-literature-flow"><div class="eyebrow">CODEX 文献工作流</div><h2>从推荐到网页对照阅读</h2><ol class="workflow-steps"><li><span>1</span><strong>调研推荐</strong>先给出高相关论文和理由</li><li><span>2</span><strong>用户选择</strong>明确选中后才下载</li><li><span>3</span><strong>下载原文</strong>保存到项目 references/papers</li><li><span>4</span><strong>中文精读</strong>写入 Wiki 并绑定 paper_file</li><li><span>5</span><strong>网页核对</strong>原文与 LLM 讲解双栏阅读</li></ol><p class="muted">当前系统已经具备下载完成后的自动发现、精读关联和网页阅读；下面这段指令用于让 Codex 完整执行推荐、下载、分析和入库。</p><div class="prompt" id="{workflow_prompt_id}">{esc(workflow_prompt)}<button onclick="copyText('{workflow_prompt_id}',this)">复制给 Codex</button></div></section><section class="panel literature-support" id="unpaired-notes"><h2>待关联的辅助阅读</h2>{f'<ul class="recent-list">{unpaired_html}</ul>' if unpaired_notes else '<p class="muted">当前辅助阅读记录均已找到候选原文。</p>'}<p class="meta">如自动配对不准确，请在辅助阅读 Markdown frontmatter 中填写相对于项目根目录的 <code>paper_file</code>。</p></section></section></div>'''
+    body = page_header("文献", '<a class="button" href="#literature-flow">添加文献</a>') + f'''<section class="literature-content"><div class="filter-bar"><input class="library-search" type="search" aria-label="搜索文献" oninput="filterLiterature(this)" placeholder="搜索文献"><select aria-label="阅读状态" onchange="setLiteratureFilter('status',this.value)"><option value="all">全部文献</option><option value="read">已精读 · {matched_papers}</option><option value="unread">待精读 · {unread_papers}</option></select><select aria-label="文献类型" onchange="setLiteratureFilter('kind',this.value)"><option value="all">全部类型</option>{kind_options}</select><button id="fav-toggle" type="button" aria-pressed="false" onclick="toggleFavorites(this)">收藏</button><span class="meta"><span id="literature-result-count">{len(papers)}</span> 篇</span></div>{empty_papers}<div class="literature-grid is-list" id="literature-list">{"".join(cards)}</div><div class="empty literature-filter-empty" id="literature-filter-empty">没有匹配的文献</div><details class="subtle-details" id="literature-flow"><summary>添加文献</summary><p>将论文原文放入项目目录，或复制指令让 AI 助手调研、推荐并在确认后下载。</p><div class="prompt" id="{workflow_prompt_id}">{esc(workflow_prompt)}<button onclick="copyText('{workflow_prompt_id}',this)">复制指令</button></div></details>{unpaired_section}</section>'''
     return layout("\u6587\u732e\u4e2d\u5fc3", body, project_id=project_id, active="literature", home=home)
 
 def _paper_viewer(project_id: str, paper: dict[str, Any]) -> str:
@@ -657,7 +658,7 @@ def literature_compare_page(
         note_section = f'''<section class="panel compare-merged-section"><div class="compare-pane-head"><div><div class="eyebrow">LLM 辅助阅读</div><h2>{esc(selected["title"])}</h2></div><span class="badge">{source_label}</span></div><article class="note-document">{rendered}</article></section>'''
     else:
         prompt_id = "compare-prompt"
-        note_section = f'''<section class="panel compare-merged-section"><div class="compare-pane-head"><div><div class="eyebrow">LLM 辅助阅读</div><h2>尚无匹配记录</h2></div></div><div class="empty"><p>把下面的指令复制给 Codex，即可生成可配对的中文精读 Markdown。</p><div class="prompt" id="{prompt_id}">{esc(_prompt_for(paper))}<button onclick="copyText('{prompt_id}',this)">复制</button></div></div></section>'''
+        note_section = f'''<section class="panel compare-merged-section"><div class="compare-pane-head"><div><div class="eyebrow">LLM 辅助阅读</div><h2>尚无匹配记录</h2></div></div><div class="empty"><p>把下面的指令复制给 AI 助手，即可生成可配对的中文精读 Markdown。</p><div class="prompt" id="{prompt_id}">{esc(_prompt_for(paper))}<button onclick="copyText('{prompt_id}',this)">复制</button></div></div></section>'''
     paper_text = _pdf_text(target)
     if paper_text:
         paper_section = f'''<section class="panel compare-merged-section"><div class="compare-pane-head"><div><div class="eyebrow">论文原文</div><h2>{esc(paper["title"])}</h2></div><a class="button" href="{source_url}">打开 PDF</a></div><div class="paper-text">{_render_pdf_text(paper_text)}</div></section>'''

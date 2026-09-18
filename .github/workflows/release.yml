@@ -31,8 +31,10 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           VERSION=$(python -c "import json; print(json.load(open('plugins/llmwiki-lite/.codex-plugin/plugin.json', encoding='utf-8'))['version'])")
+          CLAUDE_VERSION=$(python -c "import json; print(json.load(open('plugins/llmwiki-lite/.claude-plugin/plugin.json', encoding='utf-8'))['version'])")
           test "$TAG_NAME" = "v$VERSION"
-          ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/tests
+          test "$CLAUDE_VERSION" = "$VERSION"
+          ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/opencode plugins/llmwiki-lite/tests
           python -B plugins/llmwiki-lite/tests/smoke_test.py
 
       - name: Create GitHub Release

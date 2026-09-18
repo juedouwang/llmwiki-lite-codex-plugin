@@ -5,7 +5,7 @@ description: "Record an explicitly requested research discussion as a durable, c
 
 # LLM Wiki Research Record
 
-This Skill adds a small, explicit research-process journal to the current LLM Wiki project. Codex performs the interpretation and writing; MCP only validates fields and appends/reads Markdown files.
+This Skill adds a small, explicit research-process journal to the current LLM Wiki project. You perform the interpretation and writing; MCP only validates fields and appends/reads Markdown files.
 
 ## When to trigger
 
@@ -30,7 +30,7 @@ Do **not** save every conversation automatically. A record must be created only 
 Before calling `llmwiki_record_write`, review the relevant conversation in the current context and produce a concise synthesis. Do not create a verbatim chat transcript. Separate:
 
 - what the source, experiment, or user explicitly established；
-- Codex's interpretation or working hypothesis；
+- your interpretation or working hypothesis；
 - decisions that were actually made；
 - questions that remain unverified。
 
@@ -66,4 +66,9 @@ After creating a record:
 2. Summarize what was recorded in 2–4 bullets。
 3. Offer or start the local website with `llmwiki_web_start` so the user can open the project's `科研记录` page。
 
-The website is a viewer. It must not silently rewrite or reinterpret the record。
+The website also offers explicit manual block notebooks via 科研记录 → ＋ 手动记录. Users can paste/upload screenshots, add text comments to blocks, and autosave notes without an agent conversation.
+
+Manual notebooks live in `wiki_root/records/manual/<id>.md`, with images in `records/assets/`. They appear alongside assistant-written daily records in lists and search. Never overwrite a manual notebook using `wiki_write`: its hidden editor state must remain consistent with its Markdown body. For additions, create a separate follow-up daily entry or ask the user to edit through the notebook UI.
+
+The website must not silently rewrite or reinterpret existing assistant-written daily records. Notebook comments represent user observations, not verified scientific facts.
+Manual notebooks retain server-generated note/block timestamps as metadata, never as body paragraphs or inline block labels. Users can open 笔记信息 to inspect note creation/modification times in UTC+08:00; exports keep note times in frontmatter. Creation means first successful save; legacy missing times remain unknown.

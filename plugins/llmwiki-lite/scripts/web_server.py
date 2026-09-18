@@ -22,6 +22,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+import research_notebook as notebook  # noqa: E402
+import research_progress as progress  # noqa: E402
 from llmwiki_core import LLMWikiError, plugin_version  # noqa: E402
 from literature_web import (  # noqa: E402
     literature_compare_page,
@@ -87,8 +89,9 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self';img-src 'self' data:;style-src 'self';script-src 'unsafe-inline'",
+                "default-src 'self';img-src 'self' data:;style-src 'self';script-src 'self' 'unsafe-inline';object-src 'none';base-uri 'none'",
             )
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
 
         def html(self, content: str, code: int = 200) -> None:
@@ -98,8 +101,11 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
 
         def json(self, payload: dict[str, Any], code: int = 200) -> None:
             raw = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
-            self.headers_out(code, "application/json; charset=utf-8", len(raw))
-            self.wfile.write(raw)
+            try:
+                self.headers_out(code, "application/json; charset=utf-8", len(raw))
+                self.wfile.write(raw)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass  # Client navigated away; completed disk writes remain valid.
 
         def form(self) -> dict[str, str]:
             try:
@@ -206,11 +212,47 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     self.wfile.write(chunk)
                     remaining -= len(chunk)
         def do_GET(self) -> None:  # noqa: N802
+            if self.headers.get("Host", "") not in {
+                f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"
+            }:
+                self.json({"ok": False, "error": "不允许的 Host。"}, 403)
+                return
             parsed = urlparse(self.path)
             params = parse_qs(parsed.query)
             try:
                 if parsed.path == "/health":
                     self.json({"ok": True, "service": "llmwiki-web", "version": plugin_version()})
+                    return
+                if parsed.path in {"/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/progress.js", "/static/progress.css"}:
+                    target = SCRIPT_DIR / "static" / parsed.path.rsplit("/", 1)[-1]
+                    raw = target.read_bytes()
+                    content_type = "text/css" if target.suffix == ".css" else "text/javascript"
+                    self.headers_out(200, content_type + "; charset=utf-8", len(raw))
+                    self.wfile.write(raw)
+                    return
+                match = re.fullmatch(r"/api/project/([^/]+)/progress", parsed.path)
+                if match:
+                    try:
+                        project = get_project(unquote(match[1]), home=home)["project"]
+                        self.json(progress.load(project))
+                    except (LLMWikiError, ValueError, OSError) as exc:
+                        self.json({"ok": False, "error": str(exc)}, 400)
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/notebook(?:/([a-f0-9]{32}))?", parsed.path)
+                if match:
+                    self.html(notebook.editor_page(home, unquote(match[1]), match[2]))
+                    return
+                match = re.fullmatch(r"/api/project/([^/]+)/notebook/([a-f0-9]{32})(/history)?", parsed.path)
+                if match:
+                    try:
+                        project = get_project(unquote(match[1]), home=home)["project"]
+                        result = (notebook.history(project, match[2], (params.get("revision") or [None])[0])
+                                  if match[3] else notebook.load(project, match[2]))
+                        self.json(result)
+                    except notebook.NotebookConflict as exc:
+                        self.json({"ok": False, "error": str(exc)}, 409)
+                    except (LLMWikiError, ValueError, OSError) as exc:
+                        self.json({"ok": False, "error": str(exc)}, 400)
                     return
                 if parsed.path == "/static/style.css":
                     raw = STYLE.encode("utf-8")
@@ -326,8 +368,56 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     400,
                 )
 
+        def notebook_post(self, path: str) -> None:
+            # Browsers cannot forge this JSON/header combination cross-origin.
+            # Reject rebinding Host values as well; never enable CORS for local files.
+            host = self.headers.get("Host", "")
+            allowed = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
+            if (host not in allowed or self.headers.get("Origin") != "http://" + host
+                    or self.headers.get("X-Notebook-Request") != "1"
+                    or self.headers.get("Content-Type", "").split(";")[0] != "application/json"):
+                self.json({"ok": False, "error": "已阻止非同源写入。"}, 403)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 15 * 1024 * 1024:
+                    self.json({"ok": False, "error": "请求过大或为空。"}, 413)
+                    return
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(payload, dict):
+                    raise LLMWikiError("请求必须是 JSON 对象。")
+                progress_match = re.fullmatch(r"/api/project/([^/]+)/progress", path)
+                if progress_match:
+                    project = get_project(unquote(progress_match[1]), home=home)["project"]
+                    self.json(progress.update(project, payload))
+                    return
+                match = re.fullmatch(r"/api/project/([^/]+)/notebook/(upload|preview|[a-f0-9]{32})", path)
+                if not match:
+                    self.json({"ok": False, "error": "笔记接口不存在。"}, 404)
+                    return
+                project = get_project(unquote(match[1]), home=home)["project"]
+                action = match[2]
+                if action == "upload":
+                    result = notebook.upload(project, payload)
+                elif action == "preview":
+                    from markdown_renderer import render_markdown
+                    text = payload.get("text", "")
+                    if not isinstance(text, str) or len(text) > 100_000:
+                        raise LLMWikiError("预览文字过长。")
+                    result = {"ok": True, "html": render_markdown(text, project["id"], "records/manual/preview.md")}
+                else:
+                    result = notebook.save(project, action, payload)
+                self.json(result)
+            except notebook.NotebookConflict as exc:
+                self.json({"ok": False, "error": str(exc)}, 409)
+            except (LLMWikiError, OSError, ValueError, TypeError) as exc:
+                self.json({"ok": False, "error": str(exc)}, 400)
+
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            if parsed.path.startswith("/api/project/"):
+                self.notebook_post(parsed.path)
+                return
             try:
                 form = self.form()
                 if parsed.path == "/settings/default-wiki-root":

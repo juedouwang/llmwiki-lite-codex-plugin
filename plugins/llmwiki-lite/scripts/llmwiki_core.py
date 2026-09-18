@@ -1,4 +1,4 @@
-"""Small deterministic helpers for the LLM Wiki Codex plugin.
+"""Small deterministic helpers for the LLM Wiki plugin.
 
 The module deliberately performs filesystem mechanics only. It does not summarize,
 rank scientific importance, infer claims, or decide what the Wiki should say.
