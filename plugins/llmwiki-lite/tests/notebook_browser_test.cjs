@@ -1,6 +1,7 @@
 /* Optional browser regression: LLMWIKI_PLAYWRIGHT points to an installed Playwright module. */
 const { chromium } = require(process.env.LLMWIKI_PLAYWRIGHT || 'playwright');
 const assert = require('node:assert/strict');
+const os = require('node:os'), path = require('node:path');
 (async()=>{
   const browser=await chromium.launch({headless:true, ...(process.env.LLMWIKI_BROWSER_CHANNEL ? {channel:process.env.LLMWIKI_BROWSER_CHANNEL} : {})});
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
@@ -94,7 +95,8 @@ const assert = require('node:assert/strict');
   await page.getByLabel('笔记菜单').click();
   await page.locator('#nb-history').click();await page.locator('.nb-history-item').first().waitFor();assert.ok(await page.locator('.nb-history-item').count()>0);
   await page.getByRole('button',{name:'关闭',exact:true}).click();
-  await page.screenshot({path:process.env.LLMWIKI_SCREENSHOT || 'notebook-desktop.png',fullPage:true});
+  // Screenshots go to the system temp dir, never the repository root.
+  await page.screenshot({path:process.env.LLMWIKI_SCREENSHOT || path.join(os.tmpdir(),'llmwiki-notebook-desktop.png'),fullPage:true});
   // Direct clipboard flow: no + menu, picker or blank spacer required.
   const pastePage=await context.newPage();await pastePage.goto(`${origin}/project/${pid}/notebook`);
   await pastePage.locator('#nb-title:not([disabled])').waitFor();
@@ -118,6 +120,19 @@ const assert = require('node:assert/strict');
   await pastePage.locator('.nb-input').last().fill('普通文字粘贴仍正常');
   await pastePage.locator('#nb-tags').focus();await pasteImages(1,'#nb-tags');
   assert.equal(await pastePage.locator('.nb-image').count(),3);
+  // M-01: the title keeps the normal text paste. Copying from a chat window or a
+  // document yields text + image; the image used to win and the title lost the text.
+  const hijacked=await pastePage.evaluate(b64=>{
+    const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),data=new DataTransfer();
+    data.setData('text/plain','配准误差 0.046');
+    data.items.add(new File([bytes],'rich.png',{type:'image/png'}));
+    const target=document.querySelector('#nb-title');target.focus();
+    const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});
+    target.dispatchEvent(event);return event.defaultPrevented;
+  },png.toString('base64'));
+  assert.equal(hijacked,false,'a text+image paste into the title must not be hijacked');
+  assert.equal(await pastePage.locator('.nb-image').count(),3,'a text+image paste into the title must not add an image block');
+  assert.equal((await pastePage.locator('#nb-title').inputValue()).includes('rich.png'),false);
   // Drop targets the pointed-at empty text cell rather than the stale active cell.
   await pastePage.locator('.nb-input').last().fill('');
   await pastePage.locator('.nb-cell').first().locator('.nb-input').focus();

@@ -291,6 +291,14 @@
     if(target?.closest('#nb-tags, .nb-comment, [contenteditable="true"]'))return false;
     return !(target?.matches('input, textarea')&&!root.contains(target));
   }
+  /* The title is a text field, not the note body. It lives inside root, so without
+     this it looked like a body textarea: copying from a chat window or a document
+     yields text + image, and the image won while the title silently lost the text.
+     Image-only clipboards keep landing as a block, which is the deliberate case. */
+  function titleTarget(event) {
+    const target=event.target instanceof Element?event.target:document.activeElement;
+    return !!target?.closest('#nb-title');
+  }
   function emptyImageTarget() {
     const current=doc.blocks.find(b=>b.id===activeBlock);
     const only=doc.blocks.length===1?doc.blocks[0]:null;
@@ -303,7 +311,11 @@
     let files=Array.from(clipboard?.items||[]).filter(i=>i.kind==='file').map(i=>i.getAsFile()).filter(Boolean);
     if(!files.length)files=Array.from(clipboard?.files||[]);
     files=files.filter(f=>f.type.startsWith('image/'));
-    if(files.length){event.preventDefault();if(blocked){message('笔记尚未就绪或存在冲突，请处理后再粘贴。');return;}uploadFiles(files,emptyImageTarget());}
+    if(files.length){
+      // M-01 keeps the normal text paste in the title. Copying from a chat window or a
+      // document gives text + image; without this the image won and the text was lost.
+      if(titleTarget(event)&&clipboard?.getData('text/plain'))return;
+      event.preventDefault();if(blocked){message('笔记尚未就绪或存在冲突，请处理后再粘贴。');return;}uploadFiles(files,emptyImageTarget());}
     else if(!blocked&&!doc.blocks.length&&clipboard?.getData('text/plain')&&!(event.target instanceof Element&&event.target.matches('input,textarea'))){
       event.preventDefault();addBlock('markdown');doc.blocks[0].text=clipboard.getData('text/plain');changed();render();focusBlock(doc.blocks[0].id);
     }
