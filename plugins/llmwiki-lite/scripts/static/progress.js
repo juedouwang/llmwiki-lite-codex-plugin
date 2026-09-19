@@ -5,9 +5,9 @@
   const $=q=>root.querySelector(q), form=$('#progress-form'), dialog=$('#progress-dialog');
   const endpoint=`/api/project/${encodeURIComponent(root.dataset.project)}/progress`;
   const labels={planned:'未开始',active:'进行中',blocked:'卡住了',done:'已完成'};
-  const fieldLabels={title:'任务名称',status:'状态',start:'开始日期',end:'结束日期',checkpoint:'上次做到哪',next_step:'下一步'};
+  const fieldLabels={title:'任务名称',status:'状态',start:'开始日期',end:'结束日期',checkpoint:'上次做到哪',next_step:'下一步',record_id:'关联笔记'};
   const fields=Object.keys(fieldLabels);
-  let tasks=[],candidates=[],revision='',ready=false,busy=false,editing=null,baseline=null,conflict=false;
+  let tasks=[],candidates=[],revision='',ready=false,busy=false,editing=null,baseline=null,conflict=false,linkTargets=[];
   const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x;};
   const button=(text,fn,cls='')=>{const b=el('button',cls,text);b.type='button';b.addEventListener('click',fn);return b;};
   const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -22,7 +22,26 @@
     const response=await fetch(endpoint,payload?{method:'POST',headers:{'Content-Type':'application/json','X-Notebook-Request':'1'},body:JSON.stringify({...payload,revision})}:{cache:'no-store'});
     const result=await response.json();if(!response.ok||!result.ok){const e=new Error(result.error||'请求失败');e.code=response.status;throw e;}return result;
   }
-  async function load(){const data=await request();tasks=data.tasks;candidates=data.candidates;revision=data.revision;ready=true;render();}
+  const recordUrl=id=>`/project/${encodeURIComponent(root.dataset.project)}/records/${id.replace(/^records\//,'').split('/').map(encodeURIComponent).join('/')}`;
+  function renderSource(recordId){
+    const source=$('#progress-source');source.replaceChildren();
+    if(!recordId)return;
+    const link=el('a','','打开关联笔记');link.href=recordUrl(recordId);source.append(link);
+  }
+  /* Rebuilt per task so a link whose note disappeared stays selectable instead of
+     being silently cleared the next time the task is saved. */
+  function fillTargets(current){
+    const select=form.elements.namedItem('record_id');if(!select)return;
+    const items=[{id:'',title:'不关联'},...linkTargets];
+    if(current&&!linkTargets.some(t=>t.id===current))items.push({id:current,title:`找不到的笔记 · ${current}`});
+    select.replaceChildren(...items.map(t=>{const o=el('option','',t.title);o.value=t.id;return o;}));
+    select.value=current||'';
+  }
+  async function load(){const data=await request();tasks=data.tasks;candidates=data.candidates;revision=data.revision;linkTargets=data.records||[];ready=true;render();await openFromHash();}
+  async function openFromHash(){
+    const match=location.hash.match(/^#task-([a-f0-9]{32})$/);if(!match)return;
+    const task=tasks.find(t=>t.id===match[1]);if(task)openTask(task);
+  }
   async function persist(payload){if(busy||!ready)throw new Error('请等待当前操作完成。');busy=true;
     try{const data=await request(payload);tasks=data.tasks;revision=data.revision;candidates=candidates.filter(c=>!tasks.some(t=>t.id===c.id));render();notice('');}
     finally{busy=false;}
@@ -31,9 +50,9 @@
   function hasChanges(){return dialog.open&&baseline&&fields.some(k=>draft()[k]!==baseline[k]);}
   function openTask(task){
     editing=task.id;baseline=structuredClone(task);conflict=false;error('');$('#progress-reload').hidden=true;
-    fields.forEach(k=>form.elements.namedItem(k).value=task[k]);form.querySelector('[type=submit]').disabled=false;form.querySelector('[type=submit]').textContent='保存';
-    const source=$('#progress-source');source.replaceChildren();
-    if(task.record_id){const link=el('a','','关联科研记录');link.href=`/project/${encodeURIComponent(root.dataset.project)}/records/${task.record_id.replace(/^records\//,'').split('/').map(encodeURIComponent).join('/')}`;source.append(link);}
+    fields.forEach(k=>{if(k!=='record_id')form.elements.namedItem(k).value=task[k];});
+    fillTargets(task.record_id);renderSource(task.record_id);
+    form.querySelector('[type=submit]').disabled=false;form.querySelector('[type=submit]').textContent='保存';
     const history=$('#progress-history');history.open=false;
     history.querySelector('div').replaceChildren(...[...(task.history||[])].reverse().map(h=>{
       const row=el('div','progress-history-entry');row.append(el('p','meta',new Date(h.at).toLocaleString('zh-CN')+' · '+labels[h.status]));
@@ -101,6 +120,7 @@
     }catch(e){error(e.message);}
   });
   $('#progress-close').addEventListener('click',closeTask);dialog.addEventListener('cancel',event=>{event.preventDefault();closeTask();});
+  form.elements.namedItem('record_id').addEventListener('change',event=>renderSource(event.target.value));
   window.addEventListener('beforeunload',event=>{if(hasChanges()||busy){event.preventDefault();event.returnValue='';}});
   $('#progress-prev').addEventListener('click',()=>{start=add(start,-days);render();});$('#progress-next').addEventListener('click',()=>{start=add(start,days);render();});$('#progress-today').addEventListener('click',()=>{start=add(today(),-3);render();});$('#progress-days').addEventListener('change',event=>{days=Number(event.target.value);render();});
   $('#progress-import').addEventListener('click',()=>{

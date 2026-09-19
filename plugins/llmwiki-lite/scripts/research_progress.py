@@ -14,13 +14,15 @@ from uuid import uuid4
 
 from llmwiki_core import LLMWikiError
 from research_notebook import NotebookConflict, _atomic, _file_lock, safe_file
-from research_records import list_records
+from research_records import _split_record_id, list_records, read_record
 
 LOCK = threading.RLock()
 MAX_BYTES = 8 * 1024 * 1024
 MAX_TASKS = 500
 STATUSES = {"planned", "active", "blocked", "done"}
 FIELDS = ("title", "status", "start", "end", "checkpoint", "next_step")
+# Snapshotted and compared alongside FIELDS, but validated separately below.
+LINK_FIELD = "record_id"
 
 
 def _now() -> str:
@@ -33,10 +35,32 @@ def _text(value, limit: int) -> str:
     return value.strip()
 
 
+def _link(value) -> str:
+    """Normalise a task's link to one 科研记录.
+
+    The link is a reference, never a copy: the note keeps owning its content, and
+    a note that is later deleted only leaves a stale id behind. Only the id format
+    is checked here, because this runs on read as well; whether the note currently
+    exists is checked on write.
+    """
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise LLMWikiError("关联笔记格式无效。")
+    value = value.strip()
+    if not value:
+        return ""
+    if len(value) > 240 or "\0" in value:
+        raise LLMWikiError("关联笔记格式无效。")
+    path, fragment = _split_record_id(value)
+    return f"{path}#{fragment}" if fragment else path
+
+
 def validate(value: dict) -> dict:
     if not isinstance(value, dict):
         raise LLMWikiError("任务必须是对象。")
     task = {key: _text(value.get(key, ""), 240 if key == "title" else 4000) for key in FIELDS}
+    task[LINK_FIELD] = _link(value.get(LINK_FIELD, ""))
     if not task["title"]:
         raise LLMWikiError("请填写任务名称。")
     if task["status"] not in STATUSES:
@@ -86,11 +110,19 @@ def _read(project: dict) -> tuple[Path, dict, str]:
     return path, data, hashlib.sha256(raw).hexdigest()
 
 
-def candidates(project: dict) -> list[dict]:
+def _all_records(project: dict) -> list[dict]:
+    return list_records(
+        project["source_root"],
+        state_root=project["state_root"],
+        max_records=500,
+        include_content=True,
+    ).get("records", [])
+
+
+def _legacy_candidates(records: list[dict]) -> list[dict]:
     """Legacy bullets are suggestions, never automatically new/finished tasks."""
-    result = list_records(project["source_root"], state_root=project["state_root"], max_records=500, include_content=True)
     items = []
-    for record in result.get("records", []):
+    for record in records:
         text = str(record.get("content", "")).replace("\r\n", "\n")
         bullets = []
         for section in ("尚未解决的问题", "下一步行动"):
@@ -108,19 +140,48 @@ def candidates(project: dict) -> list[dict]:
     return items
 
 
+def candidates(project: dict) -> list[dict]:
+    return _legacy_candidates(_all_records(project))
+
+
+def _link_targets(records: list[dict]) -> list[dict]:
+    """What a task may link to: manual notes and daily entries, newest path first."""
+    targets = [
+        {"id": str(record["id"]), "title": str(record.get("title") or record["id"])[:240]}
+        for record in records
+        if record.get("id")
+    ]
+    return sorted(targets, key=lambda item: item["id"], reverse=True)
+
+
 def load(project: dict) -> dict:
     with LOCK:
         _, data, revision = _read(project)
         ids = {t["id"] for t in data["tasks"]}
-        pending = [c for c in candidates(project) if c["id"] not in ids]
-        return {"ok": True, "revision": revision, "tasks": data["tasks"], "candidates": pending}
+        records = _all_records(project)
+        pending = [c for c in _legacy_candidates(records) if c["id"] not in ids]
+        return {"ok": True, "revision": revision, "tasks": data["tasks"],
+                "candidates": pending, "records": _link_targets(records)}
 
 
 def _event(task: dict, now: str) -> None:
     task["updated_at"] = now
-    task.setdefault("history", []).append({"at": now, **{k: task[k] for k in FIELDS}})
+    snapshot = {k: task.get(k, "") for k in FIELDS + (LINK_FIELD,)}
+    task.setdefault("history", []).append({"at": now, **snapshot})
     # Preserve the initial snapshot, plus the most recent 99 explicit edits.
     task["history"] = task["history"][:1] + task["history"][-99:] if len(task["history"]) > 100 else task["history"]
+
+
+def _require_record(project: dict, record_id: str) -> None:
+    """Unlinking is always allowed; linking must point at a note that exists.
+
+    Format is already checked by _link, which runs on read too. Deleting the note
+    afterwards leaves a stale id behind on purpose: the task keeps its history and
+    the UI reports the missing target instead of silently dropping the link.
+    """
+    if not record_id:
+        return
+    read_record(project["source_root"], record_id, state_root=project["state_root"])
 
 
 def update(project: dict, payload: dict) -> dict:
@@ -133,7 +194,9 @@ def update(project: dict, payload: dict) -> dict:
         action = payload.get("action")
         now = _now()
         if action == "create":
-            task = {**validate(payload.get("task")), "id": uuid4().hex, "created_at": now, "record_id": ""}
+            fields = validate(payload.get("task"))
+            _require_record(project, fields[LINK_FIELD])
+            task = {**fields, "id": uuid4().hex, "created_at": now}
             _event(task, now)
             data["tasks"].append(task)
         elif action == "update":
@@ -141,7 +204,9 @@ def update(project: dict, payload: dict) -> dict:
             if task is None:
                 raise LLMWikiError("未找到任务。")
             fields = validate(payload.get("task"))
-            if any(task[k] != fields[k] for k in FIELDS):
+            if fields[LINK_FIELD] != task.get(LINK_FIELD, ""):
+                _require_record(project, fields[LINK_FIELD])
+            if any(task.get(k, "") != fields[k] for k in FIELDS + (LINK_FIELD,)):
                 task.update(fields)
                 _event(task, now)
         elif action == "import":
@@ -172,6 +237,19 @@ def update(project: dict, payload: dict) -> dict:
         return {"ok": True, "revision": hashlib.sha256(raw).hexdigest(), "tasks": data["tasks"]}
 
 
+def active_tasks(project: dict, limit: int = 3) -> list[dict]:
+    """In-progress work for the project landing page.
+
+    Deliberately avoids the records scan that load() does: the landing page only
+    needs what the user was last doing, and must stay cheap to render.
+    """
+    with LOCK:
+        _, data, _ = _read(project)
+    active = [t for t in data["tasks"] if t["status"] in {"active", "blocked"}]
+    active.sort(key=lambda task: task.get("updated_at", ""), reverse=True)
+    return active[:limit]
+
+
 def page(home: str, project_id: str) -> str:
     from llmwiki_registry import get_project
     from research_web_ui import esc, layout
@@ -194,6 +272,7 @@ def page(home: str, project_id: str) -> str:
 <div class="progress-dates"><label>开始<input name="start" type="date"></label><label>结束<input name="end" type="date"></label></div>
 <label>上次做到哪<textarea name="checkpoint" rows="3" maxlength="4000" placeholder="如：已跑完基线，夜间数据还没验证；参数保存在 config.yaml"></textarea></label>
 <label>下一步<textarea name="next_step" rows="2" maxlength="4000" placeholder="如：先检查昨晚的实验日志，再补夜间数据"></textarea></label>
+<label>关联笔记<select name="record_id"><option value="">不关联</option></select></label>
 <div id="progress-source"></div><details id="progress-history"><summary>修改记录</summary><div></div></details>
 <p id="progress-error" role="alert" hidden></p><button type="button" id="progress-reload" hidden>读取最新版本，保留当前填写</button>
 <div class="progress-dialog-actions"><span class="meta">日期可都留空</span><button type="submit" class="primary">保存</button></div>

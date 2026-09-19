@@ -296,6 +296,39 @@ def home_page(home: str, params: dict[str, list[str]]) -> str:
     return layout("项目", body, active="home", home=home)
 
 
+def resume_block(project: dict, project_id: str) -> str:
+    """M-01: what the user was last doing, on the page they land on after picking a project.
+
+    Rendered server-side so it is there before any JavaScript runs, and so it still
+    works if the progress page itself fails to load.
+    """
+    from research_progress import active_tasks
+
+    tasks = active_tasks(project)
+    if not tasks:
+        return ""
+    items = []
+    for task in tasks:
+        note = task.get("record_id")
+        note_html = (
+            f'<a class="resume-note" href="{esc(recordurl(project_id, note))}">打开关联笔记</a>'
+            if note
+            else ""
+        )
+        step = task.get("next_step")
+        items.append(
+            '<li class="resume-item">'
+            f'<a class="resume-title" href="{esc(purl(project_id))}/todos#task-{task["id"]}">{esc(task["title"])}</a>'
+            f'<p class="meta">上次做到哪：{esc(task.get("checkpoint") or "还没记录停在哪，点击补充")}</p>'
+            f'<p class="meta">下一步：{esc(step) if step else "下次从这里继续"}</p>'
+            f"{note_html}</li>"
+        )
+    return (
+        '<section class="resume-block" aria-label="继续上次"><h2>继续上次</h2>'
+        '<ul class="resume-list">' + "".join(items) + "</ul></section>"
+    )
+
+
 def project_page(home: str, project_id: str, params: dict[str, list[str]]) -> str:
     project = get_project(project_id, home=home)["project"]
     state = project_status(project)
@@ -310,7 +343,7 @@ def project_page(home: str, project_id: str, params: dict[str, list[str]]) -> st
     prompt = f'请理解并维护研究项目“{project["name"]}”的 Wiki，检查变化，只更新受影响的页面，保留原有内容并说明依据。'
     help_html = f'<details class="subtle-details"><summary>如何更新知识库</summary><div class="prompt" id="project-prompt">{esc(prompt)}<button onclick="copyText(\'project-prompt\',this)">复制指令</button></div></details>'
     content = '<section class="knowledge-list"><div class="filter-bar"><input class="page-filter" type="search" aria-label="筛选知识页" oninput="filterPages(this)" placeholder="搜索知识页"><span class="meta">' + str(len(records)) + ' 篇</span></div><ul class="page-list">' + rows + '</ul><p class="filter-empty empty" hidden>没有匹配的知识页</p></section>' if rows else '<div class="empty"><h2>还没有知识页</h2><p>让 AI 助手理解项目，或将已有 Markdown 放入 Wiki。</p></div>'
-    body = notice(params) + page_header("知识库") + content + dirty_html + help_html
+    body = notice(params) + page_header("知识库") + resume_block(project, project_id) + content + dirty_html + help_html
     return layout(str(project["name"]), body, project_id=project_id, active="overview", home=home)
 
 

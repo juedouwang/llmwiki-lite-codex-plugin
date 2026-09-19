@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import research_progress as progress  # noqa: E402
 from llmwiki_core import LLMWikiError  # noqa: E402
 from llmwiki_registry import register_project  # noqa: E402
-from research_notebook import NotebookConflict  # noqa: E402
+from research_notebook import NotebookConflict, save as notebook_save  # noqa: E402
 from research_records import write_record  # noqa: E402
 from web_server import create_server  # noqa: E402
 
@@ -50,6 +50,53 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(task["start"], "")
         self.assertEqual(task["end"], "")
         self.assertNotIn("percent", task)
+
+    def note(self, note_id="a" * 32, title="阶段成果：配准误差 0.046"):
+        return notebook_save(
+            self.project,
+            note_id,
+            {"revision": "", "document": {"title": title, "tags": ["实验"],
+                                          "blocks": [{"id": "b1", "type": "markdown", "text": "改进 0.046 / 基线 0.082", "comments": []}]}},
+        )["path"]
+
+    def test_task_links_to_a_note_and_the_link_survives_a_reload_and_an_edit(self):
+        """M-01: 阶段成果用笔记记录，任务可以关联该笔记 —— 且编辑任务不会把关联弄丢。"""
+        record_id = self.note()
+        result = self.create(record_id=record_id, status="active")
+        task = result["tasks"][0]
+        self.assertEqual(task["record_id"], record_id)
+        self.assertEqual(progress.load(self.project)["tasks"][0]["record_id"], record_id)
+
+        # The bug this guards: editing unrelated fields used to drop the link,
+        # because record_id was not part of the fields written back.
+        edited = dict(task, checkpoint="夜间数据还没验证")
+        after = progress.update(self.project, {"action": "update", "revision": result["revision"], "id": task["id"], "task": edited})
+        self.assertEqual(after["tasks"][0]["record_id"], record_id)
+        self.assertEqual(after["tasks"][0]["checkpoint"], "夜间数据还没验证")
+        self.assertEqual(progress.load(self.project)["tasks"][0]["record_id"], record_id)
+
+    def test_link_change_is_kept_in_history_and_can_be_cleared(self):
+        record_id = self.note()
+        created = self.create(record_id=record_id)
+        task = created["tasks"][0]
+        cleared = progress.update(self.project, {"action": "update", "revision": created["revision"],
+                                                "id": task["id"], "task": dict(task, record_id="")})
+        self.assertEqual(cleared["tasks"][0]["record_id"], "")
+        # The first history snapshot keeps the link, so a wrong link can be traced back.
+        self.assertEqual(cleared["tasks"][0]["history"][0]["record_id"], record_id)
+
+    def test_link_must_point_at_an_existing_record_under_records(self):
+        before = progress.load(self.project)["tasks"]
+        for bad in ("records/manual/" + "b" * 32 + ".md", "records/secret.md", "../../etc/passwd", "records/../../x.md"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(LLMWikiError):
+                    self.create(record_id=bad)
+        self.assertEqual(progress.load(self.project)["tasks"], before)
+
+    def test_load_offers_notes_as_link_targets(self):
+        record_id = self.note(title="阶段成果：零点标定")
+        targets = {item["id"]: item["title"] for item in progress.load(self.project)["records"]}
+        self.assertEqual(targets.get(record_id), "阶段成果：零点标定")
 
     def test_legacy_migration_explicit_idempotent_and_preserves_source(self):
         write_record(self.project["source_root"], state_root=self.project["state_root"], title="讨论", understanding="原文", next_steps=["补数据", "跑消融"])
@@ -143,6 +190,56 @@ class ProgressTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join()
+    def test_project_landing_page_shows_where_you_left_off(self):
+        """M-01 / A-02: 次日打开项目就知道上次做到哪、下一步做什么，并且能点回去。"""
+        record_id = self.note()
+        created = self.create(record_id=record_id, status="active",
+                              checkpoint="基线已跑完，夜间数据没验证", next_step="检查误差分布")
+        task = created["tasks"][0]
+        progress.update(self.project, {"action": "create", "revision": created["revision"],
+                                       "task": {"title": "还没开始的想法", "status": "planned"}})
+
+        server = create_server(self.home, port=0)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            conn = HTTPConnection(f"127.0.0.1:{server.server_port}")
+            conn.request("GET", f"/project/{self.project['id']}")
+            response = conn.getresponse()
+            body = response.read().decode("utf-8")
+            conn.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join()
+
+        self.assertEqual(response.status, 200)
+        self.assertIn("继续上次", body)
+        self.assertIn("基线已跑完，夜间数据没验证", body)
+        self.assertIn("检查误差分布", body)
+        # Click-through back to the task itself, and to the note the task is about.
+        self.assertIn(f"/todos#task-{task['id']}", body)
+        self.assertIn(record_id, body)
+        # A planned task is not "where you left off".
+        self.assertNotIn("还没开始的想法", body)
+
+    def test_project_landing_page_omits_the_block_when_nothing_is_running(self):
+        self.create(title="以后再做", status="planned")
+        server = create_server(self.home, port=0)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            conn = HTTPConnection(f"127.0.0.1:{server.server_port}")
+            conn.request("GET", f"/project/{self.project['id']}")
+            response = conn.getresponse()
+            body = response.read().decode("utf-8")
+            conn.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join()
+        self.assertEqual(response.status, 200)
+        self.assertNotIn("继续上次", body)
 
 
 if __name__ == "__main__":
