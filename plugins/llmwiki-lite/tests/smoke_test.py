@@ -313,7 +313,22 @@ def test_web(
         require("/literature" in project_text, "project literature entry missing")
         for token in ("console-breadcrumbs", "console-nav-item is-active"):
             require(token in project_text, f"project console navigation missing {token}")
-        require(project_text.count('class="console-nav-icon"') == 7, "navigation icon count changed")
+        # Assert the project sidebar entries themselves rather than a brittle total
+        # count: adding a project page legitimately adds an entry.
+        for href in (
+            f"/project/{record['id']}/records",
+            f"/project/{record['id']}/literature",
+            f"/project/{record['id']}/code",
+            f"/project/{record['id']}/todos",
+            f"/project/{record['id']}",
+        ):
+            require(f'href="{href}"' in project_text, f"project sidebar entry missing: {href}")
+        nav_items = project_text.count('class="console-nav-item')
+        require(nav_items >= 5, "project console navigation entries missing")
+        require(
+            project_text.count('class="console-nav-icon"') == nav_items,
+            "every console nav item must carry a local SVG icon",
+        )
         require('stroke-width="1.6"' in project_text and 'focusable="false"' in project_text, "local decorative SVG icons missing")
         records_base = f"/project/{record['id']}/records"
         code, body, _ = request(connection, "GET", records_base)
@@ -359,8 +374,27 @@ def test_web(
         )
         require(code in {400, 404}, "research record path traversal was not rejected")
         literature_base = f"/project/{record['id']}/literature"
+        # /literature is the strict catalogue (M-04): it lists registered entries
+        # only, so a PDF sitting in the project does not appear here by itself.
         code, body, _ = request(connection, "GET", literature_base)
         library_text = body.decode("utf-8")
+        for token in (
+            "文献目录",
+            "console-project-switcher",
+        ):
+            require(code == 200 and token in library_text, f"literature catalogue missing {token}")
+        require(
+            "demo-paper.pdf" not in library_text,
+            "unregistered project PDF leaked into the strict literature catalogue",
+        )
+        require(
+            '<main class="literature-content">' not in library_text
+            and library_text.count("<main ") == 1,
+            "literature workspace contains nested main landmark",
+        )
+        # The previous file-scanning library stays reachable at /literature/old.
+        code, body, _ = request(connection, "GET", f"{literature_base}/old")
+        legacy_text = body.decode("utf-8")
         for token in (
             "demo-paper.pdf",
             "全部文献",
@@ -371,10 +405,10 @@ def test_web(
             "console-project-switcher",
             "data-literature-status",
         ):
-            require(code == 200 and token in library_text, f"literature library missing {token}")
+            require(code == 200 and token in legacy_text, f"legacy literature library missing {token}")
         require(
-            '<main class="literature-content">' not in library_text
-            and library_text.count("<main ") == 1,
+            '<main class="literature-content">' not in legacy_text
+            and legacy_text.count("<main ") == 1,
             "literature workspace contains nested main landmark",
         )
         paper_path = "references/demo-paper.pdf"

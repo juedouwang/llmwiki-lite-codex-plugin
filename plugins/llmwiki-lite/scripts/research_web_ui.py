@@ -186,6 +186,7 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
             + _console_nav_item(f"{purl(pid)}/records", "科研记录", "notebook", "records", active)
             + _console_nav_item(f"{purl(pid)}/literature", "文献", "papers", "literature", active)
             + _console_nav_item(purl(pid), "知识库", "book", "overview", "overview" if active == "pages" else active)
+            + _console_nav_item(f"{purl(pid)}/code", "代码图谱", "sidebar", "code", active)
             + _console_nav_item(f"{purl(pid)}/todos", "科研进度", "tasks", "todos", active)
             + '</div>'
         )

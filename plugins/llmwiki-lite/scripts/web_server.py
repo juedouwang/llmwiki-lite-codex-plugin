@@ -31,6 +31,15 @@ from literature_web import (  # noqa: E402
     literature_read_page,
     source_document_path,
 )
+from literature_catalog_web import (  # noqa: E402
+    literature_catalog_list_page,
+    literature_detail_page,
+    literature_migration_preview_page,
+    _scan_migration_candidates,
+    apply_migration,
+    rollback_migration,
+)
+from literature_catalog import LiteratureCatalog  # noqa: E402
 from llmwiki_registry import (  # noqa: E402
     get_project,
     llmwiki_home,
@@ -56,8 +65,248 @@ from research_web_ui import (  # noqa: E402
     settings_page,
     todos_page,
 )
+from git_service import (  # noqa: E402
+    detect_git_executable,
+    is_git_repository,
+)
+from git_graph import build_graph  # noqa: E402
 
 MAX_FORM_BYTES = 65_536
+
+
+def code_graph_page(home: str, project_id: str, params: dict) -> str:
+    """Render git commit graph page.
+
+    Args:
+        home: LLM Wiki home directory
+        project_id: Project ID
+        params: Query parameters
+
+    Returns:
+        HTML page
+    """
+    from research_web_ui import layout, esc, purl, ui_icon
+
+    project = get_project(project_id, home=home)["project"]
+    source_root = Path(str(project["source_root"]))
+
+    # Check if git repository
+    try:
+        git_exe = detect_git_executable()
+        is_git_repo = is_git_repository(source_root, git_exe)
+    except Exception:
+        is_git_repo = False
+
+    if not is_git_repo:
+        content = f'''
+        <div class="panel">
+            <h1>代码提交图谱</h1>
+            <div class="notice error">
+                <p>源项目不是 Git 仓库，无法显示提交图谱。</p>
+                <p>路径：{esc(source_root)}</p>
+            </div>
+            <a class="button" href="{purl(project_id)}">返回项目</a>
+        </div>
+        '''
+        return layout(f"{project['name']} - 代码图谱", content)
+
+    # Render page
+    content = f'''
+    <div class="page-header">
+        <div class="breadcrumb">
+            <a href="/">研究项目</a>
+            <span>/</span>
+            <a href="{purl(project_id)}">{esc(project['name'])}</a>
+            <span>/</span>
+            <span>代码提交图谱</span>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h1>代码提交图谱</h1>
+        </div>
+
+        <div id="graph-controls" class="graph-controls">
+            <label>
+                分支：
+                <select id="branch-select">
+                    <option value="HEAD">HEAD</option>
+                </select>
+            </label>
+            <button id="load-more" class="button secondary" style="display: none;">加载更多</button>
+            <span id="commit-count"></span>
+        </div>
+
+        <div id="graph-container" class="graph-container">
+            <svg id="commit-graph" width="100%" height="600"></svg>
+        </div>
+
+        <div id="commit-detail" class="commit-detail" style="display: none;">
+            <h3>提交详情</h3>
+            <div id="detail-content"></div>
+        </div>
+    </div>
+
+    <script src="/static/graph.js"></script>
+    <script>
+        const projectId = {json.dumps(project_id)};
+        const apiUrl = `/api/project/${{encodeURIComponent(projectId)}}/code/graph`;
+
+        let currentPage = 0;
+        let currentRef = "HEAD";
+        let hasMore = true;
+        let allNodes = [];
+
+        async function loadGraph(ref, page) {{
+            const url = `${{apiUrl}}?ref=${{encodeURIComponent(ref)}}&page=${{page}}&page_size=100`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data.ok) {{
+                alert(data.error || "加载失败");
+                return;
+            }}
+
+            // Update branches dropdown
+            if (page === 0 && data.branches) {{
+                const select = document.getElementById("branch-select");
+                select.innerHTML = data.branches.map(b =>
+                    `<option value="${{b.name}}" ${{b.current ? 'selected' : ''}}>${{b.name}}${{b.current ? ' (当前)' : ''}}</option>`
+                ).join('');
+            }}
+
+            // Append nodes
+            if (page === 0) {{
+                allNodes = data.nodes;
+            }} else {{
+                allNodes = allNodes.concat(data.nodes);
+            }}
+
+            hasMore = data.has_more;
+            document.getElementById("load-more").style.display = hasMore ? "inline-block" : "none";
+            document.getElementById("commit-count").textContent = `已加载 ${{allNodes.length}} 个提交`;
+
+            renderGraph(allNodes);
+        }}
+
+        function renderGraph(nodes) {{
+            const svg = document.getElementById("commit-graph");
+            const width = svg.clientWidth;
+            const rowHeight = 40;
+            const laneWidth = 30;
+            const height = Math.max(600, nodes.length * rowHeight + 50);
+
+            svg.setAttribute("height", height);
+            svg.innerHTML = "";
+
+            // Draw lanes and connections
+            const maxLane = Math.max(...nodes.map(n => n.lane), 0);
+
+            // Draw edges (parent-child connections)
+            nodes.forEach(node => {{
+                const x1 = 50 + node.lane * laneWidth;
+                const y1 = 30 + node.row * rowHeight;
+
+                node.parents.forEach(parentOid => {{
+                    const parent = nodes.find(n => n.oid === parentOid);
+                    if (parent) {{
+                        const x2 = 50 + parent.lane * laneWidth;
+                        const y2 = 30 + parent.row * rowHeight;
+
+                        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                        const d = `M ${{x1}} ${{y1}} L ${{x2}} ${{y2}}`;
+                        path.setAttribute("d", d);
+                        path.setAttribute("stroke", getLaneColor(parent.lane));
+                        path.setAttribute("stroke-width", "2");
+                        path.setAttribute("fill", "none");
+                        svg.appendChild(path);
+                    }}
+                }});
+            }});
+
+            // Draw commit nodes
+            nodes.forEach(node => {{
+                const x = 50 + node.lane * laneWidth;
+                const y = 30 + node.row * rowHeight;
+
+                // Node circle
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute("cx", x);
+                circle.setAttribute("cy", y);
+                circle.setAttribute("r", "6");
+                circle.setAttribute("fill", getLaneColor(node.lane));
+                circle.setAttribute("stroke", "#fff");
+                circle.setAttribute("stroke-width", "2");
+                circle.style.cursor = "pointer";
+                circle.addEventListener("click", () => showCommitDetail(node));
+                svg.appendChild(circle);
+
+                // Commit message
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", x + 15);
+                text.setAttribute("y", y + 4);
+                text.setAttribute("font-size", "13");
+                text.setAttribute("fill", "#1a1a1a");
+                text.textContent = `${{node.short_oid}} ${{node.subject.substring(0, 60)}}`;
+                text.style.cursor = "pointer";
+                text.addEventListener("click", () => showCommitDetail(node));
+                svg.appendChild(text);
+
+                // Branch labels
+                if (node.branches.length > 0) {{
+                    node.branches.forEach((branch, i) => {{
+                        const branchLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                        branchLabel.setAttribute("x", width - 100);
+                        branchLabel.setAttribute("y", y + 4);
+                        branchLabel.setAttribute("font-size", "11");
+                        branchLabel.setAttribute("fill", "#0066cc");
+                        branchLabel.setAttribute("font-weight", "bold");
+                        branchLabel.textContent = branch;
+                        svg.appendChild(branchLabel);
+                    }});
+                }}
+            }});
+        }}
+
+        function getLaneColor(lane) {{
+            const colors = ["#0066cc", "#00aa66", "#cc6600", "#cc0066", "#6600cc", "#00ccaa"];
+            return colors[lane % colors.length];
+        }}
+
+        function showCommitDetail(node) {{
+            const detail = document.getElementById("commit-detail");
+            const content = document.getElementById("detail-content");
+
+            content.innerHTML = `
+                <p><strong>提交：</strong> ${{node.oid}}</p>
+                <p><strong>消息：</strong> ${{node.subject}}</p>
+                <p><strong>作者：</strong> ${{node.author_name}} &lt;${{node.author_email}}&gt;</p>
+                <p><strong>时间：</strong> ${{new Date(node.committed_at).toLocaleString('zh-CN')}}</p>
+                <p><strong>分支：</strong> ${{node.branches.join(", ") || "无"}}</p>
+                <p><strong>父提交：</strong> ${{node.parents.length || "无"}}</p>
+            `;
+
+            detail.style.display = "block";
+        }}
+
+        document.getElementById("branch-select").addEventListener("change", (e) => {{
+            currentRef = e.target.value;
+            currentPage = 0;
+            loadGraph(currentRef, currentPage);
+        }});
+
+        document.getElementById("load-more").addEventListener("click", () => {{
+            currentPage++;
+            loadGraph(currentRef, currentPage);
+        }});
+
+        // Initial load
+        loadGraph("HEAD", 0);
+    </script>
+    '''
+
+    return layout(f"{project['name']} - 代码图谱", content)
 
 
 def redirect(handler: BaseHTTPRequestHandler, location: str) -> None:
@@ -270,6 +519,22 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     return
                 match = re.fullmatch(r"/project/([^/]+)/literature", parsed.path)
                 if match:
+                    self.html(literature_catalog_list_page(home, unquote(match.group(1)), params))
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/literature/catalog", parsed.path)
+                if match:
+                    self.html(literature_catalog_list_page(home, unquote(match.group(1)), params))
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/literature/item/([a-f0-9]{32})", parsed.path)
+                if match:
+                    self.html(literature_detail_page(home, unquote(match.group(1)), match.group(2)))
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/literature/migrate", parsed.path)
+                if match:
+                    self.html(literature_migration_preview_page(home, unquote(match.group(1))))
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/literature/old", parsed.path)
+                if match:
                     self.html(literature_library_page(home, unquote(match.group(1))))
                     return
                 match = re.fullmatch(r"/project/([^/]+)/records", parsed.path)
@@ -279,6 +544,33 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 match = re.fullmatch(r"/project/([^/]+)/todos", parsed.path)
                 if match:
                     self.html(todos_page(home, unquote(match.group(1)), params))
+                    return
+                match = re.fullmatch(r"/project/([^/]+)/code", parsed.path)
+                if match:
+                    self.html(code_graph_page(home, unquote(match.group(1)), params))
+                    return
+                match = re.fullmatch(r"/api/project/([^/]+)/code/graph", parsed.path)
+                if match:
+                    try:
+                        project = get_project(unquote(match[1]), home=home)["project"]
+                        source_root = Path(str(project["source_root"]))
+
+                        # Check if it's a git repository
+                        git_exe = detect_git_executable()
+                        if not is_git_repository(source_root, git_exe):
+                            self.json({"ok": False, "error": "Not a git repository"}, 400)
+                            return
+
+                        # Get parameters
+                        ref = (params.get("ref") or ["HEAD"])[-1]
+                        page = int((params.get("page") or ["0"])[-1])
+                        page_size = int((params.get("page_size") or ["100"])[-1])
+
+                        # Build graph
+                        result = build_graph(source_root, git_exe, ref=ref, page=page, page_size=page_size)
+                        self.json(result)
+                    except (LLMWikiError, ValueError, OSError) as exc:
+                        self.json({"ok": False, "error": str(exc)}, 400)
                     return
                 match = re.fullmatch(r"/project/([^/]+)/records/(.+)", parsed.path)
                 if match:
@@ -369,6 +661,153 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 )
 
         def notebook_post(self, path: str) -> None:
+            match = re.fullmatch(r"/api/project/([^/]+)/notebook/([a-f0-9]{32})", path)
+            if not match:
+                self.json({"ok": False, "error": "请求路径无效。"}, 400)
+                return
+            try:
+                project = get_project(unquote(match[1]), home=home)["project"]
+                form = self.form()
+                notebook.save(
+                    project,
+                    match[2],
+                    content=form.get("content", ""),
+                    title=form.get("title", ""),
+                    tags=form.get("tags", ""),
+                    expected_revision=form.get("expected_revision") or None,
+                )
+                self.json({"ok": True})
+            except notebook.NotebookConflict as exc:
+                self.json({"ok": False, "error": str(exc)}, 409)
+            except (LLMWikiError, ValueError, OSError) as exc:
+                self.json({"ok": False, "error": str(exc)}, 400)
+
+        def literature_add_post(self, project_id: str) -> None:
+            """Handle adding a literature item."""
+            try:
+                project = get_project(project_id, home=home)["project"]
+                wiki_root = Path(str(project["wiki_root"]))
+                catalog = LiteratureCatalog(wiki_root)
+
+                form = self.form()
+                input_text = form.get("input", "").strip()
+                expected_revision = form.get("revision")
+
+                if not input_text:
+                    redirect(self, msgurl(purl(project_id) + "/literature", error="请输入文献信息"))
+                    return
+
+                # Parse input: DOI, arXiv, URL, or title
+                doi = None
+                arxiv = None
+                url = None
+                title = input_text
+
+                if input_text.startswith("10.") and "/" in input_text:
+                    doi = input_text
+                    title = f"Paper with DOI {doi}"
+                elif "arxiv.org" in input_text.lower() or input_text.startswith("arXiv:"):
+                    arxiv = input_text
+                    title = f"Paper on arXiv {arxiv}"
+                elif input_text.startswith("http://") or input_text.startswith("https://"):
+                    url = input_text
+                    title = f"Paper at {url[:50]}..."
+
+                result = catalog.create_item(
+                    title=title,
+                    doi=doi,
+                    arxiv=arxiv,
+                    urls=[{"url": url, "kind": "publisher"}] if url else [],
+                    identity_status="unverified",
+                    collection_source="manual",
+                    expected_revision=expected_revision
+                )
+
+                if result.get("warnings"):
+                    redirect(self, msgurl(purl(project_id) + "/literature", error=str(result["warnings"][0])))
+                else:
+                    item_id = result["item"]["id"]
+                    redirect(self, msgurl(purl(project_id) + f"/literature/item/{item_id}", message="文献已添加"))
+
+            except RevisionConflictError:
+                redirect(self, msgurl(purl(project_id) + "/literature", error="目录已被其他操作修改，请刷新后重试"))
+            except Exception as exc:
+                redirect(self, msgurl(purl(project_id) + "/literature", error=str(exc)))
+
+        def literature_delete_post(self, project_id: str, item_id: str) -> None:
+            """Handle removing a literature item."""
+            try:
+                project = get_project(project_id, home=home)["project"]
+                wiki_root = Path(str(project["wiki_root"]))
+                catalog = LiteratureCatalog(wiki_root)
+
+                result = catalog.remove_item(item_id)
+
+                if result["ok"]:
+                    redirect(self, msgurl(purl(project_id) + "/literature", message="文献已移除"))
+                else:
+                    redirect(self, msgurl(purl(project_id) + "/literature", error="移除失败"))
+
+            except Exception as exc:
+                redirect(self, msgurl(purl(project_id) + "/literature", error=str(exc)))
+
+        def literature_migrate_apply_post(self, project_id: str) -> None:
+            """Handle applying migration."""
+            try:
+                project = get_project(project_id, home=home)["project"]
+                wiki_root = Path(str(project["wiki_root"]))
+                source_root = Path(str(project["source_root"]))
+                catalog = LiteratureCatalog(wiki_root)
+
+                form = self.form()
+
+                # Get selected paths from form (multiple checkboxes)
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length).decode("utf-8")
+                parsed = parse_qs(body, keep_blank_values=True)
+                selected_paths = parsed.get("import_path", [])
+
+                if not selected_paths:
+                    redirect(self, msgurl(purl(project_id) + "/literature/migrate", error="未选择任何文件"))
+                    return
+
+                result = apply_migration(catalog, source_root, selected_paths, "migration")
+
+                if result["ok"]:
+                    message = f"已导入 {len(result['imported'])} 篇文献"
+                    redirect(self, msgurl(purl(project_id) + "/literature", message=message))
+                else:
+                    errors = ", ".join(e["error"] for e in result["errors"][:3])
+                    redirect(self, msgurl(purl(project_id) + "/literature/migrate", error=errors))
+
+            except Exception as exc:
+                redirect(self, msgurl(purl(project_id) + "/literature/migrate", error=str(exc)))
+
+        def literature_migrate_rollback_post(self, project_id: str) -> None:
+            """Handle rolling back migration."""
+            try:
+                project = get_project(project_id, home=home)["project"]
+                wiki_root = Path(str(project["wiki_root"]))
+                catalog = LiteratureCatalog(wiki_root)
+
+                form = self.form()
+                migration_id = form.get("migration_id", "")
+
+                if not migration_id:
+                    redirect(self, msgurl(purl(project_id) + "/literature", error="未指定迁移ID"))
+                    return
+
+                result = rollback_migration(catalog, migration_id)
+
+                if result["ok"]:
+                    redirect(self, msgurl(purl(project_id) + "/literature", message="迁移已回滚"))
+                else:
+                    redirect(self, msgurl(purl(project_id) + "/literature", error=result.get("error", "回滚失败")))
+
+            except Exception as exc:
+                redirect(self, msgurl(purl(project_id) + "/literature", error=str(exc)))
+
+        def notebook_post(self, path: str) -> None:
             # Browsers cannot forge this JSON/header combination cross-origin.
             # Reject rebinding Host values as well; never enable CORS for local files.
             host = self.headers.get("Host", "")
@@ -416,6 +855,24 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             if parsed.path.startswith("/api/project/"):
+                # Check for literature API routes first
+                match = re.fullmatch(r"/api/project/([^/]+)/literature/add", parsed.path)
+                if match:
+                    self.literature_add_post(unquote(match.group(1)))
+                    return
+                match = re.fullmatch(r"/api/project/([^/]+)/literature/item/([a-f0-9]{32})/delete", parsed.path)
+                if match:
+                    self.literature_delete_post(unquote(match.group(1)), match.group(2))
+                    return
+                match = re.fullmatch(r"/api/project/([^/]+)/literature/migrate/apply", parsed.path)
+                if match:
+                    self.literature_migrate_apply_post(unquote(match.group(1)))
+                    return
+                match = re.fullmatch(r"/api/project/([^/]+)/literature/migrate/rollback", parsed.path)
+                if match:
+                    self.literature_migrate_rollback_post(unquote(match.group(1)))
+                    return
+                # Fallback to notebook routes
                 self.notebook_post(parsed.path)
                 return
             try:
