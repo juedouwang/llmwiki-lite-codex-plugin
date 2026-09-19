@@ -660,28 +660,6 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     400,
                 )
 
-        def notebook_post(self, path: str) -> None:
-            match = re.fullmatch(r"/api/project/([^/]+)/notebook/([a-f0-9]{32})", path)
-            if not match:
-                self.json({"ok": False, "error": "请求路径无效。"}, 400)
-                return
-            try:
-                project = get_project(unquote(match[1]), home=home)["project"]
-                form = self.form()
-                notebook.save(
-                    project,
-                    match[2],
-                    content=form.get("content", ""),
-                    title=form.get("title", ""),
-                    tags=form.get("tags", ""),
-                    expected_revision=form.get("expected_revision") or None,
-                )
-                self.json({"ok": True})
-            except notebook.NotebookConflict as exc:
-                self.json({"ok": False, "error": str(exc)}, 409)
-            except (LLMWikiError, ValueError, OSError) as exc:
-                self.json({"ok": False, "error": str(exc)}, 400)
-
         def literature_add_post(self, project_id: str) -> None:
             """Handle adding a literature item."""
             try:
