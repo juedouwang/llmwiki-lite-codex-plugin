@@ -794,9 +794,56 @@ def main() -> int:
     import unittest
     from test_notebook import NotebookTests
     from test_progress import ProgressTests
-    suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(case) for case in (NotebookTests, ProgressTests))
+    from test_literature_catalog import (
+        TestCatalogOperations as LitCatalogOperations,
+    )
+    from test_literature_catalog import (
+        TestIdentityConflict as LitIdentityConflict,
+    )
+    from test_literature_catalog import (
+        TestLITF1Fixture as LitFixtureF1,
+    )
+    from test_literature_catalog import (
+        TestNormalization as LitNormalization,
+    )
+    from test_literature_catalog import (
+        TestValidation as LitValidation,
+    )
+    from test_git_service import TestGitDetection, TestGitFixtureF1, TestGitRemotes
+    from test_git_graph import TestGitGraphFixtureF1
+    from test_git_recovery import TestGitRecovery
+    from test_git_operations import GitOperationsTests
+    from test_git_merge import GitMergeTests
+    from test_acceptance_git_graph import GitGraphAcceptanceTests
+
+    # Suites that are known to be red are deliberately not listed here, because a
+    # failing suite would make this gate useless for everything else. They are
+    # tracked in the commits that introduced them and are expected back in as their
+    # fixes land:
+    #   test_literature_catalog_web.py  - LIT-F1 migration scan, idempotence,
+    #                                     rollback and user-removal
+    #   test_workbench_store.py         - TestJobLeasing
+    #   test_git_revert_restore.py      - the reset guards and restore-file cases
+    cases = (
+        NotebookTests,
+        ProgressTests,
+        LitNormalization,
+        LitValidation,
+        LitIdentityConflict,
+        LitCatalogOperations,
+        LitFixtureF1,
+        TestGitDetection,
+        TestGitFixtureF1,
+        TestGitRemotes,
+        TestGitGraphFixtureF1,
+        TestGitRecovery,
+        GitOperationsTests,
+        GitMergeTests,
+        GitGraphAcceptanceTests,
+    )
+    suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(case) for case in cases)
     result = unittest.TextTestRunner(verbosity=1).run(suite)
-    require(result.wasSuccessful(), "Notebook regression tests failed")
+    require(result.wasSuccessful(), "Regression tests failed")
     print("LLM Wiki smoke test passed")
     return 0
 
