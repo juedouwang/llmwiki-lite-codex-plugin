@@ -323,6 +323,11 @@
   root.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('Files')){event.preventDefault();root.classList.add('nb-dragging');}});
   root.addEventListener('dragleave',event=>{if(!root.contains(event.relatedTarget))root.classList.remove('nb-dragging');});
   root.addEventListener('drop',event=>{root.classList.remove('nb-dragging');if(event.dataTransfer.files.length){event.preventDefault();const cell=event.target.closest('.nb-cell');if(cell)activeBlock=cell.dataset.id;uploadFiles(Array.from(event.dataTransfer.files),emptyImageTarget());}});
+  /* A drop that misses the note used to hand the file to the browser, which replaced
+     the editor with the image. Swallow file drops anywhere outside the note instead. */
+  ['dragover','drop'].forEach(type=>document.addEventListener(type,event=>{
+    if(event.dataTransfer?.types.includes('Files')&&!root.contains(event.target))event.preventDefault();
+  }));
   function closeInserts() {root.querySelectorAll('.nb-insert-menu').forEach(m=>m.hidden=true);root.querySelectorAll('.nb-plus').forEach(b=>b.setAttribute('aria-expanded','false'));}
   document.addEventListener('click',event=>{if(!event.target.closest('.nb-insert'))closeInserts();});
   document.addEventListener('keydown',event=>{

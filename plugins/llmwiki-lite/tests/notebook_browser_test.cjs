@@ -139,6 +139,14 @@ const os = require('node:os'), path = require('node:path');
   await pastePage.evaluate(b64=>{const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],'drop.png',{type:'image/png'}));document.querySelector('.nb-cell:last-child .nb-input').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt}));},png.toString('base64'));
   await pastePage.waitForFunction(()=>document.querySelectorAll('.nb-image').length===4);
   assert.equal(await pastePage.locator('.nb-cell').count(),4);
+  // A file dropped outside the note used to navigate the browser to the image.
+  const outsideDrop=await pastePage.evaluate(b64=>{
+    const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],'outside.png',{type:'image/png'}));
+    const event=new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt});
+    document.body.dispatchEvent(event);return event.defaultPrevented;
+  },png.toString('base64'));
+  assert.equal(outsideDrop,true,'a file dropped outside the note must not navigate away');
+  assert.equal(await pastePage.locator('.nb-image').count(),4);
   await pastePage.waitForFunction(()=>document.querySelector('#nb-status').textContent==='已保存');
   await pastePage.reload();await pastePage.locator('.nb-image').first().waitFor();assert.equal(await pastePage.locator('.nb-image').count(),4);
   await pastePage.close();
