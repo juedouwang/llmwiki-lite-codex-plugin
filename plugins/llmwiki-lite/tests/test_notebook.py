@@ -246,6 +246,18 @@ class NotebookTests(unittest.TestCase):
             self.save(rev=nb._revision(raw))
         self.assertEqual(path.read_bytes(), raw)
 
+    def test_external_rewrite_without_marker_is_a_conflict_not_corruption(self):
+        """A file rewritten by another program is a conflict with a way out, not damage."""
+        self.save()
+        path = nb._path(self.project, self.nid)
+        path.write_text("# 别的工具重写了这篇笔记\n\n正文还在。\n", encoding="utf-8")
+        raw = path.read_bytes()
+        with self.assertRaises(nb.NotebookConflict) as caught:
+            nb.load(self.project, self.nid)
+        self.assertIn("另存为新笔记", str(caught.exception))
+        self.assertNotIn("损坏", str(caught.exception))
+        self.assertEqual(path.read_bytes(), raw)
+
     def test_parallel_writers(self):
         first = self.save()
 

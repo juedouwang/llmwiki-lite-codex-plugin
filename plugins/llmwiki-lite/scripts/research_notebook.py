@@ -178,7 +178,13 @@ def _decode(raw: bytes) -> dict:
         text = raw.decode("utf-8").replace("\r\n", "\n")
         match = MARKER.search(text)
         if not match:
-            raise ValueError("missing state")
+            # The note is there but no longer carries our state marker, so something
+            # outside this editor rewrote it. That is a conflict with a way out, not
+            # corruption: reporting it as corruption told the user nothing they could
+            # act on and hid the "save as a new note" route. The file is left alone.
+            raise NotebookConflict(
+                "这篇笔记已被编辑器以外的程序改写，块编辑数据无法恢复。原 Markdown 保持不变，可将当前内容另存为新笔记。"
+            )
         state = json.loads(base64.b64decode(match[1], validate=True))
         if state["body_sha"] != _revision(text[: match.start()].encode("utf-8")):
             raise NotebookConflict(
