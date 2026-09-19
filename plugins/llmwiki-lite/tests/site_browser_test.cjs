@@ -12,7 +12,10 @@ const os=require('node:os');
     const origin=process.argv[2],base=`/project/${process.argv[3]}`;
     async function go(route){const r=await page.goto(origin+route);assert.equal(r.status(),200,route);assert.equal(await page.locator('main').count(),1);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`overflow: ${route} ${JSON.stringify(await page.evaluate(()=>Array.from(document.querySelectorAll("body *")).filter(e=>e.getBoundingClientRect().right>innerWidth&&!e.closest("#progress-timeline")).map(e=>({tag:e.tagName,id:e.id,cls:e.className,width:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right}))))}`);}
     await go(base+'/todos');
-    assert.equal(await page.locator('.console-nav-icon svg').count(),7);
+    // Assert the invariant rather than a fixed total: adding a project page adds one.
+    const navItems=await page.locator('.console-nav-item').count();
+    assert.ok(navItems>=5,'project console navigation entries missing');
+    assert.equal(await page.locator('.console-nav-icon svg').count(),navItems,'every console nav item must carry exactly one local icon');
     assert.equal(await page.locator('.console-nav-icon').allTextContents().then(items=>items.join('')),'');
     assert.equal(await page.locator('.console-nav-icon svg').first().getAttribute('aria-hidden'),'true');
     await page.screenshot({path:path.join(os.tmpdir(),'llmwiki-icons-todos.png')});
@@ -80,11 +83,18 @@ const os=require('node:os');
     await page.setViewportSize({width:390,height:844});await page.reload();await page.locator('#progress-resume').waitFor();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.screenshot({path:path.join(os.tmpdir(),'llmwiki-progress-mobile.png')});await page.setViewportSize({width:1440,height:960});
+    // /literature is the strict catalogue (M-04): a PDF sitting in the project must not
+    // list itself, and entries are added deliberately. The file-scanning library it
+    // replaces stays reachable at /literature/old and keeps its own coverage below.
     await go(base+'/literature');
+    assert.equal(await page.locator('#literature-list').count(),1);
+    assert.ok(!(await page.locator('#literature-list').innerText()).includes('demo-paper.pdf'),'unregistered project PDF leaked into the catalogue');
+    assert.equal(await page.locator('#add-literature').count(),1);
+    await go(base+'/literature/old');
     assert.equal(await page.locator('.paper-notes[open],.paper-prompt[open],#literature-flow[open]').count(),0);
     await page.getByLabel('阅读状态').selectOption('unread');assert.equal(await page.locator('[data-literature-card]:visible').count(),0);await page.getByLabel('阅读状态').selectOption('all');
     await page.getByLabel('文献类型').selectOption({index:1});assert.equal(await page.locator('[data-literature-card]:visible').count(),1);
-    await page.getByRole('link',{name:'添加文献',exact:true}).click();assert.equal(await page.locator('#literature-flow').getAttribute('open'),'');await page.locator('#literature-flow>summary').click();
+    await page.getByRole('link',{name:'添加文献',exact:true}).click();await page.locator('#literature-flow[open]').waitFor();await page.locator('#literature-flow>summary').click();
     const fav=page.locator('.fav-button').first();await fav.click();assert.equal(await fav.locator('svg').count(),1);assert.equal(await fav.getAttribute('aria-pressed'),'true');await page.reload();assert.equal(await page.locator('.fav-button').first().getAttribute('aria-pressed'),'true');
     await page.locator('input[type=search]').fill('no-match');assert.equal(await page.locator('[data-literature-card]:visible').count(),0);
     assert.equal(await page.locator('#literature-filter-empty').isVisible(),true);await page.locator('input[type=search]').fill('');
