@@ -459,6 +459,45 @@ def restore(project: dict, note_id: str, payload: dict) -> dict:
                 "path": f"records/manual/{note_id}.md"}
 
 
+def remove(project: dict, note_id: str, payload: dict) -> dict:
+    """Move one explicitly confirmed manual note, never its images or history."""
+    path = _path(project, note_id)
+    with LOCK, _file_lock(project, note_id):
+        if not path.is_file():
+            raise NotebookConflict("笔记已被删除，请刷新列表。")
+        raw = path.read_bytes()
+        revision = _revision(raw)
+        if payload.get("revision") != revision:
+            raise NotebookConflict("笔记已在其他窗口修改，请刷新后再确认删除。")
+        archive = safe_file(Path(project["wiki_root"]), f".notebook-trash/{note_id}/{revision}.snapshot")
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        if path.read_bytes() != raw:
+            raise NotebookConflict("笔记发生变化，已停止删除。")
+        os.replace(path, archive)
+        return {"ok": True, "revision": revision}
+
+
+def undo_remove(project: dict, note_id: str, payload: dict) -> dict:
+    """Restore original bytes and timestamps without replacing an existing note."""
+    path = _path(project, note_id)
+    with LOCK, _file_lock(project, note_id):
+        revision = payload.get("revision", "")
+        if not isinstance(revision, str) or not re.fullmatch(r"[a-f0-9]{64}", revision):
+            raise LLMWikiError("撤销版本无效。")
+        archive = safe_file(Path(project["wiki_root"]), f".notebook-trash/{note_id}/{revision}.snapshot")
+        if path.exists():
+            raise NotebookConflict("同名笔记已存在，撤销不会覆盖它。")
+        if not archive.is_file() or _revision(archive.read_bytes()) != revision:
+            raise NotebookConflict("删除记录已变化或已经恢复，请刷新列表。")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(archive, path)
+        except FileExistsError as exc:
+            raise NotebookConflict("同名笔记已存在，撤销不会覆盖它。") from exc
+        archive.unlink()
+        return {"ok": True, "revision": revision}
+
+
 def history(project: dict, note_id: str, revision: str | None = None, *, continuous_view: bool = False) -> dict:
     _path(project, note_id)
     root = Path(project["wiki_root"])

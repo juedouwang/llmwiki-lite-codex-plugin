@@ -1,25 +1,37 @@
-/* Real project APIs only. No background network sync, synthetic history or writes on load. */
+/* Real project APIs only. Display snapshots never authorize writes or remote sync. */
 (() => {
   'use strict';
   const root = document.getElementById('code-app');
-  if (!root) return;
-  const $ = id => document.getElementById(`code-${id}`);
+  if (!root || root.dataset.codeInitialized) return;
+  root.dataset.codeInitialized = 'true';
+  // A retained page may be detached while another project has the same element IDs.
+  const $ = id => root.querySelector(`#code-${id}`);
   const endpoint = root.dataset.api;
   const projectId = root.dataset.projectId;
   const PAGE_SIZE = 100;
   const ROW_HEIGHT = 68;
+  const DETAIL_CACHE_SIZE = 48;
+  const PREFETCH_COUNT = 6;
   const state = {
     status: null, graph: null, nodes: [], selected: null, detail: null,
     detailOpen: true, modal: null, writing: false, refresh: 0, graphRequest: 0,
-    detailRequest: 0, mergeRequest: 0, alive: true, merge: null,
-    conflictId: null, drafts: new Map(), mergePending: false,
+    detailRequest: 0, mergeRequest: 0, alive: true, active: true, lifecycle: 0, merge: null,
+    conflictId: null, drafts: new Map(), mergePending: false, statusError: false,
   };
   const reads = new Map();
+  // These maps belong to this project root, not to whichever project is visible.
+  // Only immutable OID details are memoized; status/graph/previews always use the API.
+  const detailCache = new Map();
+  const detailReads = new Map();
+  const diffCache = new Map(), diffReads = new Map();
+  const globalListeners = new AbortController();
+  const listen = (target, name, handler) => target.addEventListener(name, handler, {signal: globalListeners.signal});
+  let prefetchTimer = null, prefetchRun = null;
   const fileKey = f => JSON.stringify([f.old_path || '', f.path]);
   const short = oid => String(oid || '').slice(0, 10);
   const text = value => value === null || value === undefined ? '' : String(value);
   const list = value => Array.isArray(value) ? value : [];
-  const samePage = () => state.alive && root.isConnected && root.dataset.projectId === projectId;
+  const samePage = () => state.alive && state.active && root.isConnected && root.dataset.projectId === projectId;
 
   function el(tag, value, className) {
     const node = document.createElement(tag);
@@ -66,6 +78,7 @@
   }
   async function api(path, {method = 'GET', body, key} = {}) {
     if (!samePage()) throw fail('页面已切换。', 'page_changed');
+    const lifecycle = state.lifecycle;
     const controller = new AbortController();
     if (key) { reads.get(key)?.abort(); reads.set(key, controller); }
     try {
@@ -79,7 +92,7 @@
       let data;
       try { data = await response.json(); }
       catch (_) { throw fail(`服务器未返回有效 JSON（HTTP ${response.status}），请检查接口接入。`); }
-      if (!samePage()) throw fail('页面已切换。', 'page_changed');
+      if (!samePage() || lifecycle !== state.lifecycle) throw fail('页面已切换。', 'page_changed');
       if (!response.ok || data?.ok === false) {
         const error = fail(data?.message || `请求未完成（HTTP ${response.status}）。`, data?.code || 'request_failed');
         error.data = data; throw error;
@@ -107,6 +120,7 @@
 
   function writeReason(action) {
     if (!state.status) return '尚未读取仓库状态。';
+    if (state.statusError) return '当前状态未能核对，请刷新后再操作。';
     if (!writable()) return text(state.status.capabilities?.reason) || '当前仓库只读。';
     if (state.writing) return '当前写操作尚未结束。';
     if (state.status.ongoing) return '当前有未完成的 Git 操作，请先处理或取消。';
@@ -159,7 +173,7 @@
       ? `${remote?.name || '跟踪远端'}/${upstream.branch} · 缓存${s.last_fetch_at ? `检查于 ${formatTime(s.last_fetch_at)}` : '尚未检查'}`
       : '尚无跟踪目标 · 不自动检查远端';
     const menu = $('branch-menu');
-    const menuSignature = JSON.stringify([s.branches, head, state.writing, s.capabilities, s.ongoing]);
+    const menuSignature = JSON.stringify([s.branches, head, state.writing, state.statusError, s.capabilities, s.ongoing]);
     if (menu.dataset.signature !== menuSignature) {
       menu.dataset.signature = menuSignature; menu.replaceChildren();
       for (const branch of list(s.branches)) {
@@ -182,21 +196,47 @@
       if ($(id)) { $(id).disabled = Boolean(writeReason(action)); $(id).title = writeReason(action); }
     }
   }
+  function graphTime(value) {
+    const date = new Date(typeof value === 'number' ? value * (value < 1e12 ? 1000 : 1) : value);
+    if (Number.isNaN(date.getTime())) return '时间未提供';
+    const today = new Date(), yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+    if (date.toDateString() === today.toDateString()) return compactTime(date);
+    if (date.toDateString() === yesterday.toDateString()) return '昨天';
+    return date.toLocaleDateString('zh-CN', {year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric', month: 'numeric', day: 'numeric'});
+  }
+  function compactTime(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '时间未提供' : date.toLocaleTimeString('zh-CN',
+      {hour12: false, hour: '2-digit', minute: '2-digit'});
+  }
   function formatTime(value) {
     if (!value) return '时间未提供';
     const date = new Date(typeof value === 'number' ? value * (value < 1e12 ? 1000 : 1) : value);
     return Number.isNaN(date.getTime()) ? text(value) : date.toLocaleString('zh-CN', {hour12: false});
   }
 
+  function refreshBusy(busy) {
+    const control = $('refresh');
+    control.disabled = busy;
+    control.setAttribute('aria-busy', String(busy));
+    control.setAttribute('aria-label', busy ? '正在刷新版本记录' : '刷新版本记录');
+    control.title = busy ? '正在刷新版本记录' : '刷新版本记录';
+    // Keep the server-rendered SVG intact, including when a retained page leaves.
+  }
   async function refresh() {
+    if (!samePage()) return false;
+    clearTimeout(prefetchTimer);
     const serial = ++state.refresh;
-    $('refresh').disabled = true; $('refresh').textContent = '读取中…';
+    root.dataset.snapshotState = 'checking';
+    const showingSnapshot = Boolean(state.status && !state.writing && !state.modal);
+    if (showingSnapshot) feedback('显示上次读取结果，正在后台核对本地仓库…');
+    refreshBusy(true);
     const statusJob = (async () => {
       try {
         const s = await api('/status', {key: 'status'});
         if (serial !== state.refresh) return;
         if (!s?.head || !Array.isArray(s.files) || !s.capabilities) throw fail('状态接口字段不完整。');
-        state.status = s; renderStatus();
+        state.status = s; state.statusError = false; renderStatus();
         if (!state.selected && s.head.oid && state.detailOpen) selectCommit(s.head.oid);
         if (s.ongoing) await refreshMerge();
         else if (!state.mergePending) {
@@ -205,19 +245,29 @@
         return true;
       } catch (error) {
         if (!ignored(error) && serial === state.refresh) {
-          state.status = null; feedback(errorText(error), true);
-          $('change-title').textContent = '无法读取工作区';
-          $('change-note').textContent = errorText(error);
-          for (const id of ['save', 'merge', 'pull', 'push']) $(id).disabled = true;
-          $('branch-menu').replaceChildren();
-          $('branch-label').textContent = '状态不可用';
+          state.statusError = true;
+          feedback((state.status ? '显示上次读取结果；当前状态未能核对。' : '') + errorText(error), true);
+          if (state.status) renderStatus();
+          else {
+            $('change-title').textContent = '无法读取工作区';
+            $('change-note').textContent = errorText(error);
+            for (const id of ['save', 'merge', 'pull', 'push']) $(id).disabled = true;
+            $('branch-menu').replaceChildren();
+            $('branch-label').textContent = '状态不可用';
+          }
           if (state.modal) updateConfirm(state.modal);
         }
       }
     })();
     const [statusRead, graphRead] = await Promise.all([statusJob, loadGraph(false)]);
-    if (serial === state.refresh) { $('refresh').disabled = false; $('refresh').textContent = '刷新'; }
-    return serial === state.refresh && statusRead === true && graphRead === true;
+    const fresh = serial === state.refresh && statusRead === true && graphRead === true;
+    if (serial === state.refresh && samePage()) {
+      refreshBusy(false);
+      root.dataset.snapshotState = fresh ? 'current' : 'stale';
+      if (fresh && showingSnapshot) feedback('本地状态已核对 · 操作仍需预览确认。');
+      schedulePrefetch();
+    }
+    return fresh;
   }
   async function loadGraph(append) {
     const serial = ++state.graphRequest;
@@ -239,11 +289,13 @@
         state.nodes = append ? [...state.nodes, ...graph.nodes] : graph.nodes;
         state.graph = {...graph, page};
       }
-      renderGraph();
+      // Stable snapshots retain the existing rows, scroll position and focus.
+      if (append || !prior || prior.snapshot_id !== graph.snapshot_id ||
+          JSON.stringify([prior.branches, prior.refs, prior.head_oid]) !==
+          JSON.stringify([state.graph.branches, state.graph.refs, state.graph.head_oid])) renderGraph();
       if (!state.selected && state.detailOpen && graph.head_oid) selectCommit(graph.head_oid);
-      else if (!append && state.selected && prior?.snapshot_id !== graph.snapshot_id && state.detailOpen) {
-        selectCommit(state.selected);
-      }
+      // A changed branch/HEAD cannot change an already-read commit OID. Do not
+      // blank and re-fetch the user's selected detail when the graph refreshes.
       return true;
     } catch (error) {
       if (!ignored(error) && serial === state.graphRequest) {
@@ -303,10 +355,11 @@
     const fragment = document.createDocumentFragment();
     for (const node of state.nodes) {
       const point = position.get(node.oid);
-      if (node.oid === state.graph.head_oid) svg.append(svgElement('circle', {
-        cx: point.x, cy: point.y, r: 8, fill: 'var(--panel)', stroke: color(node.lane), 'stroke-width': 1.4,
+      svg.append(svgElement('circle', {
+        cx: point.x, cy: point.y, r: 8, fill: 'var(--panel)', stroke: color(node.lane), 'stroke-width': 1,
+        'data-selected-oid': node.oid, style: state.detailOpen && state.selected === node.oid ? '' : 'display:none',
       }));
-      svg.append(svgElement('circle', {cx: point.x, cy: point.y, r: 4.5, fill: 'var(--panel)', stroke: color(node.lane), 'stroke-width': 2}));
+      svg.append(svgElement('circle', {cx: point.x, cy: point.y, r: 4.5, fill: color(node.lane), stroke: 'var(--panel)', 'stroke-width': 1.5}));
       const row = button(null, () => selectCommit(node.oid), null, 'code-commit');
       row.dataset.oid = node.oid; row.setAttribute('aria-pressed', String(state.detailOpen && state.selected === node.oid));
       row.setAttribute('aria-label', `查看版本：${node.subject || '无标题版本'} · ${short(node.oid)}`);
@@ -321,21 +374,73 @@
       for (const tag of list(node.tags)) meta.append(el('span', `标签 ${text(tag)}`, 'code-tag'));
       meta.append(el('span', node.short_oid || short(node.oid), 'code-hash'));
       copy.append(title, meta);
-      const time = el('span', formatTime(node.committed_at_iso || node.committed_at), 'code-commit-time');
+      const stamp = node.committed_at_iso || node.committed_at;
+      const time = el('span', graphTime(stamp), 'code-commit-time'); time.title = formatTime(stamp);
       row.append(copy, time); fragment.append(row);
     }
     graph.append(svg, fragment);
+  }
+  function cachedDetail(oid) {
+    const value = detailCache.get(oid);
+    if (value) { detailCache.delete(oid); detailCache.set(oid, value); }
+    return value;
+  }
+  function readDetail(oid) {
+    const cached = cachedDetail(oid);
+    if (cached) return Promise.resolve(cached);
+    if (detailReads.has(oid)) return detailReads.get(oid);
+    const request = (async () => {
+      const detail = await api('/commit/' + encodeURIComponent(oid), {key: `commit:${oid}`});
+      if (detail?.oid !== oid || !Array.isArray(detail.files)) throw fail('版本详情与所选版本不一致。');
+      detailCache.set(oid, detail);
+      while (detailCache.size > DETAIL_CACHE_SIZE) detailCache.delete(detailCache.keys().next().value);
+      return detail;
+    })();
+    detailReads.set(oid, request);
+    const forget = () => { if (detailReads.get(oid) === request) detailReads.delete(oid); };
+    request.then(forget, forget);
+    return request;
+  }
+  function schedulePrefetch() {
+    clearTimeout(prefetchTimer);
+    if (!samePage() || document.hidden || state.writing || state.mergePending ||
+        state.modal || !state.status || !state.graph || !state.detail ||
+        reads.has('status') || reads.has('graph') || diffReads.size || prefetchRun) return;
+    // Let both initial reads and the selected detail finish first. One local GET
+    // at a time, at most six visible versions; never fetch/push a Git remote.
+    prefetchTimer = setTimeout(async () => {
+      const run = {}; prefetchRun = run;
+      try {
+        for (const node of state.nodes.slice(0, PREFETCH_COUNT)) {
+          if (prefetchRun !== run || !samePage() || document.hidden || state.writing || state.mergePending ||
+              state.modal || reads.has('status') || reads.has('graph') || detailReads.size || diffReads.size) break;
+          try {
+            const detail = await readDetail(node.oid);
+            const first = detail.files[0];
+            if (first && samePage() && prefetchRun === run && !state.writing && !state.modal &&
+                !reads.has('status') && !reads.has('graph')) {
+              await readCommitDiff({kind: 'commit', oid: detail.oid, file_id: first.file_id});
+            }
+          } catch (_) { /* Optional prefetch never replaces visible content or errors. */ }
+        }
+      } finally { if (prefetchRun === run) prefetchRun = null; }
+    }, 200);
   }
   async function selectCommit(oid) {
     const serial = ++state.detailRequest;
     state.selected = oid; state.detailOpen = true;
     $('workspace').classList.remove('code-no-detail'); $('detail').hidden = false;
-    $('detail').replaceChildren(detailHeading(), el('p', '读取版本…', 'code-muted'));
     renderGraphSelection();
+    const cached = cachedDetail(oid);
+    if (cached) {
+      // Render in this click's task, without awaiting any network or timer.
+      state.detail = cached; renderDetail(cached); schedulePrefetch(); return;
+    }
+    state.detail = null;
+    $('detail').replaceChildren(detailHeading(), el('p', '读取版本…', 'code-muted'));
     try {
-      const detail = await api('/commit/' + encodeURIComponent(oid), {key: 'detail'});
-      if (serial !== state.detailRequest || !state.detailOpen) return;
-      if (detail?.oid !== oid || !Array.isArray(detail.files)) throw fail('版本详情与所选版本不一致。');
+      const detail = await readDetail(oid);
+      if (!samePage() || serial !== state.detailRequest || !state.detailOpen) return;
       state.detail = detail; renderDetail(detail);
     } catch (error) {
       if (!ignored(error) && serial === state.detailRequest) {
@@ -345,9 +450,12 @@
           $('detail').append(button('查看当前 HEAD', () => selectCommit(state.status.head.oid), 'view-head', 'code-outline'));
         }
       }
-    }
+    } finally { schedulePrefetch(); }
   }
   function renderGraphSelection() {
+    for (const circle of $('graph').querySelectorAll('[data-selected-oid]')) {
+      circle.style.display = state.detailOpen && state.selected === circle.dataset.selectedOid ? '' : 'none';
+    }
     for (const row of $('graph').querySelectorAll('[data-oid]')) {
       row.setAttribute('aria-pressed', String(state.detailOpen && state.selected === row.dataset.oid));
     }
@@ -355,35 +463,62 @@
   function detailHeading() {
     const heading = el('div', undefined, 'code-detail-heading'); heading.append(el('span', '版本详情'));
     const close = button('×', () => {
-      state.detailOpen = false; ++state.detailRequest; reads.get('detail')?.abort();
+      state.detailOpen = false; ++state.detailRequest;
       $('detail').hidden = true; $('workspace').classList.add('code-no-detail'); renderGraphSelection();
       [...$('graph').querySelectorAll('[data-oid]')].find(row => row.dataset.oid === state.selected)?.focus();
-    }, 'close-detail'); close.setAttribute('aria-label', '关闭版本详情'); heading.append(close); return heading;
+    }, 'close-detail');
+    const closeIcon = $('dialog-close').querySelector('svg');
+    if (closeIcon) close.replaceChildren(closeIcon.cloneNode(true));
+    close.setAttribute('aria-label', '关闭版本详情'); heading.append(close); return heading;
   }
   function renderDetail(detail) {
     const container = $('detail'); container.replaceChildren(detailHeading());
     container.append(el('h2', detail.subject || '无标题版本', 'code-version-title'));
     const metadata = el('details', undefined, 'code-metadata');
-    metadata.id = 'code-commit-metadata'; metadata.open = true;
-    metadata.append(el('summary', `${short(detail.oid)} · 完整元数据`));
+    metadata.id = 'code-commit-metadata'; metadata.open = false;
+    const summary = el('summary', undefined, 'code-version-meta');
+    summary.title = '查看完整版本信息';
+    summary.setAttribute('aria-label', '查看完整版本信息');
+    const timestamp = el('time', compactTime(detail.committed_at));
+    timestamp.dateTime = detail.committed_at || ''; timestamp.title = formatTime(detail.committed_at);
+    const byline = el('span', `${detail.author_name || '作者未提供'} · `); byline.append(timestamp);
+    summary.append(el('span', detail.oid.slice(0, 7), 'code-hash'), byline);
+    metadata.append(summary);
     const author = [detail.author_name, detail.author_email ? `<${detail.author_email}>` : ''].filter(Boolean).join(' ');
     const dl = el('dl');
-    for (const [label, value, id] of [['完整哈希', detail.oid, 'oid'], ['作者', author || '作者未提供', 'author'],
+    for (const [label, value, id] of [['本地仓库', detail.repository_path || '未提供', 'repository'], ['完整哈希', detail.oid, 'oid'], ['作者', author || '作者未提供', 'author'],
       ['提交时间', formatTime(detail.committed_at), 'time'], ['父版本', list(detail.parents).join('\n') || '首个版本（无父版本）', 'parents'],
-      ['说明', detail.message, 'message']]) {
+      ['说明', detail.message, 'message'], ['比较基准', detail.parents?.length > 1
+        ? '合并版本 · 差异默认相对第一父版本' : detail.parents?.length ? '差异相对父版本' : '首个版本 · 差异相对空树', 'base']]) {
       const valueNode = el('dd', value); valueNode.id = `code-commit-${id}`;
       dl.append(el('dt', label), valueNode);
     }
     metadata.append(dl); container.append(metadata);
-    container.append(el('p', detail.parents?.length > 1 ? '合并版本 · 差异默认相对第一父版本'
-      : detail.parents?.length ? '差异相对父版本' : '首个版本 · 差异相对空树', 'code-muted'));
-    const diff = diffBox();
-    container.append(el('h3', `改动文件 · ${detail.files.length}`));
-    container.append(fileList(detail.files, f => loadDiff(diff, {kind: 'commit', oid: detail.oid, file_id: f.file_id}, f)), diff);
+    const diff = diffBox(); diff.classList.add('code-commit-diff');
+    const label = el('div', undefined, 'code-files-label');
+    label.append(el('span', '改动文件'), el('span', `${detail.files.length} 个`));
+    container.append(label, fileList(detail.files,
+      f => loadDiff(diff, {kind: 'commit', oid: detail.oid, file_id: f.file_id}, f), {compact: true}), diff);
     const actions = el('div', undefined, 'code-detail-actions');
     actions.append(button('从此创建分支', () => openAction('create_branch', {target_oid: detail.oid}), 'create-from'),
       button('恢复到此版本', () => openAction('restore', {target_oid: detail.oid}), 'restore', 'code-outline'));
+    actions.querySelector('#code-create-from').prepend(detailActionIcon('branch'));
+    actions.querySelector('#code-restore').prepend(detailActionIcon('restore'));
     container.append(actions); renderStatus();
+    // The approved detail view opens the first real file, not an empty prompt.
+    container.querySelector('.code-file')?.click();
+  }
+  function detailActionIcon(name) {
+    const svg = svgElement('svg', {class: 'ui-icon', width: 20, height: 20, viewBox: '0 0 24 24',
+      fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round',
+      'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false'});
+    if (name === 'branch') {
+      svg.append(svgElement('path', {d: 'M6 7v10M9 20a9 9 0 0 0 9-9M18 16v6M15 19h6'}));
+      for (const [cx, cy] of [[6, 4], [6, 20], [18, 8]]) svg.append(svgElement('circle', {cx, cy, r: 3}));
+    } else if (name === 'file') {
+      svg.append(svgElement('path', {d: 'M14 2H6a2 2 0 0 0-2 2v6m16 0V8l-6-6v6h6M20 14v6a2 2 0 0 1-2 2h-6M5 14l-3 3 3 3M9 14l3 3-3 3'}));
+    } else svg.append(svgElement('path', {d: 'M3 10a9 9 0 1 1 2.8 8.5M3 4v6h6'}));
+    return svg;
   }
   function fileStatus(file) {
     const raw = text(file.status);
@@ -396,7 +531,7 @@
     if (index && ![' ', '?', '.'].includes(index)) label += working && ![' ', '.', '?'].includes(working) ? ' · 部分暂存' : ' · 已暂存';
     return label;
   }
-  function fileList(items, select, {selection, onChange} = {}) {
+  function fileList(items, select, {selection, onChange, compact = false} = {}) {
     const wrap = el('div', undefined, 'code-preview-files');
     let shown = 0;
     const rows = el('div', undefined, 'code-file-list');
@@ -433,51 +568,131 @@
         control.dataset.fileId = file.file_id;
         control.setAttribute('aria-pressed', 'false');
         const path = file.old_path && file.old_path !== file.path ? `${file.old_path} → ${file.path}` : file.path;
-        control.append(el('span', path), el('span', file.resolved === undefined ? fileStatus(file) : file.resolved ? '已解决' : fileStatus(file), 'code-file-status'));
+        if (compact) {
+          control.classList.add('code-commit-file');
+          control.title = `${path} · ${fileStatus(file)}`;
+          control.append(detailActionIcon('file'), el('span', path, 'code-file-path'));
+          if (file.binary) control.append(el('span', '二进制', 'code-file-status'));
+          else if (Number.isInteger(file.additions) && Number.isInteger(file.deletions)) {
+            control.append(el('b', `+${file.additions}`, 'code-added'), el('b', `−${file.deletions}`, 'code-removed'));
+          }
+        } else control.append(el('span', path), el('span', file.resolved === undefined ? fileStatus(file) : file.resolved ? '已解决' : fileStatus(file), 'code-file-status'));
         row.append(control); batch.append(row);
       }
       shown = Math.min(items.length, shown + PAGE_SIZE); rows.append(batch); more.hidden = shown >= items.length;
       more.textContent = `显示更多文件（${shown} / ${items.length}）`;
       if (selection) sync(); else count.textContent = `显示 ${shown} / ${items.length}`;
     }
-    wrap.append(rows, more); if (!selection) wrap.append(count);
+    wrap.append(rows, more); if (!selection && !compact) wrap.append(count);
     if (!items.length) rows.append(el('p', '没有文件变化。', 'code-muted'));
     append(); return wrap;
   }
   function diffBox() {
     const box = el('div', undefined, 'code-diff-box'); box.append(el('p', '选择文件查看真实差异。', 'code-muted')); return box;
   }
+  function readCommitDiff(params) {
+    const key = JSON.stringify([params.oid, params.file_id]);
+    if (diffCache.has(key)) {
+      const data = diffCache.get(key); diffCache.delete(key); diffCache.set(key, data);
+      return Promise.resolve(data);
+    }
+    if (diffReads.has(key)) return diffReads.get(key);
+    const request = (async () => {
+      const data = await api('/diff' + query(params), {key: `diff:${key}`});
+      diffCache.set(key, data);
+      while (diffCache.size > DETAIL_CACHE_SIZE) diffCache.delete(diffCache.keys().next().value);
+      return data;
+    })();
+    diffReads.set(key, request);
+    const forget = () => { if (diffReads.get(key) === request) diffReads.delete(key); };
+    request.then(forget, forget);
+    return request;
+  }
+  function renderDiff(box, data, file) {
+    box.setAttribute('aria-busy', 'false');
+    const compact = box.classList.contains('code-commit-diff');
+    box.replaceChildren();
+    if (!compact) box.append(el('p', file.path));
+    if (compact && typeof data.text === 'string' && data.text && !data.binary && data.supported !== false) {
+      const tools = el('div', undefined, 'code-diff-tools');
+      const expand = button('放大', () => {
+        const m = openModal(file.path + ' · 代码差异', 'diff');
+        const large = diffBox(); large.classList.add('code-expanded-diff');
+        renderDiff(large, data, file); m.body.append(large);
+        m.cancel.textContent = '关闭';
+      }, 'expand-diff');
+      expand.title = '放大查看代码差异'; expand.setAttribute('aria-label', '放大查看代码差异');
+      tools.append(expand); box.append(tools);
+    }
+    if (data.binary) box.append(el('p', '二进制文件，无法展示文本差异。', 'code-muted'));
+    else if (data.supported === false) box.append(el('p', '暂不支持此编码或文件类型，无法展示文本差异。', 'code-muted'));
+    if (data.truncated) box.append(el('p', '差异过大，以下内容已截断，不是完整差异。', 'code-notice'));
+    if (typeof data.text === 'string' && !data.binary) {
+      const pre = el('pre', undefined, 'code-diff'); pre.tabIndex = 0; pre.setAttribute('aria-label', `${file.path} 的差异`);
+      const fragment = document.createDocumentFragment();
+      let lines = data.text.split('\n');
+      const patch = compact && lines.some(line => /^@@ /.test(line));
+      if (patch) {
+        // Inline replacements pair removed/added lines; keep every real line and hunk boundary.
+        const paired = []; let inside = false;
+        for (let i = 0; i < lines.length;) {
+          if (/^@@ /.test(lines[i])) inside = true;
+          if (!inside || !lines[i].startsWith('-')) { paired.push(lines[i++]); continue; }
+          const removed = [], added = [];
+          while (i < lines.length && lines[i].startsWith('-')) removed.push(lines[i++]);
+          while (i < lines.length && lines[i].startsWith('+')) added.push(lines[i++]);
+          for (let n = 0; n < Math.max(removed.length, added.length); n++) {
+            if (n < removed.length) paired.push(removed[n]);
+            if (n < added.length) paired.push(added[n]);
+          }
+        }
+        lines = paired;
+      }
+      let hunk = false, hunkCount = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (i === lines.length - 1 && !line) continue;
+        if (patch && /^@@ /.test(line)) {
+          hunk = true;
+          // Keep later range headers so separate hunks never appear contiguous.
+          if (++hunkCount > 1) fragment.append(el('span', line, 'code-diff-line code-diff-range'));
+          continue;
+        }
+        if (patch && !hunk) continue;
+        const added = line.startsWith('+') && (patch || !line.startsWith('+++'));
+        const removed = line.startsWith('-') && (patch || !line.startsWith('---'));
+        fragment.append(el('span', line, 'code-diff-line' + (added ? ' code-diff-add' : removed ? ' code-diff-del' : '')));
+      }
+      pre.append(fragment); box.append(pre);
+      if (!data.text && data.supported !== false) box.append(el('p', '没有文本差异。', 'code-muted'));
+    }
+  }
   async function loadDiff(box, params, file, modal = null) {
+    box.pendingDiff = {params, file};
     const request = (box.request || 0) + 1; box.request = request;
+    const immutable = params.kind === 'commit';
+    const cached = immutable && diffCache.get(JSON.stringify([params.oid, params.file_id]));
+    if (cached) { renderDiff(box, cached, file); return; }
+    box.setAttribute('aria-busy', 'true');
     box.replaceChildren(el('p', `${file.path} · 读取差异…`, 'code-muted'));
     try {
-      const data = await api('/diff' + query(params));
+      // Preview/worktree diffs remain fresh; only fixed commit-file pairs cache.
+      const data = await (immutable ? readCommitDiff(params) : api('/diff' + query(params)));
       if (!box.isConnected || box.request !== request || (modal && state.modal !== modal)) return;
-      box.replaceChildren(el('p', file.path));
-      if (data.binary) box.append(el('p', '二进制文件，无法展示文本差异。', 'code-muted'));
-      else if (data.supported === false) box.append(el('p', '暂不支持此编码或文件类型，无法展示文本差异。', 'code-muted'));
-      if (data.truncated) box.append(el('p', '差异过大，以下内容已截断，不是完整差异。', 'code-notice'));
-      if (typeof data.text === 'string' && !data.binary) {
-        const pre = el('pre', undefined, 'code-diff'); pre.tabIndex = 0; pre.setAttribute('aria-label', `${file.path} 的差异`);
-        const fragment = document.createDocumentFragment();
-        for (const line of data.text.split('\n')) {
-          fragment.append(el('span', line, 'code-diff-line' + (line.startsWith('+') && !line.startsWith('+++') ? ' code-diff-add'
-            : line.startsWith('-') && !line.startsWith('---') ? ' code-diff-del' : '')));
-        }
-        pre.append(fragment); box.append(pre);
-        if (!data.text && data.supported !== false) box.append(el('p', '没有文本差异。', 'code-muted'));
-      }
+      renderDiff(box, data, file);
     } catch (error) {
       if (!ignored(error) && box.isConnected && box.request === request) {
+        box.setAttribute('aria-busy', 'false');
         box.replaceChildren(el('p', errorText(error), 'code-notice'));
         if (modal && ['state_changed', 'preview_expired'].includes(error.code)) invalidatePreview(modal);
       }
-    }
+    } finally { schedulePrefetch(); }
   }
 
   function openModal(title, kind) {
     if (state.modal?.pending) return state.modal;
     const dialog = $('dialog');
+    dialog.classList.toggle('code-dialog-diff', kind === 'diff');
     const trigger = dialog.open ? state.modal?.trigger : document.activeElement;
     if (state.modal?.timer) clearTimeout(state.modal.timer);
     const m = {kind, trigger, body: $('dialog-body'), actions: $('dialog-actions'), pending: false,
@@ -781,6 +996,7 @@
       }
       renderStatus(); updateMergeButtons();
       if (completed && refreshed && modal && state.modal === modal) closeModal();
+      schedulePrefetch();
     }
     return refreshed;
   }
@@ -935,7 +1151,7 @@
     return list(state.merge.files).some(f => state.drafts.get(`${state.merge.operation_id}:${f.file_id}`)?.dirty);
   }
   function mergeWritable() {
-    return Boolean(writable() && state.merge && !state.merge.external && state.merge.operation_id
+    return Boolean(writable() && !state.statusError && state.merge && !state.merge.external && state.merge.operation_id
       && state.merge.expected_revision !== undefined && !state.writing && !state.mergePending);
   }
   function renderMerge() {
@@ -1181,20 +1397,83 @@
   function refreshOnFocus() {
     if (document.hidden || !samePage() || state.writing || state.mergePending) return;
     clearTimeout(focusRefresh);
-    focusRefresh = setTimeout(() => { if (!state.writing && !state.mergePending) refresh(); }, 120);
+    focusRefresh = setTimeout(() => {
+      // A focus event must not abort an in-flight read. Explicit/write refreshes still re-read.
+      if (samePage() && !document.hidden && !state.writing && !state.mergePending &&
+          !reads.has('status') && !reads.has('graph')) refresh();
+    }, 120);
   }
-  window.addEventListener('focus', refreshOnFocus);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshOnFocus(); });
-  window.addEventListener('beforeunload', event => {
-    const m = state.modal;
-    if (state.writing || mergeHasDrafts() || m?.message?.value.trim() || m?.name?.value.trim()) {
-      event.preventDefault(); event.returnValue = '';
+  listen(window, 'focus', refreshOnFocus);
+  listen(document, 'visibilitychange', () => { if (!document.hidden) refreshOnFocus(); });
+  function hasUnsavedWork() {
+    if (state.writing || state.mergePending || state.modal?.pending || mergeHasDrafts()) return true;
+    if (!state.modal) return false;
+    return [...$('dialog-body').querySelectorAll('input,textarea,select')].some(node => {
+      if (node.type === 'checkbox' || node.type === 'radio') return node.checked;
+      return Boolean(node.value?.trim());
+    });
+  }
+  function resumeDetailRead() {
+    if (!state.detailOpen) return;
+    if (state.selected && !state.detail) { selectCommit(state.selected); return; }
+    const box = $('detail').querySelector('.code-diff-box[aria-busy="true"]');
+    if (box?.pendingDiff) loadDiff(box, box.pendingDiff.params, box.pendingDiff.file);
+  }
+  function ownsNavigation(event) {
+    const main = event.detail?.root;
+    return main === root || Boolean(main?.contains(root));
+  }
+  function suspendReads() {
+    state.active = false; ++state.lifecycle;
+    ++state.refresh; ++state.graphRequest; ++state.detailRequest; ++state.mergeRequest;
+    reads.forEach(controller => controller.abort()); reads.clear(); detailReads.clear(); diffReads.clear();
+    clearTimeout(focusRefresh); clearTimeout(prefetchTimer); prefetchRun = null;
+    if (state.modal?.timer) clearTimeout(state.modal.timer);
+    refreshBusy(false);
+    $('graph-more').disabled = false; $('graph-more').textContent = '加载更早版本';
+    root.dataset.snapshotState = 'stale';
+  }
+  listen(document, 'workbench:before-leave', event => {
+    if (!ownsNavigation(event) || !hasUnsavedWork()) return;
+    event.preventDefault();
+    feedback(state.writing || state.mergePending || state.modal?.pending
+      ? 'Git 操作尚未结束，请等待实际结果后再离开。'
+      : '请先完成或明确取消当前 Git 输入，再离开此栏目。', true,
+      state.modal ? $('dialog-feedback') : $('feedback'));
+  });
+  listen(document, 'workbench:leave', event => {
+    if (!ownsNavigation(event)) return;
+    if (state.modal && !hasUnsavedWork()) closeModal();
+    suspendReads();
+  });
+  listen(document, 'workbench:enter', event => {
+    if (!ownsNavigation(event)) return;
+    state.active = true;
+    if (!samePage()) return;
+    // DOM and immutable details are already visible; validate mutable data behind
+    // them. Never treat a restored display snapshot as a write preview.
+    if (event.detail.restored) {
+      resumeDetailRead();
+      refreshOnFocus();
     }
   });
-  window.addEventListener('pagehide', () => {
-    state.alive = false; reads.forEach(controller => controller.abort());
-    clearTimeout(focusRefresh); if (state.modal?.timer) clearTimeout(state.modal.timer);
+  listen(document, 'workbench:dispose', event => {
+    if (!ownsNavigation(event)) return;
+    state.alive = false; suspendReads(); globalListeners.abort(); detailCache.clear(); diffCache.clear();
   });
-  window.addEventListener('pageshow', event => { if (event.persisted) { state.alive = true; refresh(); } });
+  listen(window, 'beforeunload', event => {
+    if (samePage() && hasUnsavedWork()) { event.preventDefault(); event.returnValue = ''; }
+  });
+  // BFCache suspends the whole document, including detached cached roots.
+  // Only workbench:dispose permanently kills a root and removes its listeners.
+  listen(window, 'pagehide', suspendReads);
+  listen(window, 'pageshow', event => {
+    if (!event.persisted) return;
+    state.alive = true;
+    if (!root.isConnected) return;
+    state.active = true;
+    resumeDetailRead();
+    refresh();
+  });
   refresh();
 })();

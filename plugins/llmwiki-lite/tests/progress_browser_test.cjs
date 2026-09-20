@@ -68,7 +68,7 @@ const path=require('node:path');
     },extra||{});
 
     /* ---------------------------------------------------------------- A-06 ---
-     * Multi-project entry points: A's list row points at its rank-1 task, the home
+     * Multi-project entry points: A's list row points at its rank-1 task, the progress
      * page shows the top three, and B neither borrows A's context nor dresses a
      * not-started task up as "what you were doing". */
     const seeded=await summary(cfg.projectId);
@@ -76,7 +76,7 @@ const path=require('node:path');
     assert.ok(expected.length>=4,`夹具需要至少四个进行中任务，实际 ${expected.length}`);
     const initialDone=seeded.tasks.filter(t=>t.status==='done').length;
 
-    await page.goto(origin+'/');
+    await page.goto(origin+'/projects');
     const rowA=page.locator('.project-row').filter({has:page.locator(`a.project-row-main[href="${base}/todos"]`)});
     assert.equal(await rowA.count(),1,'项目列表缺少 A 的行');
     assert.equal(await rowA.locator('.project-row-task').count(),1,'A 有进行中任务时应有一条最近任务入口');
@@ -84,7 +84,7 @@ const path=require('node:path');
     assert.ok((await rowA.locator('.project-row-task').getAttribute('href')).endsWith(`${base}/todos#task-${expected[0].id}`),'列表摘要应直达该任务');
     // A nested anchor cannot exist in a parsed DOM: the parser hoists the inner <a> out.
     // The invariant therefore has to be checked against the served markup.
-    const listHtml=await (await context.request.get(origin+'/')).text();
+    const listHtml=await (await context.request.get(origin+'/projects')).text();
     const mainLink=/<a class="project-row-main"[\s\S]*?<\/a>/.exec(listHtml);
     assert.ok(mainLink,'项目列表缺少项目主链接');
     assert.ok(!/class="project-row-task"/.test(mainLink[0]),'项目列表不得出现嵌套链接');
@@ -98,26 +98,27 @@ const path=require('node:path');
     await page.locator('#progress-close').click();
     await page.locator('#progress-dialog').waitFor({state:'hidden'});
 
-    await page.goto(origin+base);
-    await page.locator('.resume-block[data-project] .resume-item').first().waitFor();
-    assert.equal(await page.locator('.resume-block .resume-item').count(),3,'首页继续上次最多三个任务');
+    await todos();
+    await page.locator('#progress-resume .progress-resume-item').first().waitFor();
+    assert.equal(await page.locator('#progress-resume .progress-resume-item').count(),3,'科研进度继续上次最多三个任务');
     assert.deepEqual(
-      (await page.locator('.resume-block .resume-title').allTextContents()).map(t=>t.trim()),
+      (await page.locator('#progress-resume .progress-resume-item strong').allTextContents()).map(t=>t.trim()),
       expected.slice(0,3).map(t=>t.title),
-      '首页继续上次的排序应为最后修改时间降序'
+      '继续上次的排序应为最后修改时间降序'
     );
-    // The same block is rendered server-side so it survives a progress page that fails
-    // to load; the client re-renders it from the summary call, so the served markup is
-    // checked separately from the live DOM.
-    const homeHtml=await (await context.request.get(origin+base)).text();
-    assert.equal((homeHtml.match(/class="resume-item"/g)||[]).length,3,'服务端渲染的首页继续上次也应为三个任务');
-    await page.goto(origin+other);
-    await page.locator('.resume-block[data-project]').waitFor({state:'attached'});
-    assert.equal(await page.locator('.resume-block .resume-item').count(),0,'B 没有进行中任务时不应渲染继续上次');
-    assert.equal(await page.locator('.resume-block[data-project]').evaluate(el=>el.hidden),true,'B 的继续上次必须隐藏');
-    const otherHtml=await (await context.request.get(origin+other)).text();
-    assert.match(otherHtml,/class="resume-block"[^>]*hidden/,'B 的服务端输出就应是隐藏的空块');
-    assert.ok(!otherHtml.includes('resume-item'),'B 的服务端输出不应含继续上次条目');
+    // Keep server-rendered continuation before the summary request, now on the
+    // progress landing page. Knowledge stays dedicated to project understanding.
+    const homeHtml=await (await context.request.get(origin+base+'/todos')).text();
+    assert.equal((homeHtml.match(/class="progress-resume-item"/g)||[]).length,3,'服务端继续上次也应为三个任务');
+    await page.goto(origin+base);
+    assert.equal(await page.locator('#progress-resume,.resume-block').count(),0,'知识库不重复显示任务进度');
+    await page.goto(origin+other+'/todos');
+    await page.locator('#progress-resume').waitFor({state:'attached'});
+    assert.equal(await page.locator('#progress-resume .progress-resume-item').count(),0,'B 没有进行中任务时不应渲染继续上次');
+    assert.equal(await page.locator('#progress-resume').evaluate(el=>el.hidden),true,'B 的继续上次必须隐藏');
+    const otherHtml=await (await context.request.get(origin+other+'/todos')).text();
+    assert.match(otherHtml,/<section id="progress-resume"[^>]*hidden/,'B 的服务端输出就应是隐藏的空块');
+    assert.ok(!otherHtml.includes('class="progress-resume-item"'),'B 的服务端输出不应含继续上次条目');
     // textContent, not innerText: hidden nodes and collapsed details are still a leak.
     const bodyB=await page.locator('main').evaluate(el=>el.textContent);
     assert.ok(!bodyB.includes('已跑完基线'),'B 不得借用 A 的上下文');
@@ -477,6 +478,7 @@ const path=require('node:path');
     assert.ok(stalled.length>0,'五秒轻量刷新未发起，延迟模拟无效');
     const pagesBefore=context.pages().length,dialogsBefore=dialogs.length,requestMark=requests.length;
     const started=Date.now();
+    await page.locator('#progress-new').click();
     await page.locator('#progress-add input').fill('慢生成期间新增');
     await page.locator('#progress-add input').press('Enter');
     // The app itself abandons a stalled read after 3s, so a bound near that would also
@@ -493,8 +495,11 @@ const path=require('node:path');
     await page.locator('#progress-close').click();
     await page.locator('#progress-dialog').waitFor({state:'hidden'});
     assert.equal(await page.locator('dialog[open]').count(),0,'前台操作不得弹出遮罩或对话框');
-    assert.equal(await page.locator('#progress-add button').isDisabled(),false,'添加按钮不得因后台来源被禁用');
+    assert.equal(await page.locator('#progress-add button[type=submit]').isDisabled(),false,'添加按钮不得因后台来源被禁用');
     assert.equal(await row('慢生成期间新增').locator('.progress-inline-status').isDisabled(),false,'状态选择器不得因后台来源被禁用');
+    await page.locator('#progress-new').click();
+    await page.locator('#progress-add input').waitFor({state:'visible'});
+    await page.locator('#progress-add input').scrollIntoViewIfNeeded();
     assert.equal(await page.evaluate(()=>{
       const target=document.querySelector('#progress-add input');
       const box=target.getBoundingClientRect();
@@ -516,9 +521,9 @@ const path=require('node:path');
     assert.deepEqual(unexpectedCalls,[],'前台链路只应访问已知的进度与静态资源接口');
     // Returning to the project page still reads the previously stored context, because
     // the landing page renders it server-side rather than waiting for the slow read.
-    await page.goto(origin+base);
-    await page.locator('.resume-block .resume-item').first().waitFor();
-    assert.ok((await page.locator('.resume-block').innerText()).includes('自动整理：夜间样本已补齐'),'返回项目页时旧上下文仍应可读');
+    await page.goto(origin+base+'/todos');
+    await page.locator('#progress-resume .progress-resume-item').first().waitFor();
+    assert.ok((await page.locator('#progress-resume').innerText()).includes('自动整理：夜间样本已补齐'),'返回项目页时旧上下文仍应可读');
     timers.forEach(clearTimeout);
     pending.forEach(route=>{try{route.abort();}catch{}});
     pending.clear();

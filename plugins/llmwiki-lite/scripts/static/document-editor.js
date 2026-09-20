@@ -19,7 +19,14 @@ window.ResearchDocument = (() => {
   const node = (text, tag = 'p') => { const n = document.createElement(tag); n.textContent = text; return n; };
   const clone = value => JSON.parse(JSON.stringify(value));
   function mount(options) {
-    const root = document.getElementById(options.root), $ = name => document.getElementById(`${options.prefix}-${name}`);
+    const root = typeof options.root === 'string' ? document.getElementById(options.root) : options.root;
+    const $ = name => root.querySelector(`#${options.prefix}-${name}`);
+    const page = root.closest('#main-content') || root, lifecycle = new AbortController();
+    const active = () => !lifecycle.signal.aborted && root.isConnected;
+    const owns = event => event.detail?.root === page;
+    let pendingActions = 0, deferredModal, dialogBaseline = '', allowUnload = false;
+    const dialogValue = () => JSON.stringify([...$('dialog').querySelectorAll('input,textarea,select')].map(e => [e.value, e.checked]));
+    const dialogDirty = () => $('dialog').open && dialogValue() !== dialogBaseline;
     const source = $('source'), preview = $('preview'), surface = $('document'), title = $('title');
     const recoveryKey = options.key + ':' + crypto.randomUUID();
     let item, body = '', comments = [], tags = [], mode = 'preview', sequence = 0, saved = 0;
@@ -29,14 +36,17 @@ window.ResearchDocument = (() => {
     const message = text => { $('notice').textContent = text; $('notice').hidden = !text; };
     const close = () => { $('dialog').close(); conflictOpen = false; };
     function modal(heading, content, actions = []) {
+      if (lifecycle.signal.aborted) return;
+      if (!active()) { deferredModal = [heading, content, actions]; return; }
       $('dialog-content').replaceChildren(node(heading, 'h2'), ...content);
       $('dialog-actions').replaceChildren();
       for (const [label, run] of actions) {
         const b = node(label, 'button'); b.type = 'button';
-        b.onclick = async () => { b.disabled = true; try { await run(); } catch (e) { message(e.message); } finally { b.disabled = false; } };
+        b.onclick = async () => { pendingActions++; b.disabled = true; try { await run(); } catch (e) { message(e.message); } finally { pendingActions--; b.disabled = false; } };
         $('dialog-actions').append(b);
       }
       root.querySelectorAll('details[open]').forEach(e => { e.open = false; });
+      dialogBaseline = dialogValue();
       if (!$('dialog').open) $('dialog').showModal();
     }
     $('dialog-close').onclick = close;
@@ -46,8 +56,8 @@ window.ResearchDocument = (() => {
       try { localStorage.setItem(recoveryKey, JSON.stringify({...content(), base_revision: item?.revision, updated_at: Date.now()})); }
       catch { message('本机恢复稿不可用，请保持页面打开直到保存成功。'); }
     }
-    function height() { source.style.height = 'auto'; source.style.height = Math.max(300, source.scrollHeight) + 'px'; }
-    window.addEventListener('resize', () => requestAnimationFrame(height));
+    function height() { if (!active()) return; source.style.height = 'auto'; source.style.height = Math.max(300, source.scrollHeight) + 'px'; }
+    window.addEventListener('resize', () => { if (active()) requestAnimationFrame(height); }, {signal: lifecycle.signal});
     function state() {
       const readonly = !ready || !item || item.mode === 'readonly';
       for (const name of ['preview-mode','export','copy','info','history','sources','candidate','regenerate','save-as']) if ($(name)) $(name).disabled = !ready || !item || busy;
@@ -68,12 +78,12 @@ window.ResearchDocument = (() => {
     async function render() {
       const serial = ++renderSequence;
       await new Promise(resolve => setTimeout(resolve, 150));
-      if (serial !== renderSequence) return;
+      if (serial !== renderSequence || !active()) return;
       try { const html = await options.preview(body); if (serial === renderSequence && mode === 'preview') preview.innerHTML = html; }
       catch (e) { if (serial === renderSequence) message('预览失败，正文仍保留：' + e.message); }
     }
     async function editable() {
-      if (!item || item.mode === 'readonly' || busy) return false;
+      if (!active() || !item || item.mode === 'readonly' || busy) return false;
       if (item.mode === 'formal') {
         try { editJob ||= options.startEdit(item); item = await editJob; state(); }
         catch (e) { message(e.message); return false; }
@@ -87,9 +97,9 @@ window.ResearchDocument = (() => {
       mode = next; source.hidden = next !== 'edit'; preview.hidden = next === 'edit'; state();
       if (next === 'edit') {
         if (source.value !== body) source.value = body; height(); if (end) selection = [body.length, body.length];
-        source.focus({preventScroll: true}); source.setSelectionRange(...selection);
-      } else { await render(); preview.focus({preventScroll: true}); }
-      window.scrollTo(0, scroll[next]);
+        if (active()) { source.focus({preventScroll: true}); source.setSelectionRange(...selection); }
+      } else { await render(); if (active()) preview.focus({preventScroll: true}); }
+      if (active()) window.scrollTo(0, scroll[next]);
     }
     function commentList() {
       const container = $('comments'); container.replaceChildren(); container.hidden = comments.length === 0;
@@ -104,7 +114,7 @@ window.ResearchDocument = (() => {
     }
     function dirty() {
       sequence++; recover(); clearTimeout(timer); height(); state(); $('save-state').textContent = '保存中';
-      if (!composing) timer = setTimeout(flush, 600);
+      if (!composing && active()) timer = setTimeout(flush, 600);
     }
     function resetNative() {
       nativeBase = nativeTip = body; nativeSelection = [...selection];
@@ -165,7 +175,7 @@ window.ResearchDocument = (() => {
     }
     async function flush() {
       clearTimeout(timer);
-      if (!item || composing || conflictOpen) return false;
+      if (!active() || !item || composing || conflictOpen) return false;
       if (item.mode !== 'draft') return sequence === saved;
       if (saveJob) { const ok = await saveJob; return ok && sequence !== saved ? flush() : ok; }
       if (saved === sequence) return true;
@@ -188,7 +198,7 @@ window.ResearchDocument = (() => {
     source.addEventListener('input', changed);
     for (const event of ['select', 'click', 'keyup']) source.addEventListener(event, () => { selection = [source.selectionStart, source.selectionEnd]; });
     source.addEventListener('compositionstart', () => { composing = true; clearTimeout(timer); });
-    source.addEventListener('compositionend', () => { composing = false; clearTimeout(timer); timer = setTimeout(flush, 600); });
+    source.addEventListener('compositionend', () => { composing = false; clearTimeout(timer); if (active()) timer = setTimeout(flush, 600); });
     title?.addEventListener('input', dirty);
     $('edit').onclick = () => setMode('edit'); $('preview-mode').onclick = () => setMode('preview');
     preview.ondblclick = () => setMode('edit'); preview.onclick = () => { if (!body) setMode('edit'); };
@@ -233,14 +243,15 @@ window.ResearchDocument = (() => {
       if (toPreview) await setMode('preview'); else { source.focus({preventScroll:true}); source.setSelectionRange(...selection); }
     }
     root.addEventListener('paste', paste);
-    document.addEventListener('dragover', e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); });
+    document.addEventListener('dragover', e => { if (active() && e.dataTransfer.types.includes('Files')) e.preventDefault(); }, {signal: lifecycle.signal});
     document.addEventListener('drop', async e => {
+      if (!active()) return;
       const files = [...e.dataTransfer.files]; if (!files.length) return; e.preventDefault();
       if (!surface.contains(e.target) || !(await editable())) return;
       const tokens=files.map(()=>`<!--report-upload:${crypto.randomUUID()}-->`);
       insert('\n'+tokens.join('\n\n')+'\n');files.forEach((file,i)=>upload(file,tokens[i]));
       if (mode === 'preview' || !body) setMode('preview');
-    });
+    }, {signal: lifecycle.signal});
     root.addEventListener('keydown', async e => {
       if (e.isComposing || !(e.ctrlKey || e.metaKey)) return;
       const key = e.key.toLowerCase();
@@ -286,22 +297,50 @@ window.ResearchDocument = (() => {
     $('history').onclick = () => options.history(context).catch(e=>message(e.message));
     if ($('sources')) $('sources').onclick = () => options.sources(context).catch(e=>message(e.message));
     if ($('candidate')) $('candidate').onclick = () => options.candidate(context).catch(e=>message(e.message));
-    if ($('regenerate')) $('regenerate').onclick = () => options.regenerate(context).catch(e=>message(e.message));
+    if ($('regenerate')) $('regenerate').onclick = async () => { pendingActions++; try { await options.regenerate(context); } catch (e) { message(e.message); } finally { pendingActions--; } };
     if ($('save-as')) $('save-as').onclick = () => options.saveAs(context).catch(e=>message(e.message));
     if ($('confirm')) $('confirm').onclick = async () => {
       if (item.mode === 'formal') { await setMode('edit'); return; }
       if (uploads.size || busy || body.includes('<!--report-upload:')) return;
       busy=true;state();try { if (await flush()) await display(await options.confirm(item)); } catch(e){message(e.message);} finally{busy=false;state();}
     };
-    window.addEventListener('beforeunload', e => { if (sequence !== saved || uploads.size) { e.preventDefault();e.returnValue=''; } });
+    const unsaved = () => sequence !== saved || uploads.size || saveJob || editJob || busy || pendingActions || composing || dialogDirty();
+    window.addEventListener('beforeunload', e => { if (active() && !allowUnload && unsaved()) { e.preventDefault();e.returnValue=''; } }, {signal: lifecycle.signal});
+    document.addEventListener('workbench:before-leave', e => {
+      if (!owns(e) || !active() || !unsaved()) return;
+      e.preventDefault();
+      if (uploads.size) message('内容尚未保存；请等待图片上传完成，或移除未上传的截图。');
+      else if (busy || pendingActions || editJob || composing || dialogDirty()) message('内容尚未保存，请先完成当前操作。');
+      else {
+        message('保存中，请稍候。');
+        flush().then(ok => { if (active() && ok) message('已保存，请再次选择要打开的栏目。'); });
+      }
+    }, {signal: lifecycle.signal});
+    document.addEventListener('workbench:leave', e => {
+      if (owns(e)) { clearTimeout(timer); renderSequence++; if ($('dialog').open) close(); }
+    }, {signal: lifecycle.signal});
+    document.addEventListener('workbench:enter', e => {
+      if (!owns(e) || !active()) return;
+      height();
+      if (sequence !== saved && !composing) timer = setTimeout(flush, 600);
+      if (mode === 'preview' && item) render();
+      if (deferredModal) { const args = deferredModal; deferredModal = null; modal(...args); }
+    }, {signal: lifecycle.signal});
+    document.addEventListener('workbench:dispose', e => {
+      if (!owns(e)) return;
+      clearTimeout(timer); renderSequence++; deferredModal = null; lifecycle.abort();
+    }, {signal: lifecycle.signal});
     document.addEventListener('click', async e => {
+      if (!active()) return;
       const a = e.target.closest('a[href]'); if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || a.target || a.hasAttribute('download') || a.origin !== location.origin || a.pathname === location.pathname) return;
+      if (busy || pendingActions || editJob || composing || dialogDirty()) { e.preventDefault(); message('内容尚未保存，请先完成当前操作。'); return; }
       if (sequence === saved && !saveJob && !uploads.size) return;
       e.preventDefault(); if (!uploads.size && await flush()) location.assign(a.href);
-      else modal('内容尚未保存', [node('输入已保留为本机恢复稿；尚未上传的截图无法在刷新后恢复。')], [['继续留在这里',close],['离开页面',()=>{recover();sequence=saved;uploads.clear();location.assign(a.href);}]]);
-    });
+      else modal('内容尚未保存', [node('输入已保留为本机恢复稿；尚未上传的截图无法在刷新后恢复。')], [['继续留在这里',close],['离开页面',()=>{recover();sequence=saved;uploads.clear();allowUnload=true;location.assign(a.href);}]]);
+    }, {signal: lifecycle.signal});
     state();
     options.load().then(async data => {
+      if (lifecycle.signal.aborted) return;
       // Freeze recovery candidates before rendering; another tab may start typing
       // while preview is awaiting HTTP. Never mistake that new edit for a crash.
       let stored=[];try{for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key.startsWith(options.key+':'))stored.push({key,...JSON.parse(localStorage.getItem(key))});}}catch{}

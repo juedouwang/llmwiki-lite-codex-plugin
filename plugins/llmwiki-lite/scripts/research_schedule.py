@@ -125,8 +125,7 @@ def schedule_begin(home=None, *, now=None, host_home=None):
         if not fresh['enabled'] or project['id'] not in fresh['project_ids']:
             break
         try:
-            capture.append(capture_project(project, projects, host_home=host_home,
-                                           excluded_sessions=[settings['runtime']['target_thread_id']]))
+            capture.append(capture_project(project, projects, host_home=host_home))
         except Exception:
             # Capture is optional evidence; a broken adapter must not block saved records.
             capture.append({'project_id': project['id'], 'written': 0, 'gaps': ['对话采集失败；保留已有材料。']})

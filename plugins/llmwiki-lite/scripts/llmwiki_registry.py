@@ -107,6 +107,8 @@ def _default_settings() -> dict[str, Any]:
         "version": SETTINGS_VERSION,
         "default_wiki_root": None,
         "current_project_id": None,
+        "web_default_project_id": None,
+        "project_order": [],
         "web_host": "127.0.0.1",
         "web_port": 8765,
     }
@@ -216,13 +218,42 @@ def list_projects(home: str | None = None) -> dict[str, Any]:
         key=lambda item: (str(item.get("name", "")).lower(), str(item.get("id", ""))),
     )
     settings = load_settings(str(root))
+    positions = {pid: i for i, pid in enumerate(settings.get("project_order", []))}
+    projects.sort(key=lambda item: positions.get(item["id"], len(positions)))
+    preferred = settings.get("web_default_project_id")
+    if preferred not in {item["id"] for item in projects}:
+        preferred = None
     return {
         "ok": True,
         "home": str(root),
+        "web_default_project_id": preferred,
+        "landing_project_id": preferred or (projects[0]["id"] if projects else None),
+        "project_order": [item["id"] for item in projects],
         "default_wiki_root": settings.get("default_wiki_root"),
         "current_project_id": settings.get("current_project_id"),
         "projects": projects,
     }
+
+
+def update_project_preferences(*, home: str | None = None,
+                               default_project_id: str | None | object = ...,
+                               project_order: list[str] | object = ...) -> dict[str, Any]:
+    """Persist only explicit website preferences, never the agent's selected project."""
+    root = llmwiki_home(home)
+    with _home_lock(root):
+        ids = {item["id"] for item in load_registry(str(root))["projects"]}
+        settings = load_settings(str(root))
+        if default_project_id is not ...:
+            if default_project_id is not None and (not isinstance(default_project_id, str) or default_project_id not in ids):
+                raise LLMWikiError("默认项目未注册，请刷新项目列表。")
+            settings["web_default_project_id"] = default_project_id
+        if project_order is not ...:
+            if (not isinstance(project_order, list) or not all(isinstance(pid, str) for pid in project_order)
+                    or len(project_order) != len(ids) or set(project_order) != ids):
+                raise LLMWikiError("项目列表已变化或顺序无效，请刷新后重新排序。")
+            settings["project_order"] = project_order
+        _write_json(root / "settings.json", settings)
+    return list_projects(str(root))
 
 
 def _find_record(
@@ -473,5 +504,8 @@ def unregister_project(identifier: str, *, home: str | None = None) -> dict[str,
         settings = load_settings(str(root))
         if settings.get("current_project_id") == record.get("id"):
             settings["current_project_id"] = None
-            _write_json(root / "settings.json", settings)
+        if settings.get("web_default_project_id") == record.get("id"):
+            settings["web_default_project_id"] = None
+        settings["project_order"] = [pid for pid in settings.get("project_order", []) if pid != record["id"]]
+        _write_json(root / "settings.json", settings)
     return {"ok": True, "unregistered": record, "files_deleted": False}

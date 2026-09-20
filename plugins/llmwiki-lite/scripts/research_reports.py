@@ -369,7 +369,7 @@ def tabs(project_id: str, active: str, navigation: dict | None = None) -> str:
 
 
 def list_page(home: str, project: dict, kind: str, params: dict) -> str:
-    from research_web_ui import esc, layout, page_header
+    from research_web_ui import esc, layout, page_header, new_button, ui_icon
     from urllib.parse import urlencode
     query = (params.get('q') or [''])[0]
     project_filter = (params.get('project') or [''])[0]
@@ -382,8 +382,8 @@ def list_page(home: str, project: dict, kind: str, params: dict) -> str:
     label = '日报' if kind == 'daily' else '周报'
     back = '/reports?' + urlencode({**navigation, 'offset': offset})
     rows = ''.join(
-        f'<a id="report-row-{index}" class="report-row" href="{esc(i["link"] + "?" + urlencode({"context": context, "return": back + "#report-row-" + str(index)}))}">'
-        f'<span>{esc(i["title"])}</span><span class="muted">{esc(i["status"])}</span></a>'
+        f'<a id="report-row-{index}" class="report-row rw-list-row" href="{esc(i["link"] + "?" + urlencode({"context": context, "return": back + "#report-row-" + str(index)}))}">'
+        f'{ui_icon("reports")}<span class="rw-list-main"><span class="rw-title-button">{esc(i["title"])}</span><span class="rw-list-meta"><span>{esc(i["period_start"])}</span><span>{"跨项目汇总" if i.get("scope") == "all" or len(i.get("project_ids", [])) > 1 else "项目报告"}</span></span></span><span class="report-status status-{"formal" if i["status"] == "正式版" else "draft"}">{esc(i["status"])}</span><span class="rw-icon-button">{ui_icon("open")}</span></a>'
         for index, i in enumerate(result['items']))
     if not rows:
         rows = f'<p class="muted">还没有{label}。这里保存多项目汇总，可新建或等待已配置的自动整理。</p>'
@@ -397,8 +397,8 @@ def list_page(home: str, project: dict, kind: str, params: dict) -> str:
     states = ''.join(f'<option value="{key}" {"selected" if key == status_filter else ""}>{value}</option>' for key, value in [('', '全部状态'), ('draft', '草稿'), ('formal', '正式版')])
     more = '<a class="button" href="?' + esc(urlencode({**navigation, 'offset': offset+30})) + '">下一页</a>' if result['has_more'] else ''
     body = f'<link rel="stylesheet" href="/static/reports.css"><section id="research-reports-list" data-project="{esc(project["id"])}" data-context="{esc(context)}" data-kind="{kind}" data-api="/api/reports">'
-    body += page_header('日报与周报', f'<button id="report-new">新建{label}</button>') + tabs(project['id'], kind, navigation)
-    body += f'<form class="filter-bar"><input type="hidden" name="context" value="{esc(context)}"><input type="hidden" name="view" value="{kind}"><input type="search" name="q" value="{esc(query)}" placeholder="搜索报告" aria-label="搜索报告"><select name="project" aria-label="筛选参与项目">{filters}</select><select name="status" aria-label="筛选报告状态">{states}</select><button>搜索</button></form>{rows}{more}'
+    body += page_header('日报与周报', f'<a class="rw-button" href="/settings#report-settings">{ui_icon("clock")}生成设置</a>' + new_button('新建' + label, element_id='report-new'))
+    body += f'<form class="rw-filter-row report-filters">{tabs(project["id"], kind, navigation)}<input type="hidden" name="context" value="{esc(context)}"><input type="hidden" name="view" value="{kind}"><div class="report-filter-controls"><label>项目<select name="project" aria-label="筛选参与项目">{filters}</select></label><select name="status" aria-label="筛选报告状态">{states}</select><details class="report-search" {"open" if query else ""}><summary class="rw-icon-button" aria-label="搜索报告" title="搜索报告">{ui_icon("search")}</summary><div><input type="search" name="q" value="{esc(query)}" placeholder="搜索报告" aria-label="搜索报告"><button>搜索</button></div></details></div></form><div class="rw-list">{rows}</div>{more}<p class="report-list-note">日报详尽留痕，周报按你的模板提炼。确认后才成为正式版。</p>'
     body += f'<dialog id="report-create"><form method="dialog"><h2>新建{label}</h2><label>{"周一日期" if kind == "weekly" else "日期"}<input type="date" id="report-date" value="{today}" required></label><fieldset><legend>参与项目（汇总为一篇）</legend>{options}</fieldset><p id="report-create-error" role="alert"></p><button value="cancel">取消</button><button type="button" id="report-create-submit">创建</button></form></dialog></section><script src="/static/reports.js" defer></script>'
     return layout('日报与周报', body, project_id=context, active='reports', home=home, report_query=navigation)
 
@@ -633,7 +633,8 @@ def _run_file(home, run_id: str) -> tuple[dict, Path, dict]:
 
 def _conversation_auth(project, settings):
     from research_capture import consent_revision
-    return digest([consent_revision(project), settings.get('capture_hosts'),
+    from research_capture_runtime import session_bindings
+    return digest([consent_revision(project), session_bindings(project), settings.get('capture_hosts'),
                    settings.get('activity_db_paths', {}).get(project['id']), settings.get('start_date')])
 
 

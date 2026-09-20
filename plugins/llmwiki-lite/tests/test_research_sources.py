@@ -233,21 +233,42 @@ class ActivityTests(Fixture):
         self.database()
         self.session('automation', thread='runtime-thread')
         self.settings['runtime'] = {'target_thread_id': 'runtime-thread'}
-        self.activity('runtime', sid='automation')
+        self.activity('runtime', sid='automation', text='修复 records/reports/ 日报编辑器')
         self.activity('normal')
         variants = [
             {'thread_source': 'automation'}, {'metadata': {'thread_source': 'heartbeat'}},
             {'generated_report': True}, {'file': 'records/reports/daily/2026-09-19.md'},
             {'tool_name': 'execute'}, {'call_id': 'call-1'}, {'origin': 'function_call_output'},
-            {'text': '# AGENTS.md instructions\n注入块'}, {'text': '写入 records/reports/daily/report.md'},
+            {'text': '# AGENTS.md instructions\n注入块'}, {'text': '<heartbeat><automation_id>fixture</automation_id></heartbeat>'},
             {'host': 'claude_code'}, {'project_id': 'other-project'}, {'role': 'tool'},
         ]
         for index, patch in enumerate(variants):
             evidence = {'text': '不应读取为科研成果', 'kind': 'user_message', 'host': 'codex', **patch}
             self.activity(f'excluded-{index}', evidence=evidence)
         items, _ = self.activities()
-        self.assertEqual([x['locator'] for x in items], ['conversation:normal'])
-        self.assert_unavailable('SOURCE_EXCLUDED', lambda: self.read('runtime', settings=self.settings))
+        self.assertEqual({x['locator'] for x in items}, {'conversation:normal', 'conversation:runtime'})
+        self.assertIn('日报编辑器', self.read('runtime', settings=self.settings)['text'])
+
+    def test_explicit_history_binding_is_scoped_and_revalidated(self):
+        from research_reports import _conversation_auth
+        self.authorize(authorized_at='2026-09-19T07:00:00.000Z')
+        self.database()
+        self.session('other', thread='unbound')
+        self.activity('bound', occurred='2026-09-19T06:00:00Z')
+        self.activity('early', occurred='2026-09-19T04:59:59Z')
+        self.activity('unbound', sid='other', occurred='2026-09-19T06:00:00Z')
+        binding_path = self.state / 'workbench/capture-sessions.json'
+        binding_path.write_text(json.dumps({'thread-user': {'project_id': self.project['id'],
+            'since': '2026-09-19T05:00:00Z', 'bound_at': '2026-09-19T09:00:00Z'}}), encoding='utf-8')
+        self.assertEqual([x['locator'] for x in self.activities()[0]], ['conversation:bound'])
+        self.assertEqual(self.read('bound', settings=self.settings)['locator'], 'conversation:bound')
+        self.assertFalse(self.activities(settings={**self.settings, 'capture_hosts': []})[0])
+        signature = _conversation_auth(self.project, self.settings)
+        with sources._Activities(self.project, self.settings, NOW) as reader:
+            binding_path.write_text('{}', encoding='utf-8')
+            self.assert_unavailable('CONSENT_CHANGED', reader.unchanged_consent)
+        self.assertNotEqual(signature, _conversation_auth(self.project, self.settings))
+        self.assert_unavailable('SOURCE_EXCLUDED', lambda: self.read('bound', settings=self.settings))
 
     def test_optional_session_provenance_fields(self):
         self.authorize()

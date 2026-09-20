@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from research_web_ui import esc, layout, purl
+from research_web_ui import esc, layout, purl, page_header, new_button, ui_icon
 from literature_catalog import (
     LiteratureCatalog, LiteratureCatalogError, attachment_for, atomic_json,
     item_revision, literature_collect, note_matches, project_for, safe_path,
@@ -110,15 +110,14 @@ def literature_catalog_list_page(home, project_id, params=None):
         author = ", ".join(item.get("authors", [])[:3])
         meta = " · ".join(filter(None, [author, str(item.get("year") or "")]))
         badges = ("<span>有原文</span>" if item.get("attachments") else "") + ("<span>有笔记</span>" if item.get("reading_note_paths") else "")
-        rows.append(f'<li id="lit-{esc(item["id"])}"><a data-item href="{base}/item/{esc(item["id"])}">{esc(item["title"])}</a><div class="literature-meta">{esc(meta)} {badges}</div></li>')
+        rows.append(f'<li class="rw-list-row" id="lit-{esc(item["id"])}">{ui_icon("papers")}<div class="rw-list-main"><a class="rw-title-button" data-item href="{base}/item/{esc(item["id"])}">{esc(item["title"])}</a><div class="rw-list-meta">{esc(meta)} {badges}</div></div><a class="rw-icon-button" href="{base}/item/{esc(item["id"])}" aria-label="打开文献：{esc(item["title"])}">{ui_icon("open")}</a></li>')
     paging = []
     for label, target in (("上一页", page - 1), ("下一页", page + 1)):
         if target >= 1 and (target < page or page * 50 < result["count"]):
             paging.append(f'<a href="{base}?q={quote(query)}&amp;page={target}">{label}</a>')
     empty = '<p class="literature-empty">还没有收藏文献。点击“添加文献”粘贴地址即可。</p>' if not result["count"] and not query else '<p>没有匹配的文献。</p>'
-    body = f'''<header class="literature-toolbar"><h1>文献</h1><label>项目内搜索<input type="search" id="literature-search" value="{esc(query)}" placeholder="标题、作者、DOI / arXiv"></label><button data-add>添加文献</button>
-<details><summary>更多</summary><a href="{base}/migrate">明确导入本地文件</a></details></header>
-{_form()}<p role="status" id="literature-message"></p><div id="literature-results"><ul class="literature-list">{''.join(rows)}</ul>{empty if not rows else ''}<nav class="literature-paging">{''.join(paging)}</nav></div>
+    body = page_header("文献", new_button("添加文献", attributes="data-add")) + f'''<div class="rw-filter-row"><span>当前项目 · {result["count"]} 篇文献</span><input type="search" id="literature-search" aria-label="项目内搜索" value="{esc(query)}" placeholder="搜索标题、作者、DOI"><details class="literature-more"><summary>更多</summary><a href="{base}/migrate">明确导入本地文件</a></details></div>
+{_form()}<p role="status" id="literature-message"></p><div id="literature-results"><ul class="literature-list rw-list">{''.join(rows)}</ul>{empty if not rows else ''}<nav class="literature-paging">{''.join(paging)}</nav></div>
 <details id="literature-collection"><summary>收录详情</summary><div data-collection-status>展开查看收录状态。</div><button data-retry hidden>请求重试</button></details>'''
     return _shell(home, project_id, "文献", body)
 

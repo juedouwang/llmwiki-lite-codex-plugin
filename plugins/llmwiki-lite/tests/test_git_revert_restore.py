@@ -10,21 +10,20 @@
 夹具：GIT-F1（普通 fork 仓库）、GIT-F5（含 merge commit 的仓库）
 """
 
-import json
 import os
 import subprocess
+import stat
 import sys
 import tempfile
-import time
 import unittest
-from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PLUGIN_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from git_revert_restore import (
+from git_revert_restore import (  # noqa: E402 - local scripts path bootstrap
     analyze_revert,
     start_revert,
     abort_revert,
@@ -35,15 +34,14 @@ from git_revert_restore import (
     reset_branch,
     check_commit_published,
     check_repository_constraints,
-    RevertStatus,
     PublishedCommitError,
     StateExpiredError,
     MainlineRequiredError,
     GitRefNotFoundError,
 )
 
-from git_service import get_head_info, get_status
-from git_operations import GitDirtyWorktreeError, GitOperationError
+from git_service import get_head_info  # noqa: E402
+from git_operations import GitDirtyWorktreeError, GitOperationError  # noqa: E402
 
 
 # ================================================================================
@@ -184,6 +182,16 @@ class GitRevertRestoreTests(unittest.TestCase):
         wiki = tmp_path / "wiki"
         state = tmp_path / "state"
         lock = tmp_path / "locks"
+
+        # Fixtures must not inherit real signing, hooks, filters or remotes.
+        isolated_git = patch.dict(os.environ, {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_ALLOW_PROTOCOL": "file",
+            "GIT_TERMINAL_PROMPT": "0",
+        })
+        isolated_git.start()
+        self.addCleanup(isolated_git.stop)
 
         home.mkdir()
         source.mkdir()
@@ -494,6 +502,7 @@ class GitRevertRestoreTests(unittest.TestCase):
             capture_output=True
         )
 
+        self.assertNotEqual(result.returncode, 0)
         # Should have conflicts
         revert_head = repo_dir / ".git" / "REVERT_HEAD"
         assert revert_head.exists()
@@ -535,6 +544,7 @@ class GitRevertRestoreTests(unittest.TestCase):
 
         # Create a bare remote
         remote_dir = self.temp_env["source"] / "remote.git"
+        remote_dir.mkdir()
         subprocess.run([self.git_exe, "init", "--bare"], cwd=remote_dir, check=True)
 
         # Add remote and push
@@ -544,6 +554,10 @@ class GitRevertRestoreTests(unittest.TestCase):
         # Now M2 is published
         is_published, check_time, is_stale = check_commit_published(repo_dir, self.git_exe, commits["M2"])
         assert is_published
+        # A push to a new local bare remote need not create origin/HEAD.
+        # Known publication still blocks reset despite missing freshness data.
+        self.assertTrue(is_stale)
+        self.assertIsNone(check_time)
 
         # Attempt to reset to M1 - should fail
         analysis = analyze_reset(repo_dir, self.git_exe, commits["M1"])
@@ -601,32 +615,30 @@ class GitRevertRestoreTests(unittest.TestCase):
         repo_dir = self.git_f1_repo["repo_dir"]
         commits = self.git_f1_repo["commits"]
 
-        # Create remote with older fetch time (simulate stale)
         remote_dir = self.temp_env["source"] / "remote.git"
+        remote_dir.mkdir()
         subprocess.run([self.git_exe, "init", "--bare"], cwd=remote_dir, check=True)
         subprocess.run([self.git_exe, "remote", "add", "origin", str(remote_dir)], cwd=repo_dir, check=True)
-        subprocess.run([self.git_exe, "push", "-u", "origin", "main"], cwd=repo_dir, check=True)
-
-        # Manually set reflog to old time to simulate stale refs
-        # (In practice, this would be >5 minutes old)
-        # For testing, we'll use the check mechanism
-
-        # Create new local commit
+        # Write a real old remote-tracking reflog without sleeping or mocking Git.
+        old_env = dict(os.environ, GIT_COMMITTER_DATE="2020-01-01T00:00:00Z")
+        subprocess.run([self.git_exe, "push", "-u", "origin", "main"], cwd=repo_dir, env=old_env, check=True)
+        subprocess.run([self.git_exe, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"], cwd=repo_dir, env=old_env, check=True)
         (repo_dir / "new-file.txt").write_text("new content\n", encoding="utf-8")
         subprocess.run([self.git_exe, "add", "new-file.txt"], cwd=repo_dir, check=True)
         subprocess.run([self.git_exe, "commit", "-m", "New local commit"], cwd=repo_dir, check=True)
-
-        result = subprocess.run([self.git_exe, "rev-parse", "HEAD"], cwd=repo_dir, capture_output=True, text=True, check=True)
-        new_commit = result.stdout.strip()
-
-        # This commit is local, not pushed
-        # If remote refs are considered stale, reset should block
-        # Note: In real implementation, we'd need to mock time or wait 5+ minutes
-        # For this test, we verify the logic exists
+        before = get_head_info(repo_dir, self.git_exe).oid
 
         analysis = analyze_reset(repo_dir, self.git_exe, commits["M2"])
-        # remote_refs_stale depends on actual timing - just verify field exists
-        assert "remote_refs_stale" in analysis.__dict__
+        self.assertFalse(analysis.is_published)
+        self.assertTrue(analysis.remote_refs_stale)
+        self.assertTrue(analysis.remote_refs_check_time.startswith("2020-01-01"))
+        with self.assertRaises(StateExpiredError):
+            reset_branch(
+                repo_dir, self.temp_env["state"], self.git_exe, "test-repo",
+                "main-worktree", commits["M2"], self.temp_env["lock"], "main",
+            )
+        self.assertEqual(get_head_info(repo_dir, self.git_exe).oid, before)
+        self.assertEqual((repo_dir / "new-file.txt").read_text(encoding="utf-8"), "new content\n")
 
 
     def test_reset_requires_branch_name_confirmation(self):
@@ -677,6 +689,7 @@ class GitRevertRestoreTests(unittest.TestCase):
         assert receipt.result["file_path"] == "config.txt"
         assert receipt.result["action"] == "restored"
         assert receipt.recovery_id is not None
+        self.assertIsInstance(receipt.recovery_id, str)
 
         # Verify file content
         config_content = (repo_dir / "config.txt").read_text(encoding="utf-8")
@@ -732,6 +745,7 @@ class GitRevertRestoreTests(unittest.TestCase):
         )
 
         assert receipt.recovery_id is not None
+        self.assertIsInstance(receipt.recovery_id, str)
 
         # Verify recovery point exists
         recovery_dir = self.temp_env["state"] / "workbench" / "git-recovery" / receipt.recovery_id
@@ -838,6 +852,74 @@ class GitRevertRestoreTests(unittest.TestCase):
         assert constraints["has_submodules"]
 
 
+    def test_constraints_optional_partial_clone_config(self):
+        repo = self.git_f1_repo["repo_dir"]
+        self.assertFalse(check_repository_constraints(repo, self.git_exe)["is_partial"])
+        subprocess.run([self.git_exe, "config", "extensions.partialClone", "origin"], cwd=repo, check=True)
+        self.assertTrue(check_repository_constraints(repo, self.git_exe)["is_partial"])
+
+    def test_constraints_invalid_config_is_not_absent(self):
+        repo = self.git_f1_repo["repo_dir"]
+        with (repo / ".git" / "config").open("a", encoding="utf-8") as stream:
+            stream.write("\n[invalid config\n")
+        with self.assertRaises(GitOperationError):
+            check_repository_constraints(repo, self.git_exe)
+
+    def test_restore_file_rejects_escape_and_invalid_target(self):
+        repo = self.git_f1_repo["repo_dir"]
+        outside = repo.parent / "outside.txt"
+        outside.write_text("keep\n", encoding="utf-8")
+        for file_path in ("../outside.txt", str(outside), ".git/config"):
+            with self.subTest(file_path=file_path), self.assertRaises(GitOperationError):
+                restore_file(
+                    repo, self.temp_env["state"], self.git_exe, "test-repo",
+                    "main-worktree", self.git_f1_repo["commits"]["R0"], file_path,
+                    self.temp_env["lock"],
+                )
+        self.assertEqual(outside.read_text(encoding="utf-8"), "keep\n")
+        before = (repo / "config.txt").read_bytes()
+        with self.assertRaises(GitRefNotFoundError):
+            restore_file(
+                repo, self.temp_env["state"], self.git_exe, "test-repo",
+                "main-worktree", "0" * 40, "config.txt", self.temp_env["lock"],
+            )
+        self.assertEqual((repo / "config.txt").read_bytes(), before)
+
+    def test_restore_unreadable_object_does_not_remove_file(self):
+        repo = self.git_f1_repo["repo_dir"]
+        target = self.git_f1_repo["commits"]["R0"]
+        blob = subprocess.run(
+            [self.git_exe, "rev-parse", target + ":config.txt"], cwd=repo,
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        # Corrupt only this disposable fixture to distinguish absence from I/O failure.
+        object_path = repo / ".git" / "objects" / blob[:2] / blob[2:]
+        object_path.chmod(stat.S_IREAD | stat.S_IWRITE)
+        object_path.unlink()
+        before = (repo / "config.txt").read_bytes()
+        with self.assertRaisesRegex(GitOperationError, "cannot be read"):
+            restore_file(
+                repo, self.temp_env["state"], self.git_exe, "test-repo",
+                "main-worktree", target, "config.txt", self.temp_env["lock"],
+            )
+        self.assertEqual((repo / "config.txt").read_bytes(), before)
+
+    def test_reset_rejects_non_ancestor_without_mutation(self):
+        repo = self.git_f1_repo["repo_dir"]
+        before = get_head_info(repo, self.git_exe)
+        with self.assertRaisesRegex(GitOperationError, "not an ancestor"):
+            analyze_reset(repo, self.git_exe, self.git_f1_repo["commits"]["X2"])
+        after = get_head_info(repo, self.git_exe)
+        self.assertEqual((after.oid, after.branch), (before.oid, before.branch))
+
+    def test_reset_rejects_unborn_branch(self):
+        repo = self.temp_env["source"] / "unborn"
+        repo.mkdir()
+        subprocess.run([self.git_exe, "init", "-b", "main"], cwd=repo, check=True)
+        with self.assertRaisesRegex(GitOperationError, "without a commit"):
+            analyze_reset(repo, self.git_exe, "HEAD")
+
+
     # ================================================================================
     # Integration Tests
     # ================================================================================
@@ -875,7 +957,7 @@ class GitRevertRestoreTests(unittest.TestCase):
             lock_dir=self.temp_env["lock"]
         )
 
-        restore_commit = restore_receipt.result["new_commit_oid"]
+        self.assertEqual(get_head_info(repo_dir, self.git_exe).oid, restore_receipt.result["new_commit_oid"])
 
         # 3. Reset back to before restore (local, unpublished)
         reset_receipt = reset_branch(

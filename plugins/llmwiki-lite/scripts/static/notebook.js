@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const root = document.getElementById('notebook'); if (!root) return;
-  if (!window.ResearchDocument || !document.getElementById('nb-source')) {
+  if (!window.ResearchDocument || !root.querySelector('#nb-source')) {
     const notice=document.createElement('p');notice.setAttribute('role','alert');notice.textContent='网页服务仍是旧版本，请重启本地服务后再编辑。';root.prepend(notice);return;
   }
   const {request, mount} = window.ResearchDocument, {project, note} = root.dataset;
@@ -11,10 +11,10 @@
   const load = () => request(api + '?format=markdown').then(normalize);
   const payload = value => ({format: 'markdown', title: value.title, tags: value.tags, body: value.body, comments: value.comments});
   const formatTime = value => value ? new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}) : '未知';
-  mount({root:'notebook',prefix:'nb', key:`llmwiki-notebook:${project}:${note}`, load,
+  mount({root,prefix:'nb', key:`llmwiki-notebook:${project}:${note}`, load,
     async save(value, item) {
       const result = await request(api, {document: payload(value), revision: item.revision});
-      history.replaceState(null, '', `/project/${project}/notebook/${note}`);
+      if (root.isConnected) history.replaceState(history.state, '', `/project/${project}/notebook/${note}`);
       return {...item, ...value, ...result.timestamps, revision: result.revision, exists: true};
     },
     async preview(body) { return (await request(base + '/preview', {text: body})).html; },

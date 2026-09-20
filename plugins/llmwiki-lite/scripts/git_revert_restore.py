@@ -18,33 +18,21 @@ Security requirements:
 Acceptance tests: AT-45, AT-46, AT-47, AT-48, AT-49
 """
 
-import hashlib
 import json
-import os
 import re
-import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import from git_service
 from git_service import (
-    GitError,
-    GitRepository,
-    GitWorktree,
-    GitHead,
-    GitPlan,
     RepositoryLock,
     _run_git_command,
     get_head_info,
     get_status,
-    check_ref_format,
-    compute_state_token,
-    create_plan,
-    validate_plan_state,
     generate_operation_id
 )
 
@@ -52,18 +40,13 @@ from git_service import (
 from git_operations import (
     GitOperationError,
     GitDirtyWorktreeError,
-    OperationReceipt,
-    execute_with_recovery
+    OperationReceipt
 )
 
 # Import from git_recovery
 from git_recovery import (
-    RecoveryError,
-    RecoveryPoint,
     create_recovery_point,
-    check_ignored_conflicts,
-    reconcile_operation,
-    load_recovery_point
+    check_ignored_conflicts
 )
 
 
@@ -283,7 +266,7 @@ def start_revert(
             operation_id=operation_id,
             repo_id=repo_id,
             worktree_id=worktree_id
-        )
+        ).recovery_id
 
         # Build revert command
         cmd = [git_exe, "revert", "--no-commit"]
@@ -610,7 +593,7 @@ def restore_tree(
             operation_id=operation_id,
             repo_id=repo_id,
             worktree_id=worktree_id
-        )
+        ).recovery_id
 
         # Use git restore with --source (equivalent to reset --hard but doesn't move HEAD)
         # First, restore to index and worktree
@@ -710,8 +693,17 @@ def restore_file(
     Raises:
         GitOperationError: Restore failed
     """
-    # Verify target exists
-    result = _run_git_command(git_exe, [ "rev-parse", "--verify", f"{target_oid}^{{commit}}"], cwd=worktree_root, timeout=10
+    root = worktree_root.resolve()
+    relative_path = Path(file_path)
+    full_path = root / relative_path
+    if (not file_path or relative_path.is_absolute() or relative_path.drive
+            or ".." in relative_path.parts or not relative_path.parts
+            or any(part.casefold() == ".git" for part in relative_path.parts)
+            or not full_path.resolve().is_relative_to(root)):
+        raise GitOperationError("File path must stay inside the worktree")
+
+    # Verify target exists before deciding that a file should be removed.
+    result = _run_git_command(git_exe, [ "rev-parse", "--verify", f"{target_oid}^{{commit}}"], cwd=worktree_root, timeout=10, check=False
     )
     if result.returncode != 0:
         raise GitRefNotFoundError(f"Commit not found: {target_oid}")
@@ -719,10 +711,18 @@ def restore_file(
     verified_oid = result.stdout.strip()
 
     # Check if file exists in target
-    file_check_result = _run_git_command(git_exe, [ "cat-file", "-e", f"{verified_oid}:{file_path}"], cwd=worktree_root, timeout=10
+    file_check_result = _run_git_command(git_exe, [ "cat-file", "-e", f"{verified_oid}:{file_path}"], cwd=worktree_root, timeout=10, check=False
     )
 
     file_exists_in_target = file_check_result.returncode == 0
+    if not file_exists_in_target:
+        # A missing path is expected; an unreadable object must not delete data.
+        tree_entry = _run_git_command(
+            git_exe, ["ls-tree", "-z", verified_oid, "--", f":(literal){file_path}"],
+            cwd=worktree_root, timeout=10,
+        )
+        if tree_entry.stdout:
+            raise GitOperationError("Target file exists but its object cannot be read")
 
     operation_id = generate_operation_id()
 
@@ -735,7 +735,7 @@ def restore_file(
             operation_id=operation_id,
             repo_id=repo_id,
             worktree_id=worktree_id
-        )
+        ).recovery_id
 
         if file_exists_in_target:
             # Restore file
@@ -816,7 +816,7 @@ def check_commit_published(
         return (False, None, False)
 
     # Check last fetch time from reflog
-    fetch_reflog_result = _run_git_command(git_exe, [ "reflog", "show", "--date=iso-strict", "refs/remotes/origin/HEAD"], cwd=worktree_root, timeout=10
+    fetch_reflog_result = _run_git_command(git_exe, [ "reflog", "show", "--date=iso-strict", "refs/remotes/origin/HEAD"], cwd=worktree_root, timeout=10, check=False
     )
 
     check_time = None
@@ -837,10 +837,8 @@ def check_commit_published(
             except ValueError:
                 pass
 
-    # If stale, we can't reliably determine if published
-    if is_stale:
-        return (False, check_time, True)
-
+    # Known remote reachability is proof of publication, even with an old or
+    # absent reflog. Missing freshness evidence only prevents proving it local.
     # Check if commit is reachable from any remote ref
     for_each_ref_result = _run_git_command(git_exe, [ "for-each-ref", "--format=%(refname)", "refs/remotes"], cwd=worktree_root, timeout=10
     )
@@ -852,14 +850,16 @@ def check_commit_published(
             continue
 
         # Check if commit is ancestor of this remote ref
-        merge_base_result = _run_git_command(git_exe, [ "merge-base", "--is-ancestor", commit_oid, ref], cwd=worktree_root, timeout=10
+        merge_base_result = _run_git_command(git_exe, [ "merge-base", "--is-ancestor", commit_oid, ref], cwd=worktree_root, timeout=10, check=False
         )
 
         if merge_base_result.returncode == 0:
             # Commit is reachable from this remote ref
-            return (True, check_time, False)
+            return (True, check_time, is_stale)
+        if merge_base_result.returncode != 1:
+            raise GitOperationError("Failed to check remote commit ancestry")
 
-    return (False, check_time, False)
+    return (False, check_time, is_stale)
 
 
 def analyze_reset(
@@ -892,7 +892,10 @@ def analyze_reset(
     if head_info.detached:
         raise GitOperationError("Cannot reset from detached HEAD")
 
-    current_branch = head_info.ref
+    if head_info.unborn or not head_info.branch or not head_info.oid:
+        raise GitOperationError("Cannot reset a branch without a commit")
+
+    current_branch = head_info.branch
     current_oid = head_info.oid
 
     # Verify target exists
@@ -904,9 +907,11 @@ def analyze_reset(
     verified_oid = result.stdout.strip()
 
     # Check if target is ancestor of current HEAD
-    is_ancestor_result = _run_git_command(git_exe, [ "merge-base", "--is-ancestor", verified_oid, current_oid], cwd=worktree_root, timeout=10
+    is_ancestor_result = _run_git_command(git_exe, [ "merge-base", "--is-ancestor", verified_oid, current_oid], cwd=worktree_root, timeout=10, check=False
     )
 
+    if is_ancestor_result.returncode not in (0, 1):
+        raise GitOperationError("Failed to check reset target ancestry")
     is_ancestor = is_ancestor_result.returncode == 0
 
     if not is_ancestor:
@@ -925,13 +930,13 @@ def analyze_reset(
 
     for commit_oid in commits_to_remove:
         pub, check_time, stale = check_commit_published(worktree_root, git_exe, commit_oid)
-        if pub:
-            is_published = True
-            break
         if stale:
             remote_refs_stale = True
         if check_time and not remote_refs_check_time:
             remote_refs_check_time = check_time
+        if pub:
+            is_published = True
+            break
 
     # Get affected files
     if commits_to_remove:
@@ -997,18 +1002,18 @@ def reset_branch(
     # Analyze reset
     analysis = analyze_reset(worktree_root, git_exe, target_oid)
 
-    # Check if remote refs are stale (AT-47)
+    # Known publication is decisive even if remote freshness is unknown.
+    if analysis.is_published:
+        raise PublishedCommitError(
+            "Cannot reset: commits are published (reachable from remote refs). "
+            "Use restore_tree to create a new commit instead."
+        )
+
+    # Never treat stale or missing freshness evidence as permission to reset.
     if analysis.remote_refs_stale:
         raise StateExpiredError(
             "Remote refs have not been checked recently (>5 minutes). "
             "Run 'git fetch' first to ensure commits are not published."
-        )
-
-    # Block reset of published commits (AT-47)
-    if analysis.is_published:
-        raise PublishedCommitError(
-            f"Cannot reset: commits are published (reachable from remote refs). "
-            f"Use restore_tree to create a new commit instead."
         )
 
     # Verify confirmation
@@ -1029,7 +1034,7 @@ def reset_branch(
             operation_id=operation_id,
             repo_id=repo_id,
             worktree_id=worktree_id
-        )
+        ).recovery_id
 
         # Perform hard reset
         reset_result = _run_git_command(git_exe, [ "reset", "--hard", analysis.target_oid], cwd=worktree_root, timeout=60
@@ -1040,10 +1045,10 @@ def reset_branch(
 
         # Verify symbolic ref is unchanged
         head_info = get_head_info(worktree_root, git_exe)
-        if head_info.ref != analysis.current_branch:
+        if head_info.branch != analysis.current_branch:
             raise GitOperationError(
                 f"Branch changed during reset: expected {analysis.current_branch}, "
-                f"got {head_info.ref}"
+                f"got {head_info.branch}"
             )
 
         # Verify HEAD points to target
@@ -1108,8 +1113,10 @@ def check_repository_constraints(
         constraints["warnings"].append("Shallow clone detected - ancestry checks may be unreliable")
 
     # Check for partial clone
-    config_result = _run_git_command(git_exe, [ "config", "--get", "extensions.partialClone"], cwd=worktree_root, timeout=10
+    config_result = _run_git_command(git_exe, [ "config", "--get", "extensions.partialClone"], cwd=worktree_root, timeout=10, check=False
     )
+    if config_result.returncode not in (0, 1):
+        raise GitOperationError("Failed to inspect partial-clone configuration")
     if config_result.returncode == 0:
         constraints["is_partial"] = True
         constraints["warnings"].append("Partial clone detected - some objects may not be available")
@@ -1128,7 +1135,6 @@ def check_repository_constraints(
                 # Git index header: 4-byte signature 'DIRC', 4-byte version
                 header = f.read(8)
                 if len(header) >= 8:
-                    signature = header[:4]
                     version = int.from_bytes(header[4:8], byteorder='big')
 
                     if version == 4:

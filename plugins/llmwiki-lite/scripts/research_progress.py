@@ -631,16 +631,16 @@ def active_tasks(project: dict, limit: int = 3) -> list[dict]:
 
 def page(home: str, project_id: str) -> str:
     from llmwiki_registry import get_project
-    from research_web_ui import esc, layout
+    from research_web_ui import esc, layout, page_header, new_button, ui_icon, resume_block
 
     project = get_project(project_id, home=home)["project"]
     body = f'''<link rel="stylesheet" href="/static/progress.css">
 <section id="research-progress" data-project="{esc(project_id)}">
-<header class="page-header"><h1>科研进度</h1><button id="progress-import" type="button">导入旧待办</button></header>
+{page_header("科研进度", new_button("新建任务", element_id="progress-new", attributes='aria-expanded="false" aria-controls="progress-add"'))}
 <div id="progress-message" role="status" hidden></div>
-<section id="progress-resume" aria-label="继续上次" hidden></section>
-<form id="progress-add" class="progress-add"><input type="text" name="title" maxlength="240" aria-label="新任务" placeholder="添加研究任务，回车保存" required autocomplete="off"><button type="submit">添加</button></form>
-<div class="progress-range"><div><button id="progress-prev" aria-label="上一段时间">←</button><button id="progress-today">本周</button><button id="progress-next" aria-label="下一段时间">→</button><span id="progress-range-label"></span></div><label class="meta">范围 <select id="progress-days" aria-label="时间范围"><option value="7">一周</option><option value="14">两周</option><option value="28">四周</option></select></label></div>
+{resume_block(project, project_id)}
+<form id="progress-add" class="progress-add" hidden><input type="text" name="title" maxlength="240" aria-label="新任务" placeholder="添加研究任务，回车保存" required autocomplete="off"><button type="submit" class="primary">添加</button><button type="button" id="progress-add-cancel">取消</button></form>
+<div class="progress-range"><span>任务安排</span><span id="progress-range-label" class="meta"></span><div class="progress-week-controls"><button id="progress-prev" class="rw-icon-button" aria-label="上一段时间">{ui_icon("left")}</button><button id="progress-today" class="rw-button">本周</button><button id="progress-next" class="rw-icon-button" aria-label="下一段时间">{ui_icon("right")}</button><details class="progress-range-options"><summary class="rw-icon-button" aria-label="时间范围" title="时间范围">{ui_icon("chevron")}</summary><label>显示范围<select id="progress-days" aria-label="时间范围"><option value="7">一周</option><option value="14">两周</option><option value="28">四周</option></select></label></details></div></div>
 <div id="progress-timeline" aria-label="研究时间轴" tabindex="0"></div>
 <section id="progress-unscheduled"><h2>未排期</h2><div></div></section>
 <details id="progress-done"><summary>已完成 <span></span></summary><div></div></details>
@@ -660,6 +660,6 @@ def page(home: str, project_id: str) -> str:
 <p id="progress-error" role="alert" hidden></p><button type="button" id="progress-reload" hidden>读取最新版本，保留当前填写</button>
 <div class="progress-dialog-actions"><span class="meta">日期可都留空</span><button type="submit" class="primary">保存</button></div>
 </form></dialog>
-<dialog id="progress-import-dialog"><h2>导入旧待办</h2><p class="muted">从科研记录中选择要跟进的事项，不自动推断日期。此浏览器的旧完成标记会一并保存。</p><form id="progress-import-form"><div id="progress-candidates"></div><p id="progress-import-error" role="alert" hidden></p><div class="actions"><button type="button" id="progress-import-close">取消</button><button class="primary">导入所选</button></div></form></dialog>
+<div class="progress-more"><button id="progress-import" type="button">导入旧待办</button></div><dialog id="progress-import-dialog"><h2>导入旧待办</h2><p class="muted">从科研记录中选择要跟进的事项，不自动推断日期。此浏览器的旧完成标记会一并保存。</p><form id="progress-import-form"><div id="progress-candidates"></div><p id="progress-import-error" role="alert" hidden></p><div class="actions"><button type="button" id="progress-import-close">取消</button><button class="primary">导入所选</button></div></form></dialog>
 </section><script src="/static/progress.js" defer></script>'''
     return layout("科研进度 · " + str(project["name"]), body, project_id=project_id, active="todos", home=home)

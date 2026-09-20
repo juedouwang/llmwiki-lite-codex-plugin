@@ -549,6 +549,8 @@ class _Activities:
         self.project, self.settings, self.now = project, settings, now
         # 授权在定位/连接数据库以前完成；绝不因打开库而补建 consent 或 schema。
         self.consent, self.hosts, self.floor = _authorization(project, settings)
+        from research_capture_runtime import session_bindings
+        self.bindings = session_bindings(project)
         self.path = _activity_path(project, settings)
         self.conn = None
 
@@ -580,9 +582,18 @@ class _Activities:
     def __exit__(self, *args):
         self.conn.close()
 
+    def session_floor(self, host, session_id):
+        binding = self.bindings.get(session_id) if host == 'codex' else None
+        floor = _timestamp(binding['since']) if binding else self.floor
+        if self.settings and self.settings.get('start_date'):
+            floor = max(floor, _midnight(self.settings['start_date']))
+        return floor
+
     def unchanged_consent(self):
+        from research_capture_runtime import session_bindings
         current, hosts, floor = _authorization(self.project, self.settings)
-        if current != self.consent or hosts != self.hosts or floor != self.floor:
+        if (current != self.consent or hosts != self.hosts or floor != self.floor
+                or session_bindings(self.project) != self.bindings):
             raise ActivitySourceUnavailable('CONSENT_CHANGED', '取材期间授权发生变化，活动来源须重新验证。')
 
     def rows(self, start, end, known_sources=None):
@@ -594,16 +605,20 @@ class _Activities:
             return int(previous is not None and previous == _activity_version(revision, kind, occurred))
 
         self.conn.create_function('llmwiki_source_seen', 4, seen, deterministic=True)
+        self.conn.create_function('llmwiki_authorized_since', 2,
+                                  lambda host, sid: (self.session_floor(host, sid) - timedelta(seconds=1)).isoformat(),
+                                  deterministic=True)
         # 先在 SQL 限定项目/宿主/状态/时间，再取有界元数据；这里不 SELECT evidence_json。
         # SQL 日期精度有限，留一秒边界余量，正文读取前用 datetime 精确核验。
         query = self.select + f" WHERE a.project_id=? AND s.project_id=? AND a.status='active' " \
             f"AND s.state IN ('active','closed') AND s.host IN ({host_slots}) " \
             "AND a.kind IN ('user_message','assistant_message') " \
             "AND NOT llmwiki_source_seen(a.id,a.source_revision,a.occurred_at,a.kind) " \
-            f"AND (julianday({instant}) IS NULL OR (julianday({instant})>=julianday(?) " \
+            f"AND (julianday({instant}) IS NULL OR (julianday({instant})>=max(julianday(?), " \
+            "julianday(llmwiki_authorized_since(s.host,s.host_session_id))) " \
             f"AND julianday({instant})<=julianday(?))) ORDER BY {instant},a.id LIMIT ?"
         args = [self.project['id'], self.project['id'], *sorted(self.hosts),
-                (max(start, self.floor) - timedelta(seconds=1)).isoformat(),
+                (start - timedelta(seconds=1)).isoformat(),
                 (end + timedelta(seconds=1)).isoformat(), MAX_ACTIVITIES + 1]
         return self.conn.execute(query, args).fetchall()
 
@@ -618,9 +633,6 @@ class _Activities:
             raise ActivitySourceUnavailable('NOT_AUTHORIZED', '该活动宿主未获授权，未读取正文。')
         if row['kind'] not in _MESSAGE_KINDS:
             raise ActivitySourceUnavailable('SOURCE_EXCLUDED', '该活动不是用户/助手文字。')
-        runtime = (self.settings or {}).get('runtime') or {}
-        if row['host_session_id'] and row['host_session_id'] == runtime.get('target_thread_id'):
-            raise ActivitySourceUnavailable('SOURCE_EXCLUDED', '自动化线程不作为科研活动来源。')
         for prefix in ('session_', 'activity_'):
             meta = {key[len(prefix):]: value for key, value in row.items() if key.startswith(prefix)}
             if meta.get('metadata_json'):
@@ -637,7 +649,8 @@ class _Activities:
         event = occurred or observed
         if event is None or observed is None:
             raise ActivitySourceUnavailable('INVALID_SOURCE', '活动缺少可信事件/观察时间。')
-        if event < self.floor or observed < self.floor or event > self.now or observed > self.now:
+        floor = self.session_floor(row['host'], row['host_session_id'])
+        if event < floor or observed < floor or event > self.now or observed > self.now:
             raise ActivitySourceUnavailable('SOURCE_EXCLUDED', '活动不在已授权且已发生的时间范围内。')
         if (start and event < start) or (end and event >= end):
             return
@@ -669,12 +682,11 @@ class _Activities:
         text = evidence['text']
         if (evidence.get('tool_name') or evidence.get('call_id') or _automated(evidence)
                 or evidence.get('origin') in ('function_call', 'function_call_output', 'tool_call', 'tool_result')
-                or text.lstrip().startswith(capture.INJECTION_PREFIXES)):
+                or text.lstrip().startswith(capture.INJECTION_PREFIXES) or capture.is_automatic_trigger(text)):
             raise ActivitySourceUnavailable('SOURCE_EXCLUDED', '工具调用、注入指令或自动生成活动已排除。')
         patterns = [*SENSITIVE_PATTERNS, *self.consent.get('exclude_patterns', [])]
         if (capture.matches_exclude_patterns(text, patterns)
-                or capture.matches_exclude_patterns(str(evidence.get('file', '')), patterns)
-                or _REPORT_PATH.search(text.replace(' ', '/'))):
+                or capture.matches_exclude_patterns(str(evidence.get('file', '')), patterns)):
             raise ActivitySourceUnavailable('SOURCE_EXCLUDED', '活动涉及敏感/生成路径，已排除正文。')
         if not text.strip():
             raise ActivitySourceUnavailable('INVALID_SOURCE', '活动没有可用文字，不能判定为删除。')

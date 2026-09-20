@@ -437,7 +437,16 @@ INJECTION_PREFIXES = (
     "<user_instructions>",
     "<permissions instructions>",
     "<ENVIRONMENT_CONTEXT>",
+    "Another language model started to solve this problem",
+    "<subagent_notification>",
 )
+
+
+
+def is_automatic_trigger(text: str) -> bool:
+    text = text.strip()
+    return bool(re.match(r"^<heartbeat(?:\s[^>]*)?>", text)
+                and "<automation_id>" in text and text.endswith("</heartbeat>"))
 
 
 def _block_text(block: Any) -> str | None:
@@ -513,6 +522,7 @@ class RolloutRead:
     truncated: bool = False
     bad_lines: int = 0
     reconcile: dict[str, Any] = field(default_factory=dict)
+    automatic_turn: bool = False
 
 
 class RolloutReader:
@@ -528,6 +538,7 @@ class RolloutReader:
         offset: int = 0,
         session_id: str | None = None,
         file_label: str | None = None,
+        automatic_turn: bool | None = None,
     ) -> RolloutRead:
         target = Path(path)
         size = target.stat().st_size
@@ -535,6 +546,10 @@ class RolloutReader:
         # 陷阱 2：偏移大于长度 => 文件被重写（compaction/迁移），必须从头再扫。
         rewritten = offset > size
         start = 0 if rewritten else max(0, offset)
+        if not start:
+            automatic_turn = False
+        elif automatic_turn is None:
+            automatic_turn = self._turn_before(target, start, sid)
 
         with target.open("rb") as handle:
             handle.seek(start)
@@ -558,7 +573,10 @@ class RolloutReader:
                 continue
             if not isinstance(record, Mapping):
                 continue
-            messages.extend(self._records(record, sid, label))
+            parsed, automatic_turn = self._filter_turn(
+                self._records(record, sid, label), bool(automatic_turn)
+            )
+            messages.extend(parsed)
 
         reconcile = self._reconcile(messages)
         return RolloutRead(
@@ -569,7 +587,36 @@ class RolloutReader:
             truncated=bool(remainder) or next_offset < size,
             bad_lines=bad_lines,
             reconcile=reconcile,
+            automatic_turn=bool(automatic_turn),
         )
+
+    @staticmethod
+    def _filter_turn(messages, automatic_turn):
+        kept = []
+        for message in messages:
+            if message["kind"] == "user_message":
+                automatic_turn = is_automatic_trigger(message["text"])
+            if not automatic_turn:
+                kept.append(message)
+        return kept, automatic_turn
+
+    def _turn_before(self, path, offset, sid):
+        """Recover legacy/stateless cursors without leaking a partial automatic turn."""
+        automatic = False
+        with path.open("rb") as handle:
+            while handle.tell() < offset:
+                raw = handle.readline(min(offset - handle.tell(), 8 * 1024 * 1024))
+                if not raw:
+                    break
+                if not raw.endswith(b"\n"):
+                    raise CaptureInputError("读取位置不在完整消息边界，保留原读取位置。")
+                try:
+                    record = json.loads(raw)
+                except (ValueError, UnicodeDecodeError):
+                    continue
+                if isinstance(record, Mapping):
+                    _, automatic = self._filter_turn(self._records(record, sid, path.name), automatic)
+        return automatic
 
     # -- 单行解析 --
 
@@ -766,11 +813,14 @@ class RolloutCaptureAdapter:
         store: WorkbenchStore,
         codex_home: str | Path,
         projects: Iterable[Mapping[str, Any]],
+        *,
+        session_bindings: Mapping[str, Mapping[str, Any]] | None = None,
     ):
         self.store = store
         self.codex_home = Path(codex_home)
         self.projects = [dict(p) for p in projects or ()]
         self.reader = RolloutReader()
+        self.session_bindings = dict(session_bindings or {})
 
     # -- 发现文件 --
 
@@ -916,7 +966,9 @@ class RolloutCaptureAdapter:
             if selected is not None and host_session_id not in selected:
                 continue
 
-            project = project_for_cwd(meta.get("cwd"), self.projects)
+            binding = self.session_bindings.get(host_session_id)
+            project = (next((p for p in self.projects if p["id"] == binding["project_id"]), None)
+                       if binding else project_for_cwd(meta.get("cwd"), self.projects))
             if project is None:
                 report["unassigned"].append(
                     {"file": label, "host_session_id": host_session_id, "cwd": meta.get("cwd")}
@@ -933,6 +985,8 @@ class RolloutCaptureAdapter:
                 continue
 
             try:
+                if binding:
+                    consent = {**consent, "authorized_at": binding["since"]}
                 entry = self._scan_file(path, label, meta, host_session_id, project, consent, history_range)
             except (OSError, CaptureError) as exc:  # 单文件失败不拖垮整轮扫描
                 report["errors"].append({"file": label, "error": str(exc)})
@@ -976,7 +1030,10 @@ class RolloutCaptureAdapter:
         generation = int(cursor["generation"]) if cursor else 1
         offset = int(cursor["position"].get("offset", 0)) if cursor else 0
 
-        result = self.reader.read(path, offset=offset, session_id=host_session_id, file_label=label)
+        result = self.reader.read(
+            path, offset=offset, session_id=host_session_id, file_label=label,
+            automatic_turn=cursor["position"].get("automatic_turn") if cursor else None,
+        )
         rewrites: list[dict[str, Any]] = []
         if result.rewritten:
             generation += 1
@@ -1027,7 +1084,7 @@ class RolloutCaptureAdapter:
             source_key,
             messages,
             generation=generation,
-            position={"offset": result.next_offset},
+            position={"offset": result.next_offset, "automatic_turn": result.automatic_turn},
         )
 
         return {

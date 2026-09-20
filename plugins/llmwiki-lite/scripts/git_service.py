@@ -510,67 +510,27 @@ def get_git_identity(repo_path: Path, git_exe: str) -> GitIdentity:
 
 
 def get_head_info(repo_path: Path, git_exe: str) -> GitHead:
-    """Get HEAD information.
-
-    Args:
-        repo_path: Repository path
-        git_exe: Path to git executable
-
-    Returns:
-        GitHead object
-    """
+    """Read OID and symbolic name together; unborn branches use symbolic-ref."""
     head = GitHead()
-
     try:
-        # Check if HEAD exists
         result = _run_git_command(
-            git_exe,
-            ['rev-parse', '--verify', 'HEAD'],
-            cwd=repo_path,
-            timeout=5.0,
-            check=False
+            git_exe, ['rev-parse', '--revs-only', 'HEAD', '--symbolic-full-name', 'HEAD'],
+            cwd=repo_path, timeout=5.0, check=False
         )
-
-        if result.returncode != 0:
-            # Unborn HEAD
-            head.unborn = True
-            # Try to get the symbolic ref
-            result = _run_git_command(
-                git_exe,
-                ['symbolic-ref', 'HEAD'],
-                cwd=repo_path,
-                timeout=5.0,
-                check=False
-            )
-            if result.returncode == 0:
-                ref = result.stdout.strip()
-                if ref.startswith('refs/heads/'):
-                    head.branch = ref[len('refs/heads/'):]
+        values = result.stdout.splitlines()
+        if result.returncode == 0 and values and re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', values[0]):
+            head.oid = values[0]
+            ref = values[1] if len(values) > 1 else ''
+            head.branch = ref[len('refs/heads/'):] if ref.startswith('refs/heads/') else None
+            head.detached = ref in {'', 'HEAD'}
             return head
-
-        # Get HEAD oid
-        head.oid = result.stdout.strip()
-
-        # Check if detached
-        result = _run_git_command(
-            git_exe,
-            ['symbolic-ref', 'HEAD'],
-            cwd=repo_path,
-            timeout=5.0,
-            check=False
-        )
-
-        if result.returncode != 0:
-            head.detached = True
-        else:
-            # Get branch name
-            ref = result.stdout.strip()
-            if ref.startswith('refs/heads/'):
-                head.branch = ref[len('refs/heads/'):]
-
+        head.unborn = True
+        result = _run_git_command(git_exe, ['symbolic-ref', 'HEAD'], cwd=repo_path, timeout=5.0, check=False)
+        ref = result.stdout.strip()
+        if result.returncode == 0 and ref.startswith('refs/heads/'):
+            head.branch = ref[len('refs/heads/'):]
     except subprocess.SubprocessError:
         pass
-
     return head
 
 

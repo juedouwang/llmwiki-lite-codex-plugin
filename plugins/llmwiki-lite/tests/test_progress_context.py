@@ -278,7 +278,7 @@ class ProgressContextTests(unittest.TestCase):
         worker.start()
         try:
             conn = HTTPConnection(f"127.0.0.1:{server.server_port}")
-            conn.request("GET", "/")
+            conn.request("GET", "/projects")
             body = conn.getresponse().read().decode("utf-8")
             conn.close()
         finally:

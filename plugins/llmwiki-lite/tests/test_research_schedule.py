@@ -120,6 +120,16 @@ class ScheduleTests(unittest.TestCase):
             self.call(cid, 'report_plan')
         self.assertFalse(self.finish(cid)['ok'])
 
+    def test_configuration_thread_is_not_excluded_from_capture(self):
+        with patch('research_capture_runtime.capture_project', return_value={
+                'project_id': self.p['id'], 'written': 1, 'gaps': []}) as capture:
+            result = self.begin()
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['capture'][0]['written'], 1)
+        capture.assert_called_once()
+        self.assertEqual(capture.call_args.args[0]['id'], self.p['id'])
+        self.assertNotIn('excluded_sessions', capture.call_args.kwargs)
+
     def test_capture_failure_is_a_gap_not_a_blocker(self):
         with patch('research_capture_runtime.capture_project', side_effect=Exception('private')):
             result = self.begin()

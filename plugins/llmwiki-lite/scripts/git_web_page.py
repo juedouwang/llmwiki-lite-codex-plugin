@@ -24,28 +24,28 @@ def page(home: str, project_id: str, params: Any = None) -> str:
         <span id="code-branch-label">读取分支…</span>{ui_icon("chevron")}</summary>
       <div id="code-branch-menu" class="code-branch-menu" aria-label="本地分支"></div>
     </details>
-    <button id="code-merge" type="button" data-action="merge" disabled>合并</button>
+    <button id="code-merge" type="button" data-action="merge" disabled>{ui_icon("merge")}合并</button>
     <span class="code-spacer"></span>
-    <button id="code-pull" type="button" data-action="pull" disabled><span aria-hidden="true">↓</span> 拉取</button>
-    <button id="code-push" type="button" data-action="push" disabled><span aria-hidden="true">↑</span> 上传
+    <button id="code-pull" type="button" data-action="pull" disabled>{ui_icon("download")}pull</button>
+    <button id="code-push" type="button" data-action="push" disabled>{ui_icon("upload")}push
       <span id="code-push-count" class="code-tag" hidden></span></button>
   </div>
   <p id="code-capability" class="code-notice" role="status" hidden></p>
   <section class="code-changes" aria-label="工作区状态">
+    <span class="code-change-icon" aria-hidden="true">{ui_icon("files")}</span>
     <div><strong id="code-change-title">正在读取工作区…</strong>
       <small id="code-change-note">只读取本地状态，不自动拉取或保存。</small></div>
-    <button id="code-save" type="button" class="code-outline" data-action="save" disabled>查看并保存</button>
+    <button id="code-save" type="button" class="code-primary" data-action="save" disabled>查看并保存</button>
   </section>
   <div id="code-workspace" class="code-workspace code-no-detail">
     <section class="code-history" aria-label="版本记录">
       <div class="code-section-heading"><h2>版本记录</h2><span class="code-muted">全部分支</span>
-        <button id="code-refresh" type="button" data-action="refresh">刷新</button></div>
+        <button id="code-refresh" type="button" data-action="refresh" aria-label="刷新版本记录" title="刷新版本记录">{ui_icon("refresh")}</button></div>
       <div id="code-graph-scroll" class="code-graph-scroll" tabindex="0" aria-label="版本图，可横向滚动">
-        <div id="code-graph" class="code-graph" aria-label="真实提交父子关系"></div>
+        <div id="code-graph" class="code-graph" aria-label="真实提交父子关系；外圈表示选中版本，当前分支标记当前 HEAD，虚线连接未加载父版本"></div>
       </div>
       <p id="code-graph-empty" class="code-empty">正在读取版本…</p>
       <button id="code-graph-more" type="button" data-action="graph-more" hidden>加载更早版本</button>
-      <p class="code-legend"><span aria-hidden="true">◎</span> 当前 HEAD · <span aria-hidden="true">○</span> 其他版本 · 虚线连接尚未加载的父版本</p>
     </section>
     <aside id="code-detail" class="code-detail" aria-label="版本详情" hidden></aside>
   </div>

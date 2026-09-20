@@ -293,14 +293,14 @@ def test_web(
         original_stderr = sys.stderr
         sys.stderr = None
         try:
-            code, body, _ = request(connection, "GET", "/")
+            code, body, _ = request(connection, "GET", "/projects")
         finally:
             sys.stderr = original_stderr
         home_text = body.decode("utf-8")
         require(
             code == 200
             and "registered-two" in home_text
-            and "科研助手" in home_text
+            and "野人工作台" in home_text
             and "＋ 添加项目" in home_text,
             "Chinese research home page failed",
         )
@@ -337,8 +337,8 @@ def test_web(
             "\u79d1\u7814\u8bb0\u5f55",
             "\u9636\u6bb5\u6027\u7406\u89e3\uff1a\u5b9e\u9a8c\u8bbe\u8ba1",
             "records-timeline",
-            "2026\u5e7408\u670804\u65e5",
-            "2 \u6761\u8bb0\u5f55",
+            "2026-08-04",
+            "rw-list-row",
         ):
             require(
                 code == 200 and token in records_text,
@@ -352,7 +352,7 @@ def test_web(
         style_text = body.decode("utf-8")
         require(
             code == 200
-            and ".timeline-items" in style_text
+            and ".rw-list-row" in style_text
             and ".timeline-card" in style_text,
             "research records timeline connector CSS missing",
         )
@@ -465,8 +465,8 @@ def test_web(
             code == 200
             and "<table>" in text
             and "wikilink" in text
-            and "← 知识库" in text
-            and "目录" in text
+            and "rw-split" in text
+            and "page-list" in text
             and "打印" in text,
             "Markdown reading page failed",
         )
@@ -814,6 +814,7 @@ def main() -> int:
     from test_notebook import NotebookTests
     from test_continuous_documents import ContinuousDocuments
     from test_desktop_launcher import DesktopLauncherTests
+    from test_notebook_removal import NotebookRemovalTests
     from test_progress import ProgressTests
     from test_reports import ReportTests, ReportGenerationTests
     from test_workspace_reports import WorkspaceReportTests
@@ -828,6 +829,9 @@ def main() -> int:
     from test_git_recovery import TestGitRecovery
     from test_git_operations import GitOperationsTests
     from test_git_merge import GitMergeTests
+    from test_git_revert_restore import GitRevertRestoreTests
+    from test_git_web_detail import CommitDetailTests
+    from test_project_preferences import ProjectPreferencesTests
     from test_acceptance_git_graph import GitGraphAcceptanceTests
     # M-02 采集机制（合成 fixture，不读真实会话目录）：授权闸门、注入块过滤、
     # A/B 对账缺口、幂等、半截行与跨 chunk UTF-8、落盘前脱敏、cwd 归属、
@@ -844,7 +848,6 @@ def main() -> int:
     # tracked in the commits that introduced them and are expected back in as their
     # fixes land:
     #   test_workbench_store.py         - TestJobLeasing
-    #   test_git_revert_restore.py      - the reset guards and restore-file cases
     from test_knowledge_maintenance import KnowledgeTests, KnowledgeHTTPTests
     from test_knowledge_schedule import KnowledgeScheduleTests
     from test_report_literature_sources import SavedLiteratureSourceTests
@@ -852,7 +855,7 @@ def main() -> int:
         KnowledgeTests, KnowledgeHTTPTests, KnowledgeScheduleTests, SavedLiteratureSourceTests,
         ReportTests,
         ReportGenerationTests, WorkspaceReportTests,
-        NotebookTests, ContinuousDocuments, DesktopLauncherTests,
+        NotebookTests, NotebookRemovalTests, ContinuousDocuments, DesktopLauncherTests,
         ProgressTests,
         ProgressContextTests,
         MCPValidationTests,
@@ -863,7 +866,7 @@ def main() -> int:
         TestGitGraphFixtureF1,
         TestGitRecovery,
         GitOperationsTests,
-        GitMergeTests,
+        GitMergeTests, GitRevertRestoreTests, CommitDetailTests, ProjectPreferencesTests,
         GitGraphAcceptanceTests,
         CaptureAdapterTests, CaptureRuntimeTests, ScheduleTests, WorkflowTests, RecoveryTests, ActivityTests, GitTests, HintTests,
     )

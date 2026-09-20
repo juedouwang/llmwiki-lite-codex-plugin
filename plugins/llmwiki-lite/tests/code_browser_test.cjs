@@ -60,6 +60,56 @@ function edit(project,name,text) { fs.writeFileSync(path.join(project.root,name)
     await confirm();
   }
   try {
+    // Exercise both real API response orders; delaying a response does not fake Git data.
+    for (const slow of ['status', 'graph']) {
+      const selectedOid = head(cfg.local);
+      // Count only the selected OID: bounded prefetch of unrelated nodes is
+      // allowed, duplicate initial/detail reads of this exact OID are not.
+      const counts = {status:0, graph:0, commit:0};
+      let fastDone;
+      const fastResponse = new Promise(resolve => { fastDone = resolve; });
+      const pattern = `**/api/project/${cfg.local.pid}/code/**`;
+      const handler = async route => {
+        const [name, oid] = new URL(route.request().url()).pathname.split('/code/')[1].split('/');
+        if (!(name in counts) || (name === 'commit' && oid !== selectedOid)) { await route.continue(); return; }
+        counts[name]++;
+        const response = await route.fetch();
+        if (name === slow) {
+          await fastResponse;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        await route.fulfill({response});
+        if (name !== slow && name !== 'commit') fastDone();
+      };
+      await page.route(pattern, handler);
+      try {
+        await page.goto(`${cfg.origin}/project/${cfg.local.pid}/code`);
+        assert.equal(await page.locator('#code-refresh svg').count(), 1, '读取中也不能覆盖刷新SVG');
+        assert.equal(await page.locator('#code-refresh').getAttribute('aria-busy'), 'true');
+        await page.evaluate(() => {
+          window.dispatchEvent(new Event('focus'));
+          setTimeout(() => window.dispatchEvent(new Event('focus')), 60);
+        });
+        await ready();
+        await page.waitForSelector('#code-create-from');
+        assert.equal(await page.locator('#code-refresh svg').count(), 1, '读取完成后保留刷新SVG');
+        assert.equal(await page.getByRole('button', {name:'刷新版本记录', exact:true}).count(), 1);
+        assert.deepEqual(counts, {status:1, graph:1, commit:1}, `重复初始化请求: ${slow}后返回`);
+        await refresh();
+        assert.deepEqual(counts, {status:2, graph:2, commit:1}, '显式刷新必须重新读取且不重复详情');
+        await page.locator('#code-close-detail').click();
+        assert.equal(await page.locator('#code-detail').isHidden(), true);
+        const reopened = await page.evaluate(oid => {
+          document.querySelector(`.code-commit[data-oid="${oid}"]`).click();
+          return {oid: document.querySelector('#code-commit-oid')?.textContent,
+            hidden: document.querySelector('#code-detail').hidden,
+            loading: document.querySelector('#code-detail').textContent.includes('读取版本…')};
+        }, selectedOid);
+        assert.deepEqual(reopened, {oid:selectedOid, hidden:false, loading:false}, '关闭再选中必须在点击任务内显示真实缓存详情');
+        assert.deepEqual(counts, {status:2, graph:2, commit:1}, '重开所选OID必须复用缓存，不增加状态、图或详情请求');
+      } finally { await page.unroute(pattern, handler); }
+    }
+    done('首屏两种返回顺序/窗口聚焦无重复读取，显式刷新与详情重开有效');
     await open(cfg.local);
     assert.equal(await page.locator('#code-app').count(),1);
     assert.equal(await page.locator('body > aside').count(),0);
@@ -177,21 +227,28 @@ function edit(project,name,text) { fs.writeFileSync(path.join(project.root,name)
     assert.equal(git(cfg.failure,'rev-parse','HEAD^{tree}'),git(cfg.failure,'rev-parse',cfg.failure.target+'^{tree}'));
     done('A22 恢复后提交故障明确反馈并从网页重新保存');
     await page.goto(`${cfg.origin}/project/${cfg.local.pid}/todos`);
-    await page.locator(`a[href="/project/${cfg.local.pid}/code"]`).click(); await ready();
+    await page.locator(`a[href="/project/${cfg.local.pid}/code"]`).click();
+    await page.waitForURL(`${cfg.origin}/project/${cfg.local.pid}/code`); await ready();
     assert.equal(await page.locator('#code-app').getAttribute('data-project-id'),cfg.local.pid);
     await page.locator('.console-project-switcher summary').click();
-    await page.locator(`.console-project-menu a[href="/project/${cfg.remote.pid}/code"]`).click(); await ready();
+    await page.locator(`.console-project-menu a[href="/project/${cfg.remote.pid}/code"]`).click();
+    await page.waitForURL(`${cfg.origin}/project/${cfg.remote.pid}/code`); await ready();
     assert.equal(await page.locator('#code-app').getAttribute('data-project-id'),cfg.remote.pid);
     assert.equal(await page.locator(`.code-commit[data-oid="${cfg.local.initial}"]`).count(),0);
     await page.locator('.console-project-switcher summary').click();
-    await page.locator(`.console-project-menu a[href="/project/${cfg.local.pid}/code"]`).click(); await ready();
+    await page.locator(`.console-project-menu a[href="/project/${cfg.local.pid}/code"]`).click();
+    await page.waitForURL(`${cfg.origin}/project/${cfg.local.pid}/code`); await ready();
     assert.equal(await page.locator('#code-app').getAttribute('data-project-id'),cfg.local.pid);
     done('A01 A37 从进度栏目进入代码并跨项目返回不串数据');
     await page.waitForSelector('#code-create-from');
     assert.equal(await page.locator('#code-detail .code-version-title').count(),1);
+    assert.equal(await page.locator('#code-create-from svg').count(),1);
+    assert.equal(await page.locator('#code-restore svg').count(),1);
+    assert.equal(await page.locator('#code-close-detail svg').count(),1);
     const unchanged=head(cfg.local);
     await selectNode(cfg.local.initial);
-    await page.locator('#code-detail [data-file-id]').first().click();
+    assert.equal(await page.locator('#code-detail .code-file').first().getAttribute('aria-pressed'),'true');
+    // First-file real diff appears without requiring an extra user click.
     await page.waitForFunction(()=>document.querySelector('#code-detail .code-diff-box')?.textContent.includes('初始'));
     assert.equal(head(cfg.local),unchanged);
     await page.locator('#code-close-detail').click();

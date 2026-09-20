@@ -1,8 +1,11 @@
 /* Explicit, local tasks. No inferred percentages and no background agent process. */
 (()=>{
   'use strict';
-  const progressRoot=document.querySelector('#research-progress');
-  const homeResume=document.querySelector('.resume-block[data-project]');
+  const page=document.getElementById('main-content');if(!page)return;
+  const progressRoot=page.querySelector('#research-progress');
+  const homeResume=page.querySelector('.resume-block[data-project]');
+  const lifecycle=new AbortController(),active=()=>!lifecycle.signal.aborted&&page.isConnected;
+  const owns=event=>event.detail?.root===page;
   const projectId=(progressRoot||homeResume||{}).dataset&& (progressRoot||homeResume).dataset.project;
   if(!projectId)return;
   const endpoint=`/api/project/${encodeURIComponent(projectId)}/progress`;
@@ -88,14 +91,24 @@
       node.replaceChildren(heading, list);
       return;
     }
-    node.replaceChildren(heading);
+    const label=el('div','progress-resume-label');
+    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');icon.setAttribute('class','ui-icon');
+    icon.innerHTML='<path d="M3 3v8a4 4 0 0 0 4 4h14m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>';
+    label.append(icon,heading);node.replaceChildren(label);
     items.slice(0,3).forEach(task=>{
-      const b=button('',()=>openTask(task),'progress-resume-item');b.dataset.id=task.id;
-      b.append(el('strong','',task.title),el('span','',preview(effective(task,'checkpoint'))),el('span','meta','下一步：'+preview(effective(task,'next_step'))));
-      if(task.record_id){const note=el('a','resume-note','打开关联笔记');note.href=recordUrl(task.record_id);note.addEventListener('click',event=>event.stopPropagation());b.append(note);}
-      node.append(b);
+      const item=el('div','progress-resume-item');item.dataset.id=task.id;
+      item.addEventListener('click',event=>{if(!event.target.closest('a,button'))openTask(task);});
+      const title=button('',()=>openTask(task),'resume-title');title.append(el('strong','',task.title));
+      const next=el('p');next.append(el('span','meta','下一步'),document.createTextNode('　'+preview(effective(task,'next_step'))));
+      const actions=el('div','progress-resume-actions');actions.append(button('打开任务',()=>openTask(task),'rw-button rw-outline'));
+      if(task.record_id){const note=el('a','rw-button resume-note','查看记录');note.href=recordUrl(task.record_id);const glyph=page.querySelector('[data-workbench-nav=records] svg')||document.querySelector('[data-workbench-nav=records] svg');if(glyph)note.prepend(glyph.cloneNode(true));actions.append(note);}
+      const manual=['checkpoint','next_step'].some(field=>modeOf(task,field)==='manual');
+      if(manual||task.auto_context)actions.append(el('span','meta progress-context-origin',manual?'包含手动记录':'助手整理 · 不自动完成任务'));
+      item.append(title,el('p','',preview(effective(task,'checkpoint'))),next,actions);node.append(item);
     });
   }
+
   function renderHome(){
     if(!homeResume)return;
     const items=resumeTasks();
@@ -107,7 +120,7 @@
     const status=$('#progress-auto-status'), body=$('#progress-auto-body');
     if(!status)return;
     const auto=task.auto_context;
-    document.querySelectorAll('.progress-use-auto').forEach(btn=>{
+    progressRoot.querySelectorAll('.progress-use-auto').forEach(btn=>{
       const field=btn.dataset.field;
       btn.hidden=!(auto&&modeOf(task,field)==='manual');
     });
@@ -132,7 +145,7 @@
     applyTasks(data,false);ready=true;render();renderHome();await openFromHash();
   }
   async function openFromHash(){
-    if(!progressRoot)return;
+    if(!progressRoot||!active())return;
     const match=location.hash.match(/^#task-([a-f0-9]{32})$/);if(!match)return;
     const task=tasks.find(t=>t.id===match[1]);if(task)openTask(task);
   }
@@ -167,7 +180,7 @@
     });
   }
   function openTask(task){
-    if(!form)return;
+    if(!form||!active())return;
     editing=task.id;baseline=structuredClone(task);conflict=false;error('');if($('#progress-reload'))$('#progress-reload').hidden=true;
     fields.forEach(k=>{
       if(k==='record_id')return;
@@ -200,13 +213,18 @@
     const row=el('div','progress-task-row'),status=el('select','progress-inline-status status-'+task.status);
     status.setAttribute('aria-label',task.title+'的状态');
     Object.entries(labels).forEach(([value,label])=>{const option=el('option','',label);option.value=value;status.append(option);});status.value=task.status;
-    status.addEventListener('change',async()=>{const value=status.value;status.disabled=true;
+    const done=button(task.status==='done'?'✓':'',()=>changeStatus(task.status==='done'?'active':'done'),'progress-done-toggle'+(task.status==='done'?' is-done':''));
+    done.setAttribute('aria-label',(task.status==='done'?'重新打开 ':'完成 ')+task.title);done.title=labels[task.status];
+    async function changeStatus(value){status.disabled=true;done.disabled=true;
       try{await persist({action:'update',id:task.id,task:{title:task.title,status:value,start:task.start,end:task.end,checkpoint:task.checkpoint,next_step:task.next_step,record_id:task.record_id||'',context_mode:task.context_mode}});}
       catch(e){notice(e.message);status.value=task.status;if(e.code===409)await load().catch(()=>{});}
-      finally{status.disabled=false;}
-    });
+      finally{status.disabled=false;done.disabled=false;}
+    }
+    status.addEventListener('change',()=>changeStatus(status.value));
     const b=button(task.title,()=>openTask(task),'progress-task');b.dataset.id=task.id;
-    const step=effective(task,'next_step');if(step)b.title=step;row.append(status,b);return row;
+    const control=el('span','progress-state-control');control.title='状态：'+labels[task.status];control.append(status);
+    const glyph=page.querySelector('.progress-range-options summary svg');if(glyph)control.append(glyph.cloneNode(true));
+    const step=effective(task,'next_step');if(step)b.title=step;row.append(done,b,control);return row;
   }
   function render(){
     if(!progressRoot)return;
@@ -222,7 +240,7 @@
       const row=el('div','progress-grid-row');row.append(taskButton(task));
       const track=el('div','progress-track');const bar=button('',()=>openTask(task),'progress-bar status-'+task.status);
       bar.style.gridColumn=`${Math.max(0,delta(task.start,start))+1} / ${Math.min(days-1,delta(task.end,start))+2}`;
-      bar.textContent=effective(task,'next_step')||labels[task.status];bar.title=`${task.title} · ${task.start} — ${task.end}`;bar.setAttribute('aria-label',bar.title);track.append(bar);row.append(track);grid.append(row);
+      bar.textContent=task.title;bar.title=`${task.title} · ${task.start} — ${task.end}`;bar.setAttribute('aria-label',bar.title);track.append(bar);row.append(track);grid.append(row);
     });timeline.append(grid);
     if(grid.children.length===1)timeline.append(el('p','progress-empty','这段时间没有已排期的任务。'));
     const outside=scheduled.filter(t=>t.end<start||t.start>end);
@@ -234,7 +252,7 @@
     if(pollError)notice(pollError);
   }
   async function refreshSummary(){
-    if(inflight||document.hidden)return;
+    if(inflight||document.hidden||!active())return;
     inflight=true;
     const ac=new AbortController();
     const timeout=setTimeout(()=>ac.abort(),3000);
@@ -247,15 +265,31 @@
     }finally{clearTimeout(timeout);inflight=false;}
   }
   function stopTimer(){if(timer){clearInterval(timer);timer=null;}}
-  function startTimer(){if(document.hidden||timer)return;timer=setInterval(refreshSummary,5000);}
+  function startTimer(){if(!active()||document.hidden||timer)return;timer=setInterval(refreshSummary,5000);}
   document.addEventListener('visibilitychange',()=>{
     if(document.hidden)stopTimer();
-    else{refreshSummary();startTimer();}
-  });
+    else if(active()){refreshSummary();startTimer();}
+  },{signal:lifecycle.signal});
+  function unsaved(){
+    return busy||hasChanges()||Boolean($('#progress-add input[name=title]')?.value.trim())||Boolean($('#progress-import-dialog')?.open&&$('#progress-candidates :checked'));
+  }
+  document.addEventListener('workbench:before-leave',event=>{
+    if(!owns(event)||!active()||!unsaved())return;
+    event.preventDefault();
+    const text=busy?'请等待当前操作完成。':'尚未保存，请先保存或取消当前修改。';
+    if(dialog?.open)error(text);else notice(text);
+  },{signal:lifecycle.signal});
+  document.addEventListener('workbench:leave',event=>{if(owns(event)){stopTimer();if(dialog?.open)dialog.close();const importing=$('#progress-import-dialog');if(importing?.open)importing.close();}},{signal:lifecycle.signal});
+  document.addEventListener('workbench:enter',event=>{if(owns(event)&&active()){refreshSummary();startTimer();}},{signal:lifecycle.signal});
+  document.addEventListener('workbench:dispose',event=>{if(owns(event)){stopTimer();lifecycle.abort();}},{signal:lifecycle.signal});
   if(progressRoot){
+    const addForm=$('#progress-add'), newTask=$('#progress-new');
+    function toggleAdd(show){addForm.hidden=!show;newTask.setAttribute('aria-expanded',String(show));if(show)addForm.elements.title.focus();else newTask.focus();}
+    newTask.addEventListener('click',()=>toggleAdd(addForm.hidden));
+    $('#progress-add-cancel').addEventListener('click',()=>toggleAdd(false));
     $('#progress-add').addEventListener('submit',async event=>{
       event.preventDefault();const input=event.target.elements.title,submit=event.target.querySelector('button');const title=input.value.trim();if(!title)return;submit.disabled=true;
-      try{await persist({action:'create',task:{title,status:'planned'}});input.value='';input.focus();}
+      try{await persist({action:'create',task:{title,status:'planned'}});input.value='';toggleAdd(false);}
       catch(e){notice(e.message);if(e.code===409)await load().catch(()=>{});}
       finally{submit.disabled=false;}
     });
@@ -268,7 +302,7 @@
     ['checkpoint','next_step'].forEach(field=>{
       form.elements.namedItem(field).addEventListener('input',()=>{form.elements.namedItem(field+'_mode').value='manual';const current=tasks.find(t=>t.id===editing);if(current)updateAutoPanel({...current,context_mode:{...currentModes()}});});
     });
-    document.querySelectorAll('.progress-use-auto').forEach(btn=>btn.addEventListener('click',()=>{
+    progressRoot.querySelectorAll('.progress-use-auto').forEach(btn=>btn.addEventListener('click',()=>{
       const field=btn.dataset.field;const current=tasks.find(t=>t.id===editing);if(!current||!current.auto_context)return;
       form.elements.namedItem(field).value=current.auto_context[field]||'';
       form.elements.namedItem(field+'_mode').value='auto';
@@ -291,12 +325,13 @@
     });
     $('#progress-close').addEventListener('click',closeTask);dialog.addEventListener('cancel',event=>{event.preventDefault();closeTask();});
     form.elements.namedItem('record_id').addEventListener('change',event=>renderSource(event.target.value, recordsLoaded&&event.target.value&&!linkTargets.some(t=>t.id===event.target.value)));
-    window.addEventListener('beforeunload',event=>{if(hasChanges()||busy){event.preventDefault();event.returnValue='';}});
+    window.addEventListener('beforeunload',event=>{if(active()&&unsaved()){event.preventDefault();event.returnValue='';}},{signal:lifecycle.signal});
     $('#progress-prev').addEventListener('click',()=>{start=add(start,-days);render();});$('#progress-next').addEventListener('click',()=>{start=add(start,days);render();});$('#progress-today').addEventListener('click',()=>{start=weekStart();render();});$('#progress-days').addEventListener('change',event=>{days=Number(event.target.value);render();});
     $('#progress-import').addEventListener('click',async()=>{
       $('#progress-import-error').hidden=true;
       try{
         await ensureRecords();
+        if(!active())return;
         const container=$('#progress-candidates');container.replaceChildren();
         if(!candidates.length)container.append(el('p','meta','没有可导入的旧待办。'));
         candidates.forEach(c=>{const row=el('label','progress-candidate'),input=el('input');input.type='checkbox';input.value=c.id;row.append(input,el('span','',c.title));container.append(row);});

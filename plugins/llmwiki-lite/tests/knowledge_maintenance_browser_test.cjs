@@ -10,7 +10,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   assert.match(await page.locator('#km-pending').innerText(),/3/);
   assert.equal(await page.locator('#km-dialog').isVisible(),false);
   await page.screenshot({path:path.join(cfg.evidence,'01-pending.png'),fullPage:true});
-  await page.locator('#km-pending').click();
+  assert.match(await page.locator('#knowledge-updates').innerText(),/3/);
+  await page.locator('#knowledge-updates').click();
   await page.getByRole('button',{name:/^architecture.md/}).click();
   await page.locator('#km-dialog').waitFor({state:'visible'});
   assert.match(await page.locator('#km-base').innerText(),/同步调用/);
@@ -37,6 +38,9 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   await page.locator('#km-status').waitFor({state:'attached'});
   await page.waitForFunction(()=>document.querySelector('#km-status').textContent.length>0);
   assert.equal(await page.locator('#km-pending').isVisible(),false);
+  await page.locator('#knowledge-page-details').click();
+  assert.equal(await page.locator('#knowledge-page-info').evaluate(el=>el.open),true);
+  assert.match(await page.locator('#knowledge-page-info').innerText(),/architecture.md/);
   await page.locator('#km-details summary').click();await page.locator('#km-history').click();
   await page.waitForFunction(()=>document.querySelector('#km-list').textContent.includes('已采用'));
   assert.match(await page.locator('#km-list').innerText(),/已采用/);

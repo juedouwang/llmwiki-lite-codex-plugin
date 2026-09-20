@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from git_service import (GitError, GitLockError, RepositoryLock, _run_git_command,
-                         detect_git_executable, get_git_version)
+                         detect_git_executable, get_git_version, get_head_info)
 from git_graph import build_graph, GraphSnapshotExpiredError
 from git_operations import commit_selected_files, create_branch, set_author
 from git_merge import merge_fixed_commit
@@ -107,15 +107,27 @@ class Repo:
         self.root = Path(self.project['source_root']).resolve()
         self.state = Path(self.project['state_root']).resolve() / 'git-web'
         self.exe = checked_git()
-        top = self.git('rev-parse', '--show-toplevel', check=False)
-        if top.returncode or Path(top.stdout.strip()).resolve() != self.root:
+        # One process for related metadata; these are re-read for every request.
+        meta = self.git('rev-parse', '--path-format=absolute', '--show-toplevel',
+                        '--git-common-dir', '--absolute-git-dir', '--show-object-format',
+                        '--show-superproject-working-tree', check=False)
+        values = meta.stdout.splitlines()
+        if meta.returncode or len(values) < 4 or Path(values[0]).resolve() != self.root:
             fail('unsupported_repo', '请注册代码仓库根目录；不会操作其父仓库或裸仓库。')
-        self.common = Path(self.git('rev-parse', '--path-format=absolute', '--git-common-dir').stdout.strip()).resolve()
-        self.gitdir = Path(self.git('rev-parse', '--absolute-git-dir').stdout.strip()).resolve()
+        self.common = Path(values[1]).resolve()
+        self.gitdir = Path(values[2]).resolve()
         self.key = digest(str(self.common).casefold() if os.name == 'nt' else str(self.common))
         self.binding = digest([str(Path(home).resolve()), self.pid, str(self.root)])
-        self.oid_length = 64 if self.git('rev-parse', '--show-object-format').stdout.strip() == 'sha256' else 40
-        self.config = self.read_config()
+        self.oid_length = 64 if values[3] == 'sha256' else 40
+        self.superproject = values[4] if len(values) > 4 else ''
+        self._config = None
+
+    @property
+    def config(self):
+        # History/detail reads don't need config; writes still load fresh config.
+        if self._config is None:
+            self._config = self.read_config()
+        return self._config
 
     def git(self, *args, check=True, binary=False, data=None, timeout=30, env=None):
         return _run_git_command(self.exe, ['-c', 'core.fsmonitor=false', *args], cwd=self.root, check=check,
@@ -133,9 +145,8 @@ class Repo:
         return result_map
 
     def head(self):
-        branch = self.git('symbolic-ref', '--quiet', '--short', 'HEAD', check=False).stdout.strip()
-        oid = self.git('rev-parse', '--verify', 'HEAD', check=False).stdout.strip()
-        return {'oid': oid or None, 'branch': branch or None, 'unborn': not oid, 'detached': bool(oid and not branch)}
+        head = get_head_info(self.root, self.exe)
+        return {'oid': head.oid, 'branch': head.branch, 'unborn': head.unborn, 'detached': head.detached}
 
     def refs(self):
         result = self.git('for-each-ref', '--format=%(refname)%00%(objectname)', 'refs/heads/', 'refs/remotes/', 'refs/tags/').stdout
@@ -148,7 +159,7 @@ class Repo:
         worktrees = self.git('worktree', 'list', '--porcelain', '-z', binary=True).stdout
         if worktrees.count(b'worktree ') != 1:
             reason = '多工作树仓库暂仅支持浏览，请在原 Git 工具中操作。'
-        if self.git('rev-parse', '--show-superproject-working-tree').stdout.strip():
+        if self.superproject:
             reason = '子模块仓库暂仅支持浏览。'
         tracked = self.git('ls-files', '--stage', '-z', binary=True).stdout
         if any(x.startswith(b'160000 ') for x in tracked.split(b'\0')):
@@ -158,10 +169,16 @@ class Repo:
         paths += [self.root / '.gitattributes', self.gitdir / 'info' / 'attributes']
         # An ignored attributes file still affects tracked files; do not execute
         # its filter merely because the attributes file itself is hidden.
+        checked_parents = set()
         for record in tracked.split(b'\0'):
             if b'\t' not in record:
                 continue
-            parent = self.path(record.split(b'\t', 1)[1].decode('utf-8')).parent
+            value = record.split(b'\t', 1)[1].decode('utf-8')
+            directory = str(Path(value).parent)
+            if directory in checked_parents:
+                continue
+            parent = self.path(value).parent
+            checked_parents.add(directory)
             while parent != self.root:
                 paths.append(parent / '.gitattributes')
                 parent = parent.parent
@@ -233,7 +250,8 @@ class Repo:
         p = self.root / value
         if value.startswith(('/', '\\')) or re.match(r'^[A-Za-z]:', value) or '..' in Path(value).parts:
             fail('invalid_request', '路径无效。', 400)
-        if p.parent.resolve() != self.root and self.root not in p.parent.resolve().parents:
+        parent = p.parent.resolve()
+        if parent != self.root and self.root not in parent.parents:
             fail('invalid_request', '文件路径越界。', 400)
         return p
 
@@ -404,13 +422,40 @@ def tree_files(repo, base, oid):
     return result
 
 
-def commit(repo, oid):
+def commit_file_stats(repo, base, oid):
+    """Read exact line counts without filters; -z preserves rename and unusual paths."""
+    args = (['diff', base, oid] if base else
+            ['diff-tree', '--root', '--no-commit-id', '-r', oid])
+    raw = repo.git(*args, '--no-ext-diff', '--no-textconv', '--numstat', '-z',
+                   '--find-renames', '--', binary=True).stdout
+    parts, result, i = raw.split(b'\0'), {}, 0
+    while i < len(parts) and parts[i]:
+        added, removed, path = parts[i].split(b'\t', 2)
+        i += 1
+        if not path:  # With -z, a rename is followed by old and new paths.
+            path = parts[i + 1]
+            i += 2
+        binary = added == b'-' or removed == b'-'
+        result[path.decode('utf-8')] = {
+            'additions': None if binary else int(added),
+            'deletions': None if binary else int(removed), 'binary': binary,
+        }
+    return result
+
+
+def commit(repo, oid, *, include_stats=True):
     oid = repo.oid(oid)
     raw = repo.git('show', '-s', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%B', oid).stdout.split('\0', 6)
     parents = raw[1].split()
-    return {'ok': True, 'oid': oid, 'parents': parents, 'author_name': raw[2], 'author_email': raw[3],
+    base = parents[0] if parents else None
+    files = tree_files(repo, base, oid)
+    if include_stats:
+        counts = commit_file_stats(repo, base, oid)
+        for file in files:
+            file.update(counts.get(file['path'], {}))
+    return {'ok': True, 'oid': oid, 'repository_path': str(repo.root), 'parents': parents, 'author_name': raw[2], 'author_email': raw[3],
             'committed_at': raw[4], 'subject': raw[5], 'message': raw[6], 'base_oid': parents[0] if parents else None,
-            'files': tree_files(repo, parents[0] if parents else None, oid)}
+            'files': files}
 
 
 def get_preview(repo, preview_id, consume=False):
@@ -507,7 +552,7 @@ def preview(repo, payload):
 def diff(repo, query):
     kind = query.get('kind')
     if kind == 'commit':
-        meta = commit(repo, query.get('oid'))
+        meta = commit(repo, query.get('oid'), include_stats=False)
         files = meta['files']
     elif kind in {'worktree', 'restore'}:
         item = get_preview(repo, query.get('preview_id'))

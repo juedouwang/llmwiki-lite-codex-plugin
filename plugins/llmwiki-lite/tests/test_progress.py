@@ -264,7 +264,7 @@ class ProgressTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join()
-    def test_project_landing_page_shows_where_you_left_off(self):
+    def test_progress_page_shows_where_you_left_off_before_javascript(self):
         """M-01 / A-02: 次日打开项目就知道上次做到哪、下一步做什么，并且能点回去。"""
         record_id = self.note()
         created = self.create(record_id=record_id, status="active",
@@ -278,7 +278,7 @@ class ProgressTests(unittest.TestCase):
         worker.start()
         try:
             conn = HTTPConnection(f"127.0.0.1:{server.server_port}")
-            conn.request("GET", f"/project/{self.project['id']}")
+            conn.request("GET", f"/project/{self.project['id']}/todos")
             response = conn.getresponse()
             body = response.read().decode("utf-8")
             conn.close()
@@ -297,8 +297,8 @@ class ProgressTests(unittest.TestCase):
         # A planned task is not "where you left off".
         self.assertNotIn("还没开始的想法", body)
 
-    def test_project_landing_page_omits_the_block_when_nothing_is_running(self):
-        self.create(title="以后再做", status="planned")
+    def test_knowledge_page_does_not_repeat_task_progress(self):
+        self.create(title="以后再做", status="active")
         server = create_server(self.home, port=0)
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()

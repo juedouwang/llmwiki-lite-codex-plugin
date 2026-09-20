@@ -38,6 +38,8 @@ from llmwiki_registry import (  # noqa: E402
     get_project,
     llmwiki_home,
     load_settings,
+    list_projects,
+    update_project_preferences,
     register_project,
     unregister_project,
     update_project_storage,
@@ -238,7 +240,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 if parsed.path == "/health":
                     self.json({"ok": True, "service": "llmwiki-web", "version": plugin_version()})
                     return
-                if parsed.path in {"/static/code.js", "/static/code.css", "/static/document-editor.css", "/static/document-editor.js", "/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/progress.js", "/static/progress.css", "/static/reports.js", "/static/reports.css", "/static/knowledge-maintenance.js", "/static/knowledge-maintenance.css"}:
+                if parsed.path in {"/static/theme.js", "/static/records.js", "/static/code.js", "/static/code.css", "/static/document-editor.css", "/static/document-editor.js", "/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/workbench-navigation.js", "/static/projects.js", "/static/progress.js", "/static/progress.css", "/static/reports.js", "/static/reports.css", "/static/knowledge-maintenance.js", "/static/knowledge-maintenance.css"}:
                     target = SCRIPT_DIR / "static" / parsed.path.rsplit("/", 1)[-1]
                     raw = target.read_bytes()
                     content_type = "text/css" if target.suffix == ".css" else "text/javascript"
@@ -345,7 +347,14 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     self.wfile.write(raw)
                     return
                 if parsed.path == "/":
+                    pid = list_projects(home)["landing_project_id"]
+                    redirect(self, purl(pid) + "/todos" if pid else "/projects")
+                    return
+                if parsed.path == "/projects":
                     self.html(home_page(home, params))
+                    return
+                if parsed.path == "/api/projects/preferences":
+                    self.json(list_projects(home))
                     return
                 if parsed.path == "/settings":
                     self.html(settings_page(home, params))
@@ -491,6 +500,11 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 if not isinstance(payload, dict):
                     raise LLMWikiError("请求必须是 JSON 对象。")
+                if path == "/api/projects/preferences":
+                    if not payload or set(payload) - {"default_project_id", "project_order"}:
+                        raise LLMWikiError("仅支持默认项目和项目排序。")
+                    self.json(update_project_preferences(home=home, **payload))
+                    return
                 if path == "/api/reports/settings":
                     try:
                         self.json(reports.save_settings(payload, home))
@@ -552,6 +566,12 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     project = get_project(unquote(progress_match[1]), home=home)["project"]
                     self.json(progress.update(project, payload))
                     return
+                deletion = re.fullmatch(r"/api/project/([^/]+)/notebook/([a-f0-9]{32})/(delete|undo-delete)", path)
+                if deletion:
+                    project = get_project(unquote(deletion[1]), home=home)["project"]
+                    action = notebook.remove if deletion[3] == "delete" else notebook.undo_remove
+                    self.json(action(project, deletion[2], payload))
+                    return
                 match = re.fullmatch(r"/api/project/([^/]+)/notebook/(upload|preview|[a-f0-9]{32})", path)
                 if not match:
                     self.json({"ok": False, "error": "笔记接口不存在。"}, 404)
@@ -603,7 +623,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             if code_match:
                 self.code_post(unquote(code_match[1]), code_match[2])
                 return
-            if parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
+            if parsed.path == "/api/projects/preferences" or parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
                 self.notebook_post(parsed.path)
                 return
             if parsed.path.startswith("/api/project/"):

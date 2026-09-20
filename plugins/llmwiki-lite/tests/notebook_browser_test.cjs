@@ -16,7 +16,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('nod
         const e=new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true});target.dispatchEvent(e);return e.defaultPrevented;
       },{text,html,images,png,selector});
     }
-    await page.goto(base+'/records');await page.getByRole('link',{name:'＋ 手动记录',exact:true}).click();
+    await page.goto(base+'/records');await page.getByRole('link',{name:'新建笔记',exact:true}).click();
     await page.locator('#nb-source').waitFor({state:'visible'});
     assert.equal(await page.locator('#nb-source').evaluate(e=>e===document.activeElement),true);
     assert.equal(await page.locator('input[type=file],.nb-plus,.nb-cell').count(),0);

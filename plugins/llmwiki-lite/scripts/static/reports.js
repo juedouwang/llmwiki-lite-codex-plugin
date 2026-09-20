@@ -1,7 +1,20 @@
 /* Continuous Markdown reports. No runtime dependencies or model calls. */
 (() => {
   'use strict';
-  const $ = (id) => document.getElementById(id);
+  const page = document.getElementById('main-content'); if (!page) return;
+  const $ = id => page.querySelector('#' + id), lifecycle = new AbortController();
+  const active = () => !lifecycle.signal.aborted && page.isConnected;
+  const owns = event => event.detail?.root === page;
+  let stop = () => {}, resume = () => {}, guard = () => false;
+  document.addEventListener('workbench:before-leave', event => {
+    if (owns(event) && active() && guard()) event.preventDefault();
+  }, {signal: lifecycle.signal});
+  window.addEventListener('beforeunload', event => {
+    if (active() && guard()) { event.preventDefault(); event.returnValue = ''; }
+  }, {signal: lifecycle.signal});
+  document.addEventListener('workbench:leave', event => { if (owns(event)) stop(); }, {signal: lifecycle.signal});
+  document.addEventListener('workbench:enter', event => { if (owns(event) && active()) resume(); }, {signal: lifecycle.signal});
+  document.addEventListener('workbench:dispose', event => { if (owns(event)) { stop(); lifecycle.abort(); } }, {signal: lifecycle.signal});
   async function request(url, data) {
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15000);
     try {
@@ -19,9 +32,16 @@
   }
   const configForm = $('report-settings-form');
   if (configForm) {
-    let config;
+    let config, dirty = false, saving = false;
+    configForm.addEventListener('input', () => { dirty = true; });
+    configForm.addEventListener('change', () => { dirty = true; });
+    guard = () => {
+      if (!dirty && !saving) return false;
+      $('report-settings-status').textContent = saving ? '保存中，请稍候。' : '设置尚未保存，请先保存当前修改。';
+      return true;
+    };
     function fill(value) {
-      config = value;
+      config = value; dirty = false;
       $('report-enabled').checked = value.enabled;
       if ($('report-capture')) $('report-capture').checked = (value.capture_hosts || []).includes('codex');
       $('knowledge-enabled').checked = value.knowledge_enabled;
@@ -37,11 +57,12 @@
     }
     request('/api/reports/settings').then(fill).catch(e => { $('report-settings-status').textContent = e.message; });
     configForm.onsubmit = async event => {
-      event.preventDefault(); if (!config) return;
+      event.preventDefault(); if (!config || saving) return;
       if (config.report_scope !== 'workspace') {
         $('report-settings-status').textContent = '服务仍是旧版本，请重启本地网页服务；未保存设置，避免恢复旧的项目归档逻辑。';
         return;
       }
+      saving = true;
       try {
         fill(await request('/api/reports/settings', {expected_revision: config.revision,
           enabled: $('report-enabled').checked,
@@ -53,6 +74,7 @@
           start_date: $('report-start-date').value || null}));
         $('report-settings-status').textContent = '已保存。没有启动后台模型或终端。';
       } catch (e) { $('report-settings-status').textContent = e.message; }
+      finally { saving = false; }
     };
     $('report-copy-enable').onclick = async () => {
       if (!config) return;
@@ -70,8 +92,17 @@
   }
   const list = $('research-reports-list');
   if (list) {
+    list.querySelectorAll('.report-filters select').forEach(select=>{select.onchange=()=>select.form.requestSubmit();});
+    let creating = false;
+    guard = () => {
+      if (!creating && !$('report-create').open) return false;
+      $('report-create-error').textContent = creating ? '创建中，请稍候。' : '请先完成或关闭当前创建窗口。';
+      return true;
+    };
     $('report-new').onclick = () => $('report-create').showModal();
     $('report-create-submit').onclick = async () => {
+      if (creating || !active()) return;
+      creating = true;
       const button = $('report-create-submit'); button.disabled = true;
       try {
         const ids = [...list.querySelectorAll('input[name=project]:checked')].map(e => e.value);
@@ -81,9 +112,9 @@
         const target = new URL(item.url, location.href);
         if (list.hasAttribute('data-context')) target.searchParams.set('context', list.dataset.context);
         target.searchParams.set('return', location.pathname + location.search);
-        location.assign(target.pathname + target.search);
+        if (active()) { creating = false; $('report-create').close(); location.assign(target.pathname + target.search); }
       } catch (error) { $('report-create-error').textContent = error.message; }
-      finally { button.disabled = false; }
+      finally { creating = false; button.disabled = false; }
     };
     return;
   }
@@ -111,7 +142,7 @@
       await ctx.display(await action('restore',ctx.current(),{version:number}));ctx.close();
     }]]:[]);
   }
-  ctx=mount({root:'research-report',prefix:'report',key:`llmwiki-report:${project}:${kind}:${date}`,load,
+  ctx=mount({root,prefix:'report',key:`llmwiki-report:${project}:${kind}:${date}`,load,
     save:(value,item)=>action('save',item,{body:value.body,comments:value.comments}),
     startEdit:item=>action('start_edit',item), confirm:item=>action('confirm',item),
     async preview(body){return (await request(base+'/preview',{kind,period_start:date,body})).html;},
@@ -127,8 +158,12 @@
     async regenerate(c){if (!(await c.flush()))return;const result=await action('regenerate',c.current());c.refreshMetadata(result);c.message('整理请求已保存，等待已连接的执行端处理；不会启动后台终端。');}
   });
   async function poll(){
-    const item=ctx.current();if(document.hidden||!item||!ctx.clean()||!(item.metadata.generation.requested||item.metadata.generation.state==='running'))return;
-    try{const result=await load();if(!ctx.clean())return;if(result.revision!==ctx.current().revision)ctx.message('正文有更新，重新打开可查看；当前编辑不会被替换。');else ctx.refreshMetadata(result);}catch{/* Background checks never interrupt typing. */}
+    const item=ctx.current();if(!active()||polling||document.hidden||!item||!ctx.clean()||!(item.metadata.generation.requested||item.metadata.generation.state==='running'))return;
+    polling=true;try{const result=await load();if(!active()||!ctx.clean())return;if(result.revision!==ctx.current().revision)ctx.message('正文有更新，重新打开可查看；当前编辑不会被替换。');else ctx.refreshMetadata(result);}catch{/* Background checks never interrupt typing. */}finally{polling=false;}
   }
-  setInterval(poll,10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
+  let timer, polling=false;
+  stop=()=>{clearInterval(timer);timer=null;};
+  resume=()=>{if(!active()||document.hidden||timer)return;poll();timer=setInterval(poll,10000);};
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else resume();},{signal:lifecycle.signal});
+  resume();
 })();

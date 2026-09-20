@@ -61,6 +61,8 @@ function initFavorites() {
     if (card) card.dataset.favorite = on ? '1' : '0';
   };
   buttons.forEach(btn => {
+    if (btn.dataset.favoriteBound) return;
+    btn.dataset.favoriteBound = '1';
     const key = 'llmwiki-fav-' + btn.dataset.favPath;
     try {
       let value=localStorage.getItem(key);
@@ -94,7 +96,7 @@ function toggleConsoleSidebar(force) {
 function initConsoleShell() {
   toggleConsoleSidebar(false);
   const overlay = document.getElementById('console-overlay');
-  if (overlay) overlay.addEventListener('click', () => toggleConsoleSidebar(false));
+  if (overlay && !overlay.dataset.bound) { overlay.dataset.bound = '1'; overlay.addEventListener('click', () => toggleConsoleSidebar(false)); }
   document.querySelectorAll('.console-sidebar a').forEach(link => {
     link.addEventListener('click', () => toggleConsoleSidebar(false));
   });
@@ -185,3 +187,15 @@ document.addEventListener('click',event=>{
   document.querySelectorAll('.action-menu[open]').forEach(menu=>{if(!menu.contains(event.target)||event.target.closest('button'))menu.open=false;});
 });
 window.matchMedia('(min-width:776px)').addEventListener('change',()=>toggleConsoleSidebar(false));
+
+// New column DOM needs shell bindings once; retained columns keep their controls.
+const columnFilters = new WeakMap();
+document.addEventListener('workbench:leave', event => columnFilters.set(event.detail.root, {...literatureState}));
+document.addEventListener('workbench:enter', event => {
+  initConsoleShell();
+  if (event.detail.restored) Object.assign(literatureState, columnFilters.get(event.detail.root) || {status:'all',kind:'all',query:'',favorite:false});
+  if (!event.detail.restored) {
+    Object.assign(literatureState, {status:'all',kind:'all',query:'',favorite:false});
+    initLiterature(); initFavorites();
+  }
+});

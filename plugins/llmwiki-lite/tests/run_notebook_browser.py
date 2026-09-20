@@ -161,7 +161,7 @@ def _mcp_call(
     return json.loads(lines[-1])
 
 
-def _injector(inject_dir: Path, scripts_dir: Path, home: str, deadline: float) -> None:
+def _injector(inject_dir: Path, scripts_dir: Path, home: str, deadline: float, stop: threading.Event) -> None:
     """Test-only stand-in for a future producer.
 
     The browser drops `<id>.request.json` files saying "deliver this result now";
@@ -170,12 +170,14 @@ def _injector(inject_dir: Path, scripts_dir: Path, home: str, deadline: float) -
     point a real client would use. There is no scheduler, model call or retry loop
     here, and none is being claimed.
     """
-    while time.monotonic() < deadline:
+    while not stop.is_set() and time.monotonic() < deadline:
         pending = sorted(
             inject_dir.glob("*.request.json"),
             key=lambda item: int(item.name.split(".")[0]),
         )
         for request in pending:
+            if stop.is_set():
+                break
             result = request.with_name(request.name.replace(".request.json", ".result.json"))
             if result.exists():
                 continue
@@ -186,7 +188,7 @@ def _injector(inject_dir: Path, scripts_dir: Path, home: str, deadline: float) -
             except Exception as exc:  # reported to the browser instead of hanging it
                 payload = _tool_error(call_id, f"injector: {type(exc).__name__}: {exc}")
             _publish(result, payload)
-        time.sleep(0.05)
+        stop.wait(0.05)
 
 
 with tempfile.TemporaryDirectory(prefix="llmwiki-browser-") as folder:
@@ -317,9 +319,10 @@ with tempfile.TemporaryDirectory(prefix="llmwiki-browser-") as folder:
     scripts_dir = Path(__file__).resolve().parents[1] / "scripts"
     inject_dir = root / "inject"
     inject_dir.mkdir()
+    stop_injector = threading.Event()
     injector = threading.Thread(
         target=_injector,
-        args=(inject_dir, scripts_dir, home, time.monotonic() + 900),
+        args=(inject_dir, scripts_dir, home, time.monotonic() + 900, stop_injector),
         daemon=True,
     )
     injector.start()
@@ -341,20 +344,21 @@ with tempfile.TemporaryDirectory(prefix="llmwiki-browser-") as folder:
         ensure_ascii=False,
     )
     try:
-        site_result = subprocess.run([
-            node,
-            str(Path(__file__).with_name("site_browser_test.cjs")),
-            origin,
-            project["id"],
-        ], timeout=120)
-        if site_result.returncode:
-            raise SystemExit(site_result.returncode)
-        progress_result = subprocess.run(
-            [node, str(Path(__file__).with_name("progress_browser_test.cjs")), progress_args],
-            timeout=240,
-        )
-        if progress_result.returncode:
-            raise SystemExit(progress_result.returncode)
+        if "--notebook-only" not in sys.argv:
+            site_result = subprocess.run([
+                node,
+                str(Path(__file__).with_name("site_browser_test.cjs")),
+                origin,
+                project["id"],
+            ], timeout=120)
+            if site_result.returncode:
+                raise SystemExit(site_result.returncode)
+            progress_result = subprocess.run(
+                [node, str(Path(__file__).with_name("progress_browser_test.cjs")), progress_args],
+                timeout=240,
+            )
+            if progress_result.returncode:
+                raise SystemExit(progress_result.returncode)
         result = subprocess.run(
             [
                 node,
@@ -365,6 +369,8 @@ with tempfile.TemporaryDirectory(prefix="llmwiki-browser-") as folder:
             timeout=150,
         )
     finally:
+        stop_injector.set()
+        injector.join()
         server.shutdown()
         server.server_close()
         worker.join()

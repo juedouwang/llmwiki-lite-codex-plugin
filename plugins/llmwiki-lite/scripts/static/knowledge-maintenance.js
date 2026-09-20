@@ -3,6 +3,10 @@
   const root = document.querySelector('#knowledge-maintenance');
   if (!root) return;
   const $ = id => root.querySelector('#km-' + id);
+  const page = root.closest('#main-content') || root, lifecycle = new AbortController();
+  const updates = page.querySelector('#knowledge-updates');
+  const active = () => !lifecycle.signal.aborted && root.isConnected;
+  const owns = event => event.detail?.root === page;
   const api = '/api/project/' + encodeURIComponent(root.dataset.project) + '/knowledge-maintenance';
   let timer, pending = false, current, origin, busy = false, listScope = 'pending';
   const labels = {pending:'待确认', applied:'已采用', rejected:'已保留原文', stale:'需要重检'};
@@ -15,7 +19,7 @@
   const format = value => value ? new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}) : '尚无';
   async function refresh() {
     clearTimeout(timer);
-    if (document.hidden || pending) return;
+    if (!active() || document.hidden || pending) return;
     pending = true;
     try {
       const data = await request(api);
@@ -23,8 +27,9 @@
       if (root.dataset.page && count) count = (await request(api+'/proposals?limit=1&page_path='+encodeURIComponent(root.dataset.page))).total;
       $('pending').hidden = count === 0;
       $('pending').textContent = '待确认更新 · ' + count;
+      if (updates) updates.querySelector('span').textContent = count ? '查看更新 · ' + count : '查看更新';
       $('status').textContent = `${data.executor_status}。最近检查：${format(data.last_checked_at)}；实际更新：${format(data.last_updated_at)}。待检查 ${data.remaining} 项。${data.gaps.join(' ')} ${data.last_error || ''}`;
-      if (!document.hidden && (data.status === 'running' || data.pending_count)) timer = setTimeout(refresh,15000);
+      if (active() && !document.hidden && (data.status === 'running' || data.pending_count)) timer = setTimeout(refresh,15000);
     } catch (e) { $('error').textContent = e.message; }
     finally { pending = false; }
   }
@@ -56,7 +61,7 @@
       $('conflict').textContent=current.effective_status === 'stale' ? '原文或依据已变化，等待重新检查。' : labels[current.effective_status];
       $('accept').disabled=current.effective_status!=='pending';
       $('keep').disabled=!['pending','stale'].includes(current.status);
-      $('dialog').showModal();
+      if (active()) $('dialog').showModal();
     } catch(e) {$('error').textContent=e.message;}
   }
   async function decide(action) {
@@ -71,11 +76,22 @@
       try { const fresh=await request(api+'/proposals/'+current.id); current.effective_status=fresh.effective_status;current.status=fresh.status; } catch {}
     } finally {busy=false; $('accept').disabled=current.effective_status!=='pending';$('keep').disabled=!['pending','stale'].includes(current.status);}
   }
+  if (updates) updates.onclick=async()=>{await showList();if(active())$('list').scrollIntoView({block:'nearest'});};
+  const info = page.querySelector('#knowledge-page-info');
+  const details = page.querySelector('#knowledge-page-details');
+  if (info && details) details.onclick=()=>{info.open=true;info.scrollIntoView({block:'nearest'});};
   $('pending').onclick=()=>showList(); $('history').onclick=()=>showList('history');
   $('close').onclick=()=>$('dialog').close();
-  $('dialog').addEventListener('close',()=>{if(origin?.isConnected)origin.focus();else $('history').focus();});
+  $('dialog').addEventListener('close',()=>{if(!active())return;if(origin?.isConnected)origin.focus();else $('history').focus();});
   $('accept').onclick=()=>decide('accept'); $('keep').onclick=()=>decide('keep');
-  document.addEventListener('visibilitychange',()=>{clearTimeout(timer);if(!document.hidden)refresh();});
-  window.addEventListener('focus',refresh);
+  document.addEventListener('visibilitychange',()=>{clearTimeout(timer);if(active()&&!document.hidden)refresh();},{signal:lifecycle.signal});
+  window.addEventListener('focus',refresh,{signal:lifecycle.signal});
+  document.addEventListener('workbench:before-leave',event=>{
+    if(owns(event)&&active()&&busy){event.preventDefault();$('conflict').textContent='请等待当前操作完成。';}
+  },{signal:lifecycle.signal});
+  window.addEventListener('beforeunload',event=>{if(active()&&busy){event.preventDefault();event.returnValue='';}},{signal:lifecycle.signal});
+  document.addEventListener('workbench:leave',event=>{if(owns(event)){clearTimeout(timer);if($('dialog').open)$('dialog').close();}},{signal:lifecycle.signal});
+  document.addEventListener('workbench:enter',event=>{if(owns(event)&&active())refresh();},{signal:lifecycle.signal});
+  document.addEventListener('workbench:dispose',event=>{if(owns(event)){clearTimeout(timer);lifecycle.abort();}},{signal:lifecycle.signal});
   refresh();
 })();
