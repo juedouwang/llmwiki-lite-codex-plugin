@@ -520,6 +520,8 @@ def list_records(
     records: list[dict[str, Any]] = []
     if records_root.is_dir():
         for path in records_root.rglob("*.md"):
+            if path.relative_to(records_root).parts[0] == "reports":
+                continue
             records.extend(_load_records_from_path(path, root))
     query = _text(query, "query", single_line=True).lower()
     if query:

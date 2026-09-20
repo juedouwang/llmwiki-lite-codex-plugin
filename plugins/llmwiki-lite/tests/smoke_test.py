@@ -379,7 +379,7 @@ def test_web(
         code, body, _ = request(connection, "GET", literature_base)
         library_text = body.decode("utf-8")
         for token in (
-            "文献目录",
+            "添加文献",
             "console-project-switcher",
         ):
             require(code == 200 and token in library_text, f"literature catalogue missing {token}")
@@ -411,6 +411,8 @@ def test_web(
             and legacy_text.count("<main ") == 1,
             "literature workspace contains nested main landmark",
         )
+        from literature_catalog import literature_collect
+        literature_collect(record["id"], "10.1234/demo", "d" * 32, paper_file="references/demo-paper.pdf", reading_note_paths=["demo-paper-reading.md"], home=str(home))
         paper_path = "references/demo-paper.pdf"
         encoded_paper = quote(paper_path, safe="/")
         code, body, _ = request(
@@ -564,10 +566,14 @@ def test_mcp(
             },
         },
     ]
+    messages.append({
+        "jsonrpc": "2.0", "id": 6, "method": "tools/call",
+        "params": {"name": "llmwiki_record_read", "arguments": {}},
+    })
     for message in messages:
         process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
     process.stdin.close()
-    responses = [json.loads(process.stdout.readline()) for _ in range(5)]
+    responses = [json.loads(process.stdout.readline()) for _ in range(6)]
     process.wait(timeout=10)
     manifest = json.loads(
         (PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
@@ -578,12 +584,23 @@ def test_mcp(
     )
     names = {x["name"] for x in responses[1]["result"]["tools"]}
     require(
-        len(names) == 21
+        len(names) == 36
         and "llmwiki_web_start" in names
         and "llmwiki_search" in names
-        and {"llmwiki_record_write", "llmwiki_record_list", "llmwiki_record_read"}.issubset(names),
+        and {"llmwiki_knowledge_plan", "llmwiki_knowledge_sources", "llmwiki_knowledge_finish"}.issubset(names)
+        and {"llmwiki_report_plan", "llmwiki_report_sources", "llmwiki_report_finish"}.issubset(names)
+        and {"llmwiki_record_write", "llmwiki_record_list", "llmwiki_record_read", "llmwiki_progress_get", "llmwiki_progress_context_write"}.issubset(names),
         "tool catalog failed",
     )
+    missing = responses[5]["result"]
+    require(missing["isError"] is True, "missing MCP arguments must fail")
+    require(
+        json.loads(missing["content"][0]["text"])["error"]
+        == "Missing required argument(s): project_root, record_id",
+        "missing MCP arguments must list the required fields",
+    )
+    require(process.returncode == 0, "MCP server failed")
+    require(process.stderr is not None and process.stderr.read() == "", "MCP validation leaked stderr")
     require(responses[2]["result"]["isError"] is False, "registry MCP call failed")
     record_list_payload = json.loads(responses[3]["result"]["content"][0]["text"])
     require(
@@ -687,8 +704,10 @@ def test_platform_metadata() -> None:
         )
     for script in sorted(SCRIPTS.glob("*.py")):
         text = script.read_text(encoding="utf-8")
+        # Adapter environment keys are protocol identifiers, not user-facing host wording.
+        wording = text.replace('"CODEX_HOME"', '').replace("'CODEX_HOME'", '')
         require(
-            "Codex" not in text and "CODEX" not in text,
+            "Codex" not in wording and "CODEX" not in wording,
             f"host-specific wording in {script.name}",
         )
 
@@ -793,45 +812,51 @@ def main() -> int:
         test_opencode_installer(root)
     import unittest
     from test_notebook import NotebookTests
+    from test_continuous_documents import ContinuousDocuments
+    from test_desktop_launcher import DesktopLauncherTests
     from test_progress import ProgressTests
-    from test_literature_catalog import (
-        TestCatalogOperations as LitCatalogOperations,
-    )
-    from test_literature_catalog import (
-        TestIdentityConflict as LitIdentityConflict,
-    )
-    from test_literature_catalog import (
-        TestLITF1Fixture as LitFixtureF1,
-    )
-    from test_literature_catalog import (
-        TestNormalization as LitNormalization,
-    )
-    from test_literature_catalog import (
-        TestValidation as LitValidation,
-    )
+    from test_reports import ReportTests, ReportGenerationTests
+    from test_workspace_reports import WorkspaceReportTests
+    from test_progress_context import ProgressContextTests
+    from test_mcp_validation import MCPValidationTests
+    from test_literature_catalog import CatalogTests
+    from test_literature_catalog_web import WebTests as LiteratureWebTests
+    from test_literature_collection import CollectionTests
+    from test_literature_schedule import ScheduleTests as LiteratureScheduleTests
     from test_git_service import TestGitDetection, TestGitFixtureF1, TestGitRemotes
     from test_git_graph import TestGitGraphFixtureF1
     from test_git_recovery import TestGitRecovery
     from test_git_operations import GitOperationsTests
     from test_git_merge import GitMergeTests
     from test_acceptance_git_graph import GitGraphAcceptanceTests
+    # M-02 采集机制（合成 fixture，不读真实会话目录）：授权闸门、注入块过滤、
+    # A/B 对账缺口、幂等、半截行与跨 chunk UTF-8、落盘前脱敏、cwd 归属、
+    # 归档移动与文件重写、跨午夜事件时间。
+    from test_capture_adapters import CaptureAdapterTests
+    from test_capture_runtime import CaptureRuntimeTests
+    from test_research_schedule import ScheduleTests
+    from test_research_workflow import WorkflowTests
+    from test_literature_recovery import RecoveryTests
+    from test_research_sources import ActivityTests, GitTests, HintTests
 
     # Suites that are known to be red are deliberately not listed here, because a
     # failing suite would make this gate useless for everything else. They are
     # tracked in the commits that introduced them and are expected back in as their
     # fixes land:
-    #   test_literature_catalog_web.py  - LIT-F1 migration scan, idempotence,
-    #                                     rollback and user-removal
     #   test_workbench_store.py         - TestJobLeasing
     #   test_git_revert_restore.py      - the reset guards and restore-file cases
+    from test_knowledge_maintenance import KnowledgeTests, KnowledgeHTTPTests
+    from test_knowledge_schedule import KnowledgeScheduleTests
+    from test_report_literature_sources import SavedLiteratureSourceTests
     cases = (
-        NotebookTests,
+        KnowledgeTests, KnowledgeHTTPTests, KnowledgeScheduleTests, SavedLiteratureSourceTests,
+        ReportTests,
+        ReportGenerationTests, WorkspaceReportTests,
+        NotebookTests, ContinuousDocuments, DesktopLauncherTests,
         ProgressTests,
-        LitNormalization,
-        LitValidation,
-        LitIdentityConflict,
-        LitCatalogOperations,
-        LitFixtureF1,
+        ProgressContextTests,
+        MCPValidationTests,
+        CatalogTests, LiteratureWebTests, CollectionTests, LiteratureScheduleTests,
         TestGitDetection,
         TestGitFixtureF1,
         TestGitRemotes,
@@ -840,6 +865,7 @@ def main() -> int:
         GitOperationsTests,
         GitMergeTests,
         GitGraphAcceptanceTests,
+        CaptureAdapterTests, CaptureRuntimeTests, ScheduleTests, WorkflowTests, RecoveryTests, ActivityTests, GitTests, HintTests,
     )
     suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(case) for case in cases)
     result = unittest.TextTestRunner(verbosity=1).run(suite)

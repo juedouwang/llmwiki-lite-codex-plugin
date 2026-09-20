@@ -1,28 +1,16 @@
-"""Git commit graph visualization with topological sorting and lane assignment.
-
-Implements:
-- Topological sorting of commits
-- Lane assignment algorithm for graph visualization
-- Snapshot caching for performance
-- Pagination support (100 nodes per page)
-"""
+"""Read-only Git graph: visible refs, real parents and stable paginated lanes."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
-from git_service import (
-    GitError,
-    GitRepositoryError,
-    _run_git_command,
-    get_head_info,
-    list_branches,
-)
+from git_service import GitHead, GitRepositoryError, _run_git_command, get_head_info
 
 
 @dataclass
@@ -39,11 +27,14 @@ class CommitNode:
     tags: List[str] = field(default_factory=list)
     lane: int = 0
     row: int = 0
+    short_oid: str = ""
+    committed_at_iso: str = ""
+    parent_lanes: List[int] = field(default_factory=list)
 
 
 @dataclass
 class GraphSnapshot:
-    """Cached commit graph snapshot."""
+    """Cached commit graph snapshot (legacy opt-in persistence API)."""
     snapshot_id: str
     repo_path: str
     ref: str
@@ -54,20 +45,139 @@ class GraphSnapshot:
     nodes: List[Dict[str, Any]] = field(default_factory=list)
 
 
-def generate_snapshot_id(repo_path: Path, ref: str, head_oid: str) -> str:
-    """Generate snapshot ID for caching.
+class GraphSnapshotExpiredError(GitRepositoryError):
+    """The caller must discard the old graph and request its first page again."""
 
-    Args:
-        repo_path: Repository path
-        ref: Reference (branch or commit)
-        head_oid: Current HEAD OID
+    code = "snapshot_expired"
 
-    Returns:
-        Snapshot ID (hex string)
+    def __init__(self, current_snapshot_id: str):
+        super().__init__("Git graph snapshot changed; refresh version history")
+        self.current_snapshot_id = current_snapshot_id
+
+
+def generate_snapshot_id(
+    repo_path: Path,
+    ref: str,
+    head_oid: str,
+    refs: Optional[List[Dict[str, str]]] = None,
+    head_branch: Optional[str] = None
+) -> str:
+    """Hash the repository, HEAD identity and all visible reference values.
+
+    The original three-argument form remains supported. ``build_graph`` always
+    includes refs and the symbolic HEAD, including refs outside the loaded page.
     """
-    content = f"{repo_path}\x00{ref}\x00{head_oid}"
-    hash_bytes = hashlib.sha256(content.encode('utf-8')).digest()
-    return hash_bytes.hex()[:32]
+    content = json.dumps(
+        [str(repo_path.resolve()), ref, head_oid, head_branch,
+         sorted(refs or [], key=lambda item: item['refname'])],
+        sort_keys=True, ensure_ascii=True, separators=(',', ':')
+    )
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()[:32]
+
+
+def _read_graph_state(repo_path: Path, git_exe: str):
+    head = get_head_info(repo_path, git_exe)
+    # Explicit namespaces exclude recovery, stash, replace and other private refs.
+    try:
+        result = _run_git_command(
+            git_exe,
+            ['for-each-ref', '--sort=refname',
+             '--format=%(refname)%00%(objectname)%00%(*objectname)%00%(symref)',
+             'refs/heads/', 'refs/remotes/', 'refs/tags/'],
+            cwd=repo_path
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        raise GitRepositoryError(f'Failed to read graph references: {exc}') from exc
+    refs = []
+    for line in result.stdout.splitlines():
+        refname, oid, peeled_oid, symref = line.split('\0')
+        refs.append(dict(refname=refname, oid=oid, peeled_oid=peeled_oid, symref=symref))
+    return head, refs
+
+
+def _load_commits(
+    repo_path: Path, git_exe: str, head: GitHead,
+    refs: List[Dict[str, str]], max_count: int, skip: int
+) -> List[CommitNode]:
+    # Freeze revision roots to the captured OIDs, not refnames that may move.
+    roots = list(dict.fromkeys(
+        ([head.oid] if head.oid else []) +
+        [r['oid'] for r in refs if r['refname'].startswith(('refs/heads/', 'refs/remotes/'))]
+    ))
+    if not roots or not max_count:
+        return []
+    try:
+        result = _run_git_command(
+            git_exe,
+            ['--no-replace-objects', 'log', '--stdin', '--topo-order',
+             f'--max-count={max_count}', f'--skip={skip}',
+             '--no-patch', '--no-color', '--no-decorate', '--no-notes',
+             '--no-show-signature', '--encoding=UTF-8', '--abbrev=7', '-z',
+             '--format=%H%x00%P%x00%s%x00%an%x00%ae%x00%ct%x00%h%x00%cI'],
+            cwd=repo_path, input_data='\n'.join(roots) + '\n'
+        )
+        # Eight fixed NUL-separated fields per commit; no newline/path splitting.
+        fields = result.stdout.split('\0')
+        if fields[-1] == '':
+            fields.pop()
+        if len(fields) % 8:
+            raise ValueError('Malformed Git commit metadata')
+        commits: Dict[str, CommitNode] = {}
+        for offset in range(0, len(fields), 8):
+            oid, parents, subject, author, email, stamp, short, iso = fields[offset:offset + 8]
+            commits[oid] = CommitNode(
+                oid=oid, parents=parents.split(), subject=subject,
+                author_name=author, author_email=email,
+                committed_at=datetime.fromtimestamp(int(stamp), timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                short_oid=short, committed_at_iso=iso
+            )
+        _restore_boundary_parents(repo_path, git_exe, commits)
+        for node in commits.values():
+            for parent in node.parents:
+                if parent in commits:
+                    commits[parent].children.append(node.oid)
+        for item in refs:
+            node = commits.get(item['peeled_oid'] or item['oid'])
+            if node is None:
+                continue
+            refname = item['refname']
+            if refname.startswith('refs/heads/'):
+                node.branches.append(refname[len('refs/heads/'):])
+            elif refname.startswith('refs/remotes/'):
+                node.branches.append(refname[len('refs/remotes/'):])
+            elif refname.startswith('refs/tags/'):
+                node.tags.append(refname[len('refs/tags/'):])
+        return list(commits.values())
+    except (subprocess.SubprocessError, ValueError, OSError) as exc:
+        raise GitRepositoryError(f'Failed to load commit graph: {exc}') from exc
+
+
+def _restore_boundary_parents(
+    repo_path: Path, git_exe: str, commits: Dict[str, CommitNode]
+) -> None:
+    """Git log hides parents at shallow boundaries; recover the object headers.
+
+    Only apparent roots need a raw read, usually none in a paginated prefix.
+    Batch framing uses byte sizes so UTF-8 messages/signatures cannot shift it.
+    """
+    roots = [node.oid for node in commits.values() if not node.parents]
+    if not roots:
+        return
+    data = _run_git_command(
+        git_exe, ['--no-replace-objects', 'cat-file', '--batch'], cwd=repo_path,
+        input_data=('\n'.join(roots) + '\n').encode('ascii'), text=False
+    ).stdout
+    offset = 0
+    for oid in roots:
+        end = data.index(b'\n', offset)
+        actual_oid, kind, size = data[offset:end].split()
+        if actual_oid.decode('ascii') != oid or kind != b'commit':
+            raise ValueError('Malformed Git commit object')
+        offset = end + 1
+        content = data[offset:offset + int(size)]
+        offset += int(size) + 1
+        headers = content.split(b'\n\n', 1)[0].split(b'\n')
+        commits[oid].parents = [line[7:].decode('ascii') for line in headers if line.startswith(b'parent ')]
 
 
 def load_commit_graph(
@@ -77,183 +187,45 @@ def load_commit_graph(
     max_count: int = 500,
     skip: int = 0
 ) -> List[CommitNode]:
-    """Load commit graph from repository.
+    """Read HEAD and local/remote branch history, excluding private-only commits.
 
-    Args:
-        repo_path: Repository path
-        git_exe: Path to git executable
-        ref: Reference to start from (branch or commit)
-        max_count: Maximum number of commits to load
-        skip: Number of commits to skip
-
-    Returns:
-        List of CommitNode objects in topological order
-
-    Raises:
-        GitRepositoryError: If commits cannot be loaded
+    ``ref`` is retained for compatibility; as before this is a combined graph,
+    not a single-branch filter. Tags decorate reachable commits but add no roots.
     """
-    try:
-        # Get commit history with parent information
-        # Format: <oid>%x00<parents>%x00<subject>%x00<author_name>%x00<author_email>%x00<commit_time>
-        result = _run_git_command(
-            git_exe,
-            [
-                'log',
-                '--all',
-                '--topo-order',
-                f'--max-count={max_count}',
-                f'--skip={skip}',
-                '--format=%H%x00%P%x00%s%x00%an%x00%ae%x00%ct',
-                '--date-order'
-            ],
-            cwd=repo_path,
-            timeout=30.0
-        )
-
-        # Parse commits
-        commits: Dict[str, CommitNode] = {}
-        for line in result.stdout.strip().split('\n'):
-            if not line:
-                continue
-
-            parts = line.split('\x00')
-            if len(parts) < 6:
-                continue
-
-            oid = parts[0]
-            parents = parts[1].split() if parts[1] else []
-            subject = parts[2]
-            author_name = parts[3]
-            author_email = parts[4]
-            commit_time = int(parts[5])
-
-            committed_at = datetime.fromtimestamp(commit_time, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-            node = CommitNode(
-                oid=oid,
-                parents=parents,
-                subject=subject,
-                author_name=author_name,
-                author_email=author_email,
-                committed_at=committed_at
-            )
-            commits[oid] = node
-
-        # Build parent-child relationships
-        for oid, node in commits.items():
-            for parent_oid in node.parents:
-                if parent_oid in commits:
-                    commits[parent_oid].children.append(oid)
-
-        # Get branch and tag references
-        refs_result = _run_git_command(
-            git_exe,
-            ['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads/', 'refs/tags/'],
-            cwd=repo_path,
-            timeout=10.0
-        )
-
-        for line in refs_result.stdout.strip().split('\n'):
-            if not line:
-                continue
-
-            parts = line.split(' ', 1)
-            if len(parts) != 2:
-                continue
-
-            oid, refname = parts
-            if oid not in commits:
-                continue
-
-            if refname.startswith('refs/heads/'):
-                branch_name = refname[len('refs/heads/'):]
-                commits[oid].branches.append(branch_name)
-            elif refname.startswith('refs/tags/'):
-                tag_name = refname[len('refs/tags/'):]
-                commits[oid].tags.append(tag_name)
-
-        # Return in topological order (already sorted by git log --topo-order)
-        return list(commits.values())
-
-    except Exception as e:
-        raise GitRepositoryError(f"Failed to load commit graph: {e}")
+    if max_count < 0 or skip < 0:
+        raise ValueError('max_count and skip must be non-negative')
+    head, refs = _read_graph_state(repo_path, git_exe)
+    return _load_commits(repo_path, git_exe, head, refs, max_count, skip)
 
 
 def assign_lanes(nodes: List[CommitNode]) -> List[CommitNode]:
-    """Assign lane positions for graph visualization.
+    """Reserve pending-parent lanes while walking from tips toward ancestors.
 
-    Uses a greedy algorithm to minimize lane crossings:
-    1. Process commits in topological order
-    2. Assign each commit to the leftmost available lane
-    3. Reserve lanes for active branches
-
-    Args:
-        nodes: List of commit nodes in topological order
-
-    Returns:
-        Nodes with lane assignments
+    A pending parent's lane is retained until that parent is processed, including
+    parents outside the requested prefix. Replaying a longer prefix therefore
+    preserves every earlier row, lane and parent-edge lane without a disk cache.
     """
-    if not nodes:
-        return nodes
+    active: List[Optional[str]] = []
+    pending: Dict[str, int] = {}
 
-    # Build OID to node mapping
-    oid_to_node: Dict[str, CommitNode] = {node.oid: node for node in nodes}
-
-    # Track active lanes and their current commit
-    active_lanes: List[Optional[str]] = []  # lane index -> OID or None
-    oid_to_lane: Dict[str, int] = {}  # OID -> assigned lane
+    def free_lane() -> int:
+        for index, oid in enumerate(active):
+            if oid is None:
+                return index
+        active.append(None)
+        return len(active) - 1
 
     for row, node in enumerate(nodes):
-        node.row = row
-
-        # Try to reuse parent's lane if it's available
-        assigned_lane = None
-        if node.parents:
-            # Check first parent (main line of development)
-            parent_oid = node.parents[0]
-            if parent_oid in oid_to_lane:
-                parent_lane = oid_to_lane[parent_oid]
-                # Check if this lane is free (parent has no more children after this)
-                parent_node = oid_to_node.get(parent_oid)
-                if parent_node and len(parent_node.children) == 1:
-                    # Parent only has this child, reuse lane
-                    assigned_lane = parent_lane
-
-        # Otherwise find the leftmost available lane
-        if assigned_lane is None:
-            # Find first free lane
-            for i, occupied in enumerate(active_lanes):
-                if occupied is None:
-                    assigned_lane = i
-                    break
-
-            # No free lane found, create new one
-            if assigned_lane is None:
-                assigned_lane = len(active_lanes)
-                active_lanes.append(None)
-
-        # Ensure we have enough lanes
-        while len(active_lanes) <= assigned_lane:
-            active_lanes.append(None)
-
-        # Assign lane
-        node.lane = assigned_lane
-        oid_to_lane[node.oid] = assigned_lane
-        active_lanes[assigned_lane] = node.oid
-
-        # Mark parent lanes as free if this is their last child
-        for parent_oid in node.parents:
-            if parent_oid in oid_to_node:
-                parent_node = oid_to_node[parent_oid]
-                # Check if all children have been processed
-                all_children_processed = all(
-                    child_oid in oid_to_lane for child_oid in parent_node.children
-                )
-                if all_children_processed and parent_oid in oid_to_lane:
-                    parent_lane = oid_to_lane[parent_oid]
-                    if parent_lane < len(active_lanes) and active_lanes[parent_lane] == parent_oid:
-                        active_lanes[parent_lane] = None
-
+        lane = pending.pop(node.oid) if node.oid in pending else free_lane()
+        node.row, node.lane = row, lane
+        active[lane] = None
+        node.parent_lanes = []
+        for index, parent in enumerate(node.parents):
+            if parent not in pending:
+                parent_lane = lane if index == 0 else free_lane()
+                active[parent_lane] = parent
+                pending[parent] = parent_lane
+            node.parent_lanes.append(pending[parent])
     return nodes
 
 
@@ -262,80 +234,76 @@ def build_graph(
     git_exe: str,
     ref: str = "HEAD",
     page: int = 0,
-    page_size: int = 100
+    page_size: int = 100,
+    snapshot_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Build commit graph with pagination.
+    """Return one graph page, validating refs both before and after the read.
 
-    Args:
-        repo_path: Repository path
-        git_exe: Path to git executable
-        ref: Reference to start from
-        page: Page number (0-indexed)
-        page_size: Number of commits per page
-
-    Returns:
-        Graph data dictionary
+    An optional old ``snapshot_id`` raises GraphSnapshotExpiredError on change.
+    Rows and lanes are global, not page-relative. ``parent_lanes`` parallels
+    ``parents``; ``boundary_parents`` identifies real parents beyond the loaded
+    prefix (never synthetic root nodes). ``refs`` includes all visible labels.
+    The replay is bounded to the requested prefix plus one lookahead commit.
     """
-    # Load commits
+    if page < 0 or page_size < 1:
+        raise ValueError('page must be non-negative and page_size must be positive')
+    head, refs = _read_graph_state(repo_path, git_exe)
+    current_id = generate_snapshot_id(repo_path, ref, head.oid or '', refs, head.branch)
+    if snapshot_id is not None and snapshot_id != current_id:
+        raise GraphSnapshotExpiredError(current_id)
+
     skip = page * page_size
-    nodes = load_commit_graph(
-        repo_path,
-        git_exe,
-        ref=ref,
-        max_count=page_size,
-        skip=skip
-    )
+    stop = skip + page_size
+    prefix = _load_commits(repo_path, git_exe, head, refs, stop + 1, 0)
+    has_more = len(prefix) > stop
+    prefix = assign_lanes(prefix[:stop])
+    loaded = {node.oid for node in prefix}
+    nodes_data = []
+    for node in prefix[skip:]:
+        nodes_data.append({
+            'oid': node.oid, 'short_oid': node.short_oid,
+            'parents': node.parents, 'children': node.children,
+            'subject': node.subject, 'author_name': node.author_name,
+            'author_email': node.author_email, 'committed_at': node.committed_at,
+            'committed_at_iso': node.committed_at_iso,
+            'branches': node.branches, 'tags': node.tags,
+            'lane': node.lane, 'row': node.row,
+            'parent_lanes': node.parent_lanes,
+            'boundary_parents': [
+                {'oid': oid, 'lane': lane}
+                for oid, lane in zip(node.parents, node.parent_lanes) if oid not in loaded
+            ]
+        })
+    # Include the entire frontier: a prior page can still have a pending parent.
+    boundary = {}
+    for node in prefix:
+        for oid, lane in zip(node.parents, node.parent_lanes):
+            if oid not in loaded:
+                boundary[oid] = lane
 
-    # Assign lanes
-    nodes = assign_lanes(nodes)
+    final_head, final_refs = _read_graph_state(repo_path, git_exe)
+    final_id = generate_snapshot_id(repo_path, ref, final_head.oid or '', final_refs, final_head.branch)
+    if final_id != current_id:
+        raise GraphSnapshotExpiredError(final_id)
 
-    # Get HEAD info
-    head = get_head_info(repo_path, git_exe)
-
-    # Get branches
-    branches = list_branches(repo_path, git_exe, head.branch)
-
-    # Generate snapshot ID
-    snapshot_id = generate_snapshot_id(repo_path, ref, head.oid or "")
-
-    # Convert to JSON-serializable format
-    nodes_data = [
-        {
-            "oid": node.oid,
-            "short_oid": node.oid[:7],
-            "parents": node.parents,
-            "children": node.children,
-            "subject": node.subject,
-            "author_name": node.author_name,
-            "author_email": node.author_email,
-            "committed_at": node.committed_at,
-            "branches": node.branches,
-            "tags": node.tags,
-            "lane": node.lane,
-            "row": node.row
-        }
-        for node in nodes
-    ]
-
+    branches = []
+    for item in refs:
+        refname = item['refname']
+        remote = refname.startswith('refs/remotes/')
+        if not remote and not refname.startswith('refs/heads/'):
+            continue
+        name = refname[len('refs/remotes/' if remote else 'refs/heads/'):]
+        branches.append({
+            'name': name, 'oid': item['oid'], 'refname': refname,
+            'current': not remote and name == head.branch, 'remote': remote
+        })
+    branches.sort(key=lambda b: (not b['current'], b['name'].lower(), b['name']))
     return {
-        "ok": True,
-        "snapshot_id": snapshot_id,
-        "ref": ref,
-        "head_oid": head.oid,
-        "head_branch": head.branch,
-        "page": page,
-        "page_size": page_size,
-        "commit_count": len(nodes),
-        "has_more": len(nodes) == page_size,
-        "nodes": nodes_data,
-        "branches": [
-            {
-                "name": b.name,
-                "oid": b.oid,
-                "current": b.current
-            }
-            for b in branches
-        ]
+        'ok': True, 'snapshot_id': current_id, 'ref': ref,
+        'head_oid': head.oid, 'head_branch': head.branch,
+        'page': page, 'page_size': page_size, 'commit_count': len(nodes_data),
+        'has_more': has_more, 'nodes': nodes_data, 'branches': branches, 'refs': refs,
+        'boundary_parents': [{'oid': oid, 'lane': lane} for oid, lane in boundary.items()]
     }
 
 

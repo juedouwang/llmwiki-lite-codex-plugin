@@ -1326,3 +1326,20 @@ def preview_merge_result(
         "conflicts_resolved": len([c for c in merge_state.conflicts if c.resolved]),
         "total_conflicts": len(merge_state.conflicts)
     }
+
+
+def merge_fixed_commit(worktree_root: Path, git_exe: str, target_oid: str, message: str):
+    """Merge a reviewed immutable OID; caller owns clean checks and repository lock.
+
+    Return None if already contained, otherwise the actual CompletedProcess so
+    the caller can distinguish an in-progress conflict from another failure.
+    No autostash, rebase or synthetic no-ff merge is permitted by this entry.
+    """
+    args = {'cwd': worktree_root}
+    before = _run_git_command(git_exe, ['rev-parse', 'HEAD'], **args).stdout.strip()
+    if _run_git_command(git_exe, ['merge-base', '--is-ancestor', target_oid, before], check=False, **args).returncode == 0:
+        return None
+    ff = _run_git_command(git_exe, ['merge-base', '--is-ancestor', before, target_oid], check=False, **args).returncode == 0
+    return _run_git_command(git_exe, ['-c', 'merge.autostash=false', '-c', 'merge.ff=true',
+                            '-c', 'rerere.enabled=false', 'merge', '--ff-only' if ff else '--ff',
+                            '--no-edit', '-m', message, target_oid], check=False, **args)

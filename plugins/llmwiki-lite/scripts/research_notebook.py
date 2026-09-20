@@ -1,4 +1,4 @@
-"""Local block notebooks. Markdown is canonical; no database or external services."""
+"""Local continuous Markdown notebooks with lossless legacy block support. Markdown is canonical; no database or external services."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ MAX_IMAGE = 10 * 1024 * 1024
 MAX_DOCUMENT = 2 * 1024 * 1024
 ID = re.compile(r"[a-f0-9]{32}")
 IMAGE = re.compile(r"[a-f0-9]{64}\.(png|jpg|gif|webp)")
-MARKER = re.compile(r"\n<!-- llmwiki-notebook-v1:([A-Za-z0-9+/=]+) -->\n\Z")
+MARKER = re.compile(r"\n<!-- llmwiki-notebook-v[12]:([A-Za-z0-9+/=]+) -->\n\Z")
 
 
 class NotebookConflict(LLMWikiError):
@@ -62,6 +62,60 @@ def _text(value: Any, limit: int = 100_000) -> str:
     return value
 
 
+def validate_comments(value: Any) -> list:
+    """Quoted comments are independent of Markdown; legacy unknown times stay null."""
+    if not isinstance(value, list) or len(value) > 30000:
+        raise LLMWikiError("批注格式无效或数量过多。")
+    result, ids = [], set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise LLMWikiError("批注格式无效。")
+        cid = _text(item.get("id"), 100)
+        if not re.fullmatch(r"[\w-]{1,100}", cid) or cid in ids:
+            raise LLMWikiError("批注 ID 重复或无效。")
+        ids.add(cid)
+        entry = {"id": cid, "quote": _text(item.get("quote", ""), MAX_DOCUMENT),
+                 "text": _text(item.get("text", ""), 10000),
+                 "created_at": _timestamp(item.get("created_at"))}
+        if item.get("legacy_block_id"):
+            entry["legacy_block_id"] = _text(item["legacy_block_id"], 80)
+        result.append(entry)
+    return result
+
+
+def comment_markdown(comments: list) -> str:
+    if not comments:
+        return ""
+    lines = ["", "## 批注", ""]
+    for comment in comments:
+        if comment.get("quote"):
+            lines.extend("> " + line for line in comment["quote"].splitlines())
+            lines.append("")
+        lines.extend([comment["text"], ""])
+    return "\n".join(lines)
+
+
+def continuous(document: dict) -> dict:
+    """Map v1 in memory only. Reading must never migrate a file."""
+    if document.get("format") == "markdown":
+        return document
+    pieces, comments = [], []
+    for block in document["blocks"]:
+        # Reuse the original serializer, rather than inventing a second mapping.
+        sample = {**document, "blocks": [{**block, "comments": []}]}
+        rendered = markdown(sample, "").split("\n---\n", 1)[1]
+        prefix = "\n# " + document["title"] + "\n\n"
+        assert rendered.startswith(prefix.rstrip("\n") + "\n")
+        quote = rendered[len(prefix):].rstrip("\n")
+        pieces.append(quote)
+        for index, text in enumerate(block["comments"]):
+            comments.append({"id": "legacy-" + _revision(f'{block["id"]}:{index}'.encode())[:32],
+                             "quote": quote, "text": text, "created_at": None,
+                             "legacy_block_id": block["id"]})
+    return {k: v for k, v in {**document, "format": "markdown",
+            "body": "\n\n".join(pieces), "comments": comments}.items() if k != "blocks"}
+
+
 def validate(document: Any) -> dict:
     if not isinstance(document, dict):
         raise LLMWikiError("笔记格式无效。")
@@ -73,6 +127,13 @@ def validate(document: Any) -> dict:
     if not isinstance(tags, list) or len(tags) > 30:
         raise LLMWikiError("标签最多 30 个。")
     tags = list(dict.fromkeys(_text(tag, 50).strip() for tag in tags if tag))
+    if document.get("format") == "markdown":
+        result = {"format": "markdown", "title": title, "tags": tags,
+                  "body": _text(document.get("body", ""), MAX_DOCUMENT),
+                  "comments": validate_comments(document.get("comments", []))}
+        if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > MAX_DOCUMENT:
+            raise LLMWikiError("笔记文字超过 2 MB，请拆分笔记。")
+        return result
     blocks = document.get("blocks")
     if not isinstance(blocks, list) or len(blocks) > 300:
         raise LLMWikiError("笔记最多包含 300 个块。")
@@ -139,6 +200,8 @@ def markdown(document: dict, project_id: str) -> str:
         f"# {document['title']}",
         "",
     ]
+    if document.get("format") == "markdown":
+        return "\n".join(lines) + document["body"] + "\n" + comment_markdown(document["comments"])
     for block in document["blocks"]:
         text = block["text"]
         kind = block["type"]
@@ -183,7 +246,7 @@ def _decode(raw: bytes) -> dict:
             # corruption: reporting it as corruption told the user nothing they could
             # act on and hid the "save as a new note" route. The file is left alone.
             raise NotebookConflict(
-                "这篇笔记已被编辑器以外的程序改写，块编辑数据无法恢复。原 Markdown 保持不变，可将当前内容另存为新笔记。"
+                "这篇笔记已被编辑器以外的程序改写，编辑数据无法恢复。原 Markdown 保持不变，可将当前内容另存为新笔记。"
             )
         state = json.loads(base64.b64decode(match[1], validate=True))
         if state["body_sha"] != _revision(text[: match.start()].encode("utf-8")):
@@ -193,7 +256,7 @@ def _decode(raw: bytes) -> dict:
         document = validate(state["document"])
         for key in ("created_at", "updated_at"):
             document[key] = _timestamp(state["document"].get(key))
-        for block, stored in zip(document["blocks"], state["document"]["blocks"]):
+        for block, stored in zip(document.get("blocks", []), state["document"].get("blocks", [])):
             for key in ("created_at", "updated_at"):
                 block[key] = _timestamp(stored.get(key))
         return document
@@ -201,13 +264,13 @@ def _decode(raw: bytes) -> dict:
         raise
     except (ValueError, KeyError, TypeError) as exc:
         raise LLMWikiError(
-            "块编辑数据损坏；原 Markdown 保持不变，请通过记录阅读页查看。"
+            "编辑数据损坏；原 Markdown 保持不变，请通过记录阅读页查看。"
         ) from exc
 
 
 def reader_markdown(text: str, project_id: str) -> str:
     """Hide old generated time paragraphs without editing files or user text."""
-    if "<!-- llmwiki-notebook-v1:" not in text:
+    if "<!-- llmwiki-notebook-v" not in text:
         return text
     try:
         return markdown(_decode(text.encode("utf-8")), project_id)
@@ -261,7 +324,7 @@ def _file_lock(project: dict, note_id: str):
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
-def load(project: dict, note_id: str) -> dict:
+def load(project: dict, note_id: str, *, continuous_view: bool = False) -> dict:
     with LOCK:
         path = _path(project, note_id)
         if not path.exists():
@@ -269,18 +332,34 @@ def load(project: dict, note_id: str) -> dict:
                 "ok": True,
                 "exists": False,
                 "revision": "",
-                "document": {"title": "", "tags": [], "blocks": []},
+                "document": ({"format": "markdown", "title": "", "tags": [], "body": "", "comments": []}
+                             if continuous_view else {"title": "", "tags": [], "blocks": []}),
             }
         raw = path.read_bytes()
+        try:
+            document = _decode(raw)
+        except LLMWikiError as exc:
+            if not continuous_view:
+                raise
+            # Explicit read-only escape, never repair/overwrite unparseable bytes.
+            text = raw.decode("utf-8", errors="replace")
+            body = MARKER.sub("", text)
+            if body.startswith("---\n") and "\n---\n" in body[4:]:
+                body = body.split("\n---\n", 1)[1]
+            return {"ok": True, "exists": True, "readonly": True, "error_message": str(exc),
+                    "revision": _revision(raw), "document": {"format": "markdown", "title": "外部修改的科研笔记",
+                    "tags": [], "body": body, "comments": [], "created_at": None, "updated_at": None}}
         return {
             "ok": True,
             "exists": True,
             "revision": _revision(raw),
-            "document": _decode(raw),
+            "document": continuous(document) if continuous_view else document,
         }
 
 
 def save(project: dict, note_id: str, payload: dict) -> dict:
+    if "restore_revision" in payload:
+        return restore(project, note_id, payload)
     document = validate(payload.get("document"))
     path = _path(project, note_id)
     with LOCK, _file_lock(project, note_id):
@@ -291,12 +370,20 @@ def save(project: dict, note_id: str, payload: dict) -> dict:
                 "另一页面或程序已修改这篇笔记。你的内容已保留为浏览器草稿，请比较后再保存。"
             )
         previous = _decode(old) if old else None
+        if previous and previous.get("format") == "markdown" and document.get("format") != "markdown":
+            raise NotebookConflict("此笔记已升级为连续文档，请刷新页面；旧块编辑器不能覆盖新正文。")
+        if previous:
+            comparable = continuous(previous) if document.get("format") == "markdown" else previous
+            if all(document[k] == comparable.get(k) for k in document):
+                return {"ok": True, "revision": revision, "updated_at": previous["updated_at"],
+                        "timestamps": {k: previous[k] for k in ("created_at", "updated_at")},
+                        "path": f"records/manual/{note_id}.md"}
         now = datetime.now().astimezone().isoformat(timespec="seconds")
         document.update(
             created_at=previous["created_at"] if previous else now, updated_at=now
         )
-        old_blocks = {b["id"]: b for b in previous["blocks"]} if previous else {}
-        for block in document["blocks"]:
+        old_blocks = {b["id"]: b for b in previous.get("blocks", [])} if previous else {}
+        for block in document.get("blocks", []):
             prior = old_blocks.get(block["id"])
             changed = prior is None or any(block[k] != prior[k] for k in block)
             block.update(
@@ -310,7 +397,8 @@ def save(project: dict, note_id: str, payload: dict) -> dict:
         encoded = base64.b64encode(
             json.dumps(state, ensure_ascii=False).encode("utf-8")
         ).decode("ascii")
-        raw = (body + f"\n<!-- llmwiki-notebook-v1:{encoded} -->\n").encode("utf-8")
+        version = 2 if document.get("format") == "markdown" else 1
+        raw = (body + f"\n<!-- llmwiki-notebook-v{version}:{encoded} -->\n").encode("utf-8")
         if len(raw) > 4 * 1024 * 1024:
             raise LLMWikiError("笔记文件超过 4 MB，请拆分为多篇记录。")
         if old:
@@ -334,21 +422,52 @@ def save(project: dict, note_id: str, payload: dict) -> dict:
                 "updated_at": now,
                 "blocks": [
                     {key: b[key] for key in ("id", "created_at", "updated_at")}
-                    for b in document["blocks"]
+                    for b in document.get("blocks", [])
                 ],
             },
             "path": f"records/manual/{note_id}.md",
         }
 
 
-def history(project: dict, note_id: str, revision: str | None = None) -> dict:
+def restore(project: dict, note_id: str, payload: dict) -> dict:
+    """Explicitly restore a snapshot, including its original v1 bytes."""
+    target_revision = payload.get("restore_revision")
+    if not isinstance(target_revision, str) or not re.fullmatch(r"[a-f0-9]{64}", target_revision):
+        raise LLMWikiError("历史版本无效。")
+    path = _path(project, note_id)
+    root = Path(project["wiki_root"])
+    with LOCK, _file_lock(project, note_id):
+        old = path.read_bytes()
+        revision = _revision(old)
+        if payload.get("revision") != revision:
+            raise NotebookConflict("笔记已改变，请重新载入后再恢复历史。")
+        _decode(old)  # Externally damaged files stay read-only, even on restore.
+        snapshot = safe_file(root, f".notebook-history/{note_id}/{target_revision}.snapshot")
+        raw = snapshot.read_bytes()
+        if _revision(raw) != target_revision:
+            raise NotebookConflict("历史快照已在外部改变，已停止恢复。")
+        document = _decode(raw)
+        if raw != old:
+            current_snapshot = safe_file(root, f".notebook-history/{note_id}/{revision}.snapshot")
+            if not current_snapshot.exists():
+                _atomic(current_snapshot, old)
+            if path.read_bytes() != old:
+                raise NotebookConflict("恢复期间笔记发生变化，已停止覆盖。")
+            _atomic(path, raw)
+        return {"ok": True, "revision": target_revision, "updated_at": document["updated_at"],
+                "timestamps": {k: document[k] for k in ("created_at", "updated_at")},
+                "path": f"records/manual/{note_id}.md"}
+
+
+def history(project: dict, note_id: str, revision: str | None = None, *, continuous_view: bool = False) -> dict:
     _path(project, note_id)
     root = Path(project["wiki_root"])
     if revision:
         if not re.fullmatch(r"[a-f0-9]{64}", revision):
             raise LLMWikiError("历史版本无效。")
         path = safe_file(root, f".notebook-history/{note_id}/{revision}.snapshot")
-        return {"ok": True, "document": _decode(path.read_bytes())}
+        document = _decode(path.read_bytes())
+        return {"ok": True, "document": continuous(document) if continuous_view else document}
     folder = safe_file(root, f".notebook-history/{note_id}")
     files = sorted(
         folder.glob("*.snapshot"), key=lambda p: p.stat().st_mtime, reverse=True
@@ -420,18 +539,10 @@ def editor_page(home: str, project_id: str, note_id: str | None = None) -> str:
     project = get_project(project_id, home=home)["project"]
     note_id = note_id or uuid4().hex
     _path(project, note_id)
-    body = f'''<link rel="stylesheet" href="/static/notebook.css">
-<section id="notebook" data-project="{esc(project_id)}" data-note="{note_id}">
-<header class="nb-top"><a href="{purl(project_id)}/records">← 科研记录</a><span id="nb-status" role="status" aria-live="polite">正在打开…</span><div class="nb-actions"><button id="nb-save" title="保存（Ctrl S）">保存</button><button id="nb-undo" disabled>撤销</button><details class="action-menu"><summary aria-label="笔记菜单">更多</summary><div class="action-menu-items"><button id="nb-info">笔记信息</button><button id="nb-history">版本历史</button><button id="nb-export">导出 Markdown</button><button id="nb-focus">专注模式</button><p class="meta">Ctrl V 粘贴截图<br>Ctrl Enter 新增文本块</p></div></details></div></header>
-<div id="nb-banner" class="nb-banner" role="alert" hidden></div>
-<div class="nb-paper"><label class="nb-sr" for="nb-title">笔记标题</label><input id="nb-title" maxlength="200" placeholder="给这次探索一个标题" autocomplete="off">
-<label class="nb-sr" for="nb-tags">标签，以逗号分隔</label><input id="nb-tags" placeholder="添加标签，以逗号分隔">
-
-<div id="nb-blocks"></div><div id="nb-empty" hidden>直接粘贴截图，或在下方开始记录。</div><div id="nb-bottom"></div></div>
-
-<input id="nb-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
-<dialog id="nb-dialog"><div id="nb-dialog-content"></div><button id="nb-dialog-close">关闭</button></dialog>
-</section><script src="/static/notebook.js" defer></script>'''
+    from document_editor import editor_markup
+    body = (f'<section id="notebook" data-project="{esc(project_id)}" data-note="{note_id}">'
+            + editor_markup("nb", "", purl(project_id) + "/records", notebook=True)
+            + '</section><script src="/static/notebook.js" defer></script>')
     return layout(
         "手动科研笔记 · " + str(project["name"]),
         body,

@@ -88,8 +88,8 @@ function toggleConsoleSidebar(force) {
   document.body.classList.toggle('console-locked', open);
   document.querySelector('.console-menu-button')?.setAttribute('aria-expanded',String(open));
   if(open){sidebar.inert=false;sidebar.querySelector('a,button')?.focus();}
-  else if(sidebar.contains(document.activeElement)&&innerWidth<=760)document.querySelector('.console-menu-button')?.focus();
-  sidebar.inert=!open&&innerWidth<=760;
+  else if(sidebar.contains(document.activeElement)&&innerWidth<=775)document.querySelector('.console-menu-button')?.focus();
+  sidebar.inert=!open&&innerWidth<=775;
 }
 function initConsoleShell() {
   toggleConsoleSidebar(false);
@@ -184,4 +184,4 @@ document.addEventListener('keydown',event=>{
 document.addEventListener('click',event=>{
   document.querySelectorAll('.action-menu[open]').forEach(menu=>{if(!menu.contains(event.target)||event.target.closest('button'))menu.open=false;});
 });
-window.matchMedia('(min-width:761px)').addEventListener('change',()=>toggleConsoleSidebar(false));
+window.matchMedia('(min-width:776px)').addEventListener('change',()=>toggleConsoleSidebar(false));

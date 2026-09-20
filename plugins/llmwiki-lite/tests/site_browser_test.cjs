@@ -10,16 +10,31 @@ const os=require('node:os');
     const page=await context.newPage();
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     const origin=process.argv[2],base=`/project/${process.argv[3]}`;
-    async function go(route){const r=await page.goto(origin+route);assert.equal(r.status(),200,route);assert.equal(await page.locator('main').count(),1);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`overflow: ${route} ${JSON.stringify(await page.evaluate(()=>Array.from(document.querySelectorAll("body *")).filter(e=>e.getBoundingClientRect().right>innerWidth&&!e.closest("#progress-timeline")).map(e=>({tag:e.tagName,id:e.id,cls:e.className,width:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right}))))}`);}
+    async function go(route){const r=await page.goto(origin+route);assert.equal(r.status(),200,route);assert.equal(await page.locator('main').count(),1);assert.equal(await page.locator('.console-sidebar-brand').innerText(),'野人工作台');assert.ok((await page.title()).endsWith(' · 野人工作台'));assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).zoom),'1.25');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),`overflow: ${route} ${JSON.stringify(await page.evaluate(()=>Array.from(document.querySelectorAll("body *")).filter(e=>e.getBoundingClientRect().right>innerWidth&&!e.closest("#progress-timeline")).map(e=>({tag:e.tagName,id:e.id,cls:e.className,width:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right}))))}`);}
     await go(base+'/todos');
-    // Assert the invariant rather than a fixed total: adding a project page adds one.
+    assert.ok(Math.abs((await page.locator('.console-sidebar').boundingBox()).width-207.5)<1,'166px prototype rail renders at 125%');
+    assert.equal(await page.locator('.console-project-label small').innerText(),'当前项目');
+    await page.waitForFunction(()=>document.querySelectorAll('.progress-day').length===7);
+    // The approved workbench has exactly six project sections; tools stay in the footer.
     const navItems=await page.locator('.console-nav-item').count();
-    assert.ok(navItems>=5,'project console navigation entries missing');
+    assert.deepEqual(await page.locator('.console-navigation .console-nav-item').allTextContents(), ['科研进度','科研记录','日报与周报','知识库','文献','代码']);
+    assert.equal(await page.locator('.console-navigation a[href="'+base+'/code"] svg circle').count(),3,'all Git icon nodes stay visible');
+    for (const [route, active] of [[base+'/todos','科研进度'],[base+'/records','科研记录'],['/reports','日报与周报'],[base,'知识库'],[base+'/literature','文献'],[base+'/code','代码']]) {
+      await go(route);
+      assert.equal(await page.locator('.console-navigation a[aria-current=page]').innerText(),active);
+    }
+    await go(base+'/records');
+    const links = await page.locator('.console-project-menu a[href^="/project/"]').evaluateAll(items => items.map(a => a.getAttribute('href')));
+    assert.ok(links.length>=2 && links.every(href=>href.endsWith('/records')),'switching clears details and retains the section');
+    await page.getByLabel('切换研究项目').click();
+    await page.locator('.console-project-menu a:not(.is-current)[href^="/project/"]').first().click();
+    assert.ok(new URL(page.url()).pathname.endsWith('/records') && !new URL(page.url()).pathname.startsWith(base+'/'));
+    await go(base+'/todos');
     assert.equal(await page.locator('.console-nav-icon svg').count(),navItems,'every console nav item must carry exactly one local icon');
     assert.equal(await page.locator('.console-nav-icon').allTextContents().then(items=>items.join('')),'');
     assert.equal(await page.locator('.console-nav-icon svg').first().getAttribute('aria-hidden'),'true');
     await page.screenshot({path:path.join(os.tmpdir(),'llmwiki-icons-todos.png')});
-    for(const width of [1440,390]){
+    for(const width of [1440,1280,1024,736,580,390,375,320]){
       await page.setViewportSize({width,height:960});
       for(const route of ['/',base,`${base}/records`,`${base}/todos`,`${base}/literature`,`${base}/literature/read/references/demo-paper.pdf`,`${base}/literature/compare/references/demo-paper.pdf`,`${base}/page/experiment.md`,'/search','/settings'])await go(route);
       await go(base+'/records');
@@ -28,7 +43,7 @@ const os=require('node:os');
       assert.ok(!(await page.locator('main').innerText()).includes('记录时间：'));
       await page.locator('.reader-contents>summary').click();
       assert.ok((await page.locator('main').innerText()).includes('记录时间：'));
-      if(width===390){
+      if(width<=775){
         await page.getByRole('button',{name:'打开导航菜单'}).click();
         assert.equal(await page.getByRole('button',{name:'打开导航菜单'}).getAttribute('aria-expanded'),'true');
         await page.keyboard.press('Shift+Tab');
@@ -49,6 +64,13 @@ const os=require('node:os');
     assert.equal(await page.locator('#register-project .settings[open]').count(),0);
     await go(base+'/todos');
     await page.locator('#progress-import').click();
+    await page.locator('#progress-candidates input').first().waitFor();
+    for (const width of [1024,580,320]) {
+      await page.setViewportSize({width,height:640});
+      const box=await page.locator('#progress-import-dialog').boundingBox();
+      assert.ok(box.x>=-1 && box.x+box.width<=width+1 && box.y>=-1 && box.y+box.height<=641,'scaled task dialog stays within viewport');
+    }
+    await page.setViewportSize({width:1440,height:960});
     await page.locator('#progress-candidates input').first().check();
     await page.locator('#progress-import-form .primary').click();
     await page.locator('#progress-import-dialog').waitFor({state:'hidden'});
@@ -58,6 +80,9 @@ const os=require('node:os');
     await page.locator('#progress-form [name=end]').fill('2026-09-21');
     await page.locator('#progress-form [name=checkpoint]').fill('昨晚完成基线，尚未跑夜间数据');
     await page.locator('#progress-form [name=next_step]').fill('检查日志，然后补夜间样本');
+    await page.locator('#progress-auto summary').click();
+    assert.match(await page.locator('#progress-auto').innerText(),/自动整理尚未接通/);
+    assert.equal(await page.locator('#progress-form [name=next_step]').inputValue(),'检查日志，然后补夜间样本');
     const sourceHref=await page.locator('#progress-source a').getAttribute('href');
     assert.equal((await page.request.get(origin+sourceHref)).status(),200);
     await page.locator('#progress-form [type=submit]').click();
@@ -78,18 +103,27 @@ const os=require('node:os');
     await page.locator('#progress-unscheduled .progress-inline-status').selectOption('done');
     await page.locator('#progress-done').waitFor();await page.locator('#progress-done summary').click();
     assert.equal(await page.locator('#progress-done .progress-task').count(),1);
+    await page.locator('#progress-done .progress-task').click();
+    await page.locator('#progress-info summary').click();
+    assert.match(await page.locator('#progress-info').innerText(),/完成时间/);
+    await page.locator('#progress-close').click();
     await page.locator('#progress-done .progress-inline-status').selectOption('planned');await page.locator('#progress-unscheduled .progress-task').waitFor();
+    await go('/');
+    assert.equal(await page.locator('.project-row a a').count(),0);
     await page.screenshot({path:path.join(os.tmpdir(),'llmwiki-progress-desktop.png')});
+    // The mobile check below belongs to the progress page, so come back to it:
+    // reloading "/" would look for #progress-resume on the project list.
+    await go(base+'/todos');
     await page.setViewportSize({width:390,height:844});await page.reload();await page.locator('#progress-resume').waitFor();
-    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));
     await page.screenshot({path:path.join(os.tmpdir(),'llmwiki-progress-mobile.png')});await page.setViewportSize({width:1440,height:960});
     // /literature is the strict catalogue (M-04): a PDF sitting in the project must not
     // list itself, and entries are added deliberately. The file-scanning library it
     // replaces stays reachable at /literature/old and keeps its own coverage below.
     await go(base+'/literature');
-    assert.equal(await page.locator('#literature-list').count(),1);
-    assert.ok(!(await page.locator('#literature-list').innerText()).includes('demo-paper.pdf'),'unregistered project PDF leaked into the catalogue');
-    assert.equal(await page.locator('#add-literature').count(),1);
+    assert.equal(await page.locator('#literature-results').count(),1);
+    assert.ok(!(await page.locator('#literature-results').innerText()).includes('demo-paper.pdf'),'unregistered project PDF leaked into the catalogue');
+    assert.equal(await page.locator('[data-add]').count(),1);
     await go(base+'/literature/old');
     assert.equal(await page.locator('.paper-notes[open],.paper-prompt[open],#literature-flow[open]').count(),0);
     await page.getByLabel('阅读状态').selectOption('unread');assert.equal(await page.locator('[data-literature-card]:visible').count(),0);await page.getByLabel('阅读状态').selectOption('all');

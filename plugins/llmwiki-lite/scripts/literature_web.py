@@ -421,6 +421,8 @@ def load_note(
 
 
 def source_document_path(project: dict[str, Any], relative: str) -> Path:
+    from literature_catalog import safe_path as catalog_path
+    catalog_path(project["source_root"], relative)
     root = Path(str(project["source_root"])).resolve(strict=True)
     normalized = relative.replace("\\", "/")
     pure = PurePosixPath(normalized)
@@ -586,6 +588,31 @@ def _paper_viewer(project_id: str, paper: dict[str, Any]) -> str:
     return f'''<div class="empty document-fallback"><h2>当前格式暂不支持网页内嵌</h2><p>可以从本站安全打开或下载原文件，再使用本机阅读器查看。</p><a class="button primary" href="{source_url}">打开原文件</a></div>'''
 
 
+def _catalog_reading_notes(project: dict[str, Any], paper: dict[str, Any]) -> list[dict[str, Any]]:
+    """Only explicitly bound catalog notes; no project discovery or fuzzy pairing."""
+    from literature_catalog import LiteratureCatalog, note_matches, safe_path as catalog_path
+    notes = []
+    seen = set()
+    for item in LiteratureCatalog(project["wiki_root"]).list_items()["items"]:
+        if not any(a.get("path", "").replace("\\", "/") == paper["path"] for a in item.get("attachments", [])):
+            continue
+        for relative in item.get("reading_note_paths", []):
+            if relative in seen:
+                continue
+            seen.add(relative)
+            try:
+                if not note_matches(project, relative, [paper["path"]]):
+                    continue
+                target = catalog_path(project["wiki_root"], relative)
+                text = target.read_text(encoding="utf-8")
+                notes.append({"id": "wiki:" + relative, "location": "wiki", "path": relative,
+                              "title": _note_title(text, Path(relative).stem), "text": text,
+                              "declared_sources": [paper["path"]], "match_score": 100})
+            except (LLMWikiError, OSError, UnicodeError):
+                continue
+    return notes
+
+
 def literature_read_page(home: str, project_id: str, paper_path: str) -> str:
     project = get_project(project_id, home=home)["project"]
     target = source_document_path(project, paper_path)
@@ -599,8 +626,7 @@ def literature_read_page(home: str, project_id: str, paper_path: str) -> str:
         "kind": _paper_kind(paper_path),
         "inline": target.suffix.lower() in INLINE_EXTENSIONS,
     }
-    library = discover_literature(project)
-    matches = matched_notes(paper, library["notes"], library.get("note_index"))
+    matches = _catalog_reading_notes(project, paper)
     compare = (
         f'<a class="button primary" href="{_paper_url(project_id, "compare", str(paper["path"]))}?note={quote(str(matches[0]["id"]), safe="")}">原文 + LLM 辅助阅读</a>'
         if matches and paper["inline"]
@@ -634,12 +660,11 @@ def literature_compare_page(
     }
     if not paper["inline"]:
         return literature_read_page(home, project_id, paper_path)
-    library = discover_literature(project)
-    matches = matched_notes(paper, library["notes"], library.get("note_index"))
+    matches = _catalog_reading_notes(project, paper)
     selected: dict[str, Any] | None = None
     if note_id:
-        candidate = load_note(project, note_id, library=library)
-        if note_match_score(paper, candidate) < 55:
+        candidate = next((note for note in matches if note["id"] == note_id), None)
+        if candidate is None:
             raise LLMWikiError("所选辅助阅读未与这篇文献建立可靠关联。")
         selected = candidate
     elif matches:

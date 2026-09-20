@@ -1143,3 +1143,32 @@ def check_repository_constraints(
         constraints["warnings"].append("Sparse checkout detected - write operations not supported")
 
     return constraints
+
+
+def restore_tree_as_commit(worktree_root: Path, git_exe: str, target_oid: str) -> Dict[str, Any]:
+    """Restore the complete tracked tree and append history (never reset/revert).
+
+    Explicit web confirmation, identity/extension/overwrite checks and a common
+    repository lock belong to the caller. Return partial if files were restored
+    but no verified version was saved. Do not erase or automatically retry work.
+    """
+    def git(*args):
+        return _run_git_command(git_exe, list(args), cwd=worktree_root)
+
+    before = git('rev-parse', 'HEAD').stdout.strip()
+    tree = git('rev-parse', target_oid + '^{tree}').stdout.strip()
+    if tree == git('rev-parse', before + '^{tree}').stdout.strip():
+        return {'outcome': 'no_change', 'message': '文件树已与目标一致。'}
+    try:
+        git('restore', '--source=' + target_oid, '--staged', '--worktree', '--', '.')
+        if git('write-tree').stdout.strip() != tree:
+            return {'outcome': 'partial', 'message': '恢复尚未完整完成，请检查当前文件，不会自动回滚。'}
+        subject = git('show', '-s', '--format=%s', target_oid).stdout.strip()
+        short = git('rev-parse', '--short', target_oid).stdout.strip()
+        git('commit', '-m', f'恢复到 {short}：{subject}')
+    except subprocess.SubprocessError:
+        return {'outcome': 'partial', 'message': '文件恢复后版本尚未确认保存，请检查当前状态；不会自动回滚。'}
+    if git('show', '-s', '--format=%P %T', 'HEAD').stdout.strip() != before + ' ' + tree:
+        return {'outcome': 'partial', 'message': '恢复后的历史或文件树有额外变化，请检查，不会自动回滚。'}
+    return {'outcome': 'done', 'message': '已恢复并新增版本，此前历史完整保留。',
+            'commit_oid': git('rev-parse', 'HEAD').stdout.strip()}

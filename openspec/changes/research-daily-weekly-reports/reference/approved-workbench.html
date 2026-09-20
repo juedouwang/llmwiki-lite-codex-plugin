@@ -1,0 +1,682 @@
+<div id="research-workbench" aria-label="科研工作台完整交互原型">
+<style>
+#research-workbench{--rw-paper:light-dark(#fff,#212121);--rw-side:light-dark(#f8f8f7,#191919);--rw-ink:light-dark(#242424,#ededeb);--rw-sub:light-dark(#747471,#a7a7a2);--rw-line:light-dark(#e9e9e6,#383836);--rw-hover:light-dark(#f4f4f2,#2d2d2a);--rw-select:light-dark(#ededea,#353531);--rw-solid:light-dark(#282827,#e5e5df);--rw-on-solid:light-dark(#fff,#222220);--rw-purple:light-dark(#8974ac,#b49ad8);--rw-purple-soft:light-dark(#f1edf6,#332d3f);--rw-green:light-dark(#377857,#87bca0);--rw-red:light-dark(#a25050,#d99b9b);--rw-add:light-dark(#edf5ef,#283b2e);--rw-del:light-dark(#faeeee,#402d2d);color:var(--rw-ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;text-align:left;width:100%}
+#research-workbench *{box-sizing:border-box}#research-workbench [hidden]{display:none!important}#research-workbench button,#research-workbench input,#research-workbench textarea,#research-workbench select{font:inherit;color:inherit}#research-workbench button{border:0;background:none;text-align:left}#research-workbench button:disabled{opacity:.45}#research-workbench button,#research-workbench a{touch-action:manipulation}#research-workbench svg.lucide{width:16px;height:16px;flex-shrink:0;stroke-width:1.65}#research-workbench a{color:inherit;text-decoration:underline;text-underline-offset:3px}#research-workbench h1,#research-workbench h2,#research-workbench h3,#research-workbench p{margin:0}#research-workbench .rw-app{display:grid;grid-template-columns:166px minmax(0,1fr);min-height:740px;border:1px solid var(--rw-line);border-radius:12px;overflow:clip;background:var(--rw-paper);position:relative}#research-workbench .rw-side{background:var(--rw-side);border-right:1px solid var(--rw-line);padding:23px 12px 15px;display:flex;flex-direction:column;gap:24px;min-width:0}#research-workbench .rw-brand{display:flex;align-items:center;gap:9px;padding:0 8px;font-weight:600}#research-workbench .rw-project-switch{display:flex;gap:6px;align-items:center;padding:0 8px;width:100%;min-width:0}#research-workbench .rw-project-switch span{flex:1;min-width:0}#research-workbench .rw-project-switch small{display:block;color:var(--rw-sub);font-size:11px;margin-bottom:5px}#research-workbench .rw-project-switch b{font-weight:500;font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#research-workbench .rw-nav{display:grid;gap:5px}#research-workbench .rw-nav button{display:flex;align-items:center;gap:10px;padding:10px 11px;color:var(--rw-sub);font-size:13px;border-radius:7px;white-space:nowrap;width:100%}#research-workbench .rw-nav button[aria-current="page"]{background:var(--rw-select);color:var(--rw-ink);font-weight:500}#research-workbench .rw-nav button:hover,#research-workbench .rw-button:hover,#research-workbench .rw-icon-button:hover{background:var(--rw-hover)}#research-workbench .rw-profile{margin-top:auto;display:flex;align-items:center;gap:8px;padding:0 8px;color:var(--rw-sub);font-size:12px}#research-workbench .rw-avatar{border-radius:50%;width:26px;height:26px;background:var(--rw-select);display:grid;place-items:center;color:var(--rw-ink)}#research-workbench .rw-main{min-width:0;display:flex;flex-direction:column}#research-workbench .rw-header{padding:23px 25px 0}#research-workbench .rw-crumb{display:flex;align-items:center;gap:9px;color:var(--rw-sub);font-size:12px;min-width:0}#research-workbench .rw-crumb strong{color:var(--rw-ink);font-weight:500}#research-workbench .rw-prototype{margin-left:auto;white-space:nowrap;font-size:11px}#research-workbench .rw-mobile-menu{display:none}#research-workbench .rw-toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:20px 0 18px;min-height:34px}#research-workbench .rw-toolbar h1{font-size:17px;font-weight:500;margin-right:auto}#research-workbench .rw-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:33px;padding:6px 10px;border-radius:6px;font-size:12px;white-space:normal}#research-workbench .rw-outline{border:1px solid var(--rw-line)}#research-workbench .rw-primary{background:var(--rw-solid);color:var(--rw-on-solid)}#research-workbench .rw-primary:hover{background:var(--rw-solid);opacity:.9}#research-workbench .rw-icon-button{display:inline-flex;align-items:center;justify-content:center;min-width:30px;min-height:30px;border-radius:5px;padding:6px}#research-workbench .rw-content{padding:0 25px 24px;flex:1;min-width:0}#research-workbench .rw-footer{border-top:1px solid var(--rw-line);padding:11px 25px;display:flex;gap:10px;justify-content:space-between;color:var(--rw-sub);font-size:11px;flex-wrap:wrap}#research-workbench .rw-footer [role="status"]{color:var(--rw-ink)}#research-workbench .rw-sub{color:var(--rw-sub);font-size:12px}#research-workbench .rw-small{font-size:12px}#research-workbench .rw-row{display:flex;align-items:center;gap:9px;min-width:0;flex-wrap:wrap}#research-workbench .rw-spacer{margin-left:auto}#research-workbench .rw-rule{border:0;border-top:1px solid var(--rw-line);margin:20px 0}#research-workbench .rw-empty{padding:45px 16px;text-align:center;color:var(--rw-sub);font-size:13px}#research-workbench .rw-tag{font-size:11px;padding:2px 6px;border-radius:4px;background:var(--rw-hover);white-space:nowrap}#research-workbench .rw-status-draft{background:var(--rw-purple-soft);color:var(--rw-purple)}#research-workbench .rw-status-final{background:var(--rw-add);color:var(--rw-green)}#research-workbench .rw-input{width:100%;border:1px solid var(--rw-line);border-radius:6px;background:var(--rw-paper);padding:9px 10px;min-width:0}#research-workbench textarea.rw-input{resize:vertical;min-height:90px}#research-workbench .rw-field{display:block;margin:14px 0;font-size:12px}#research-workbench .rw-field>span{display:block;color:var(--rw-sub);margin-bottom:6px}#research-workbench .rw-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}#research-workbench .rw-check{display:flex;gap:10px;align-items:flex-start;padding:10px 0;font-size:13px}#research-workbench input[type=checkbox]{accent-color:var(--rw-solid);flex-shrink:0;margin-top:3px}#research-workbench .rw-segments{display:flex;align-items:center;gap:3px;flex-wrap:wrap}#research-workbench .rw-segments button{padding:6px 11px;border-radius:5px;color:var(--rw-sub);font-size:12px}#research-workbench .rw-segments button[aria-pressed=true]{background:var(--rw-select);color:var(--rw-ink)}#research-workbench .rw-list{border-top:1px solid var(--rw-line)}#research-workbench .rw-list-row{display:flex;align-items:center;gap:13px;padding:16px 7px;border-bottom:1px solid var(--rw-line);min-width:0}#research-workbench .rw-list-row>svg{color:var(--rw-sub)}#research-workbench .rw-list-main{flex:1;min-width:0}#research-workbench .rw-title-button{display:block;font-weight:500;font-size:14px;width:100%;padding:0;overflow-wrap:anywhere}#research-workbench .rw-title-button:hover{text-decoration:underline;text-underline-offset:4px}#research-workbench .rw-list-meta{font-size:11px;color:var(--rw-sub);display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}#research-workbench .rw-project-row{padding:22px 5px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;border-top:1px solid var(--rw-line)}#research-workbench .rw-project-row h2{font-size:15px;font-weight:500;margin-bottom:8px}#research-workbench .rw-project-row p{font-size:12px;color:var(--rw-sub)}
+#research-workbench .rw-resume{padding:17px 0 22px;border-top:1px solid var(--rw-line);border-bottom:1px solid var(--rw-line)}#research-workbench .rw-resume-label{display:flex;align-items:center;gap:7px;color:var(--rw-sub);font-size:12px;margin-bottom:10px}#research-workbench .rw-resume h2{font-size:17px;font-weight:500;margin:0 0 8px}#research-workbench .rw-resume p{font-size:13px;max-width:650px;margin:4px 0}#research-workbench .rw-resume .rw-row{margin-top:13px}#research-workbench .rw-section-title{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:22px 0 13px;font-size:13px;font-weight:500}#research-workbench .rw-section-title button{font-size:12px;white-space:nowrap;flex-shrink:0}#research-workbench .rw-timeline{display:grid;grid-template-columns:minmax(145px,1.35fr) repeat(7,minmax(28px,1fr));align-items:center;position:relative;min-width:0}#research-workbench .rw-day{text-align:center;color:var(--rw-sub);font-size:11px;padding:7px 0;border-bottom:1px solid var(--rw-line)}#research-workbench .rw-day.rw-today{color:var(--rw-ink);background:var(--rw-hover)}#research-workbench .rw-task-label{display:flex;gap:8px;align-items:center;min-width:0;height:55px;border-bottom:1px solid var(--rw-line);padding-right:12px}#research-workbench .rw-task-label>button:last-child{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0}#research-workbench .rw-done-toggle{display:grid;place-items:center;width:18px;height:18px;border:1px solid var(--rw-line);border-radius:50%;flex-shrink:0;padding:0}#research-workbench .rw-done-toggle.is-done{background:var(--rw-solid);color:var(--rw-on-solid);border-color:var(--rw-solid)}#research-workbench .rw-done-toggle svg{width:12px;height:12px}#research-workbench .rw-track{grid-column:2 / 9;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));height:55px;align-items:center;background:repeating-linear-gradient(to right,transparent 0,transparent calc(100% / 7 - 1px),var(--rw-line) calc(100% / 7 - 1px),var(--rw-line) calc(100% / 7));border-bottom:1px solid var(--rw-line)}#research-workbench .rw-bar{height:24px;border-radius:4px;background:var(--rw-select);margin:0 3px;font-size:11px;overflow:hidden;text-overflow:ellipsis;padding:3px 8px;white-space:nowrap}#research-workbench .rw-bar.is-current{background:var(--rw-purple-soft);color:var(--rw-purple)}#research-workbench .rw-done-list{padding-top:5px}#research-workbench .rw-done-row{display:flex;gap:9px;align-items:center;margin:12px 0;font-size:12px}#research-workbench .rw-done-row small{margin-left:auto;color:var(--rw-sub);font-size:11px}#research-workbench .rw-done-row .rw-title-button{font-size:12px;width:auto}#research-workbench .rw-unplanned{margin-top:13px;color:var(--rw-sub);font-size:12px}
+#research-workbench .rw-editor-header{display:flex;align-items:center;gap:8px;border-top:1px solid var(--rw-line);padding:12px 0;flex-wrap:wrap}#research-workbench .rw-editor-header .rw-spacer{font-size:11px;color:var(--rw-sub)}#research-workbench .rw-title-input{border:0;background:transparent;font-size:22px;line-height:1.5;font-weight:500;width:100%;margin:20px 0 10px;padding:0;min-width:0}#research-workbench .rw-editor-body{max-width:780px;margin:0 auto;padding:0 10px;min-width:0}#research-workbench .rw-editor-text{display:block;width:100%;min-height:385px;border:0;background:transparent;resize:vertical;line-height:1.8;padding:13px 0;font-family:ui-monospace,SFMono-Regular,Consolas,"Microsoft YaHei",monospace;font-size:13px}#research-workbench .rw-markdown{font-size:14px;line-height:1.9;overflow-wrap:anywhere;min-height:340px;padding:14px 0 22px}#research-workbench .rw-markdown h1{font-size:23px;font-weight:500;margin:5px 0 23px;line-height:1.5}#research-workbench .rw-markdown h2{font-size:18px;font-weight:500;margin:26px 0 12px}#research-workbench .rw-markdown h3{font-size:15px;font-weight:500;margin:20px 0 10px}#research-workbench .rw-markdown p{margin:10px 0}#research-workbench .rw-markdown ul,#research-workbench .rw-markdown ol{padding-left:22px;margin:12px 0}#research-workbench .rw-markdown li{margin:5px 0}#research-workbench .rw-markdown strong{font-weight:650}#research-workbench .rw-markdown code{font:12px/1.7 ui-monospace,Consolas,monospace;background:var(--rw-hover);padding:2px 4px;border-radius:3px;overflow-wrap:anywhere}#research-workbench .rw-markdown pre{white-space:pre-wrap;background:var(--rw-side);border-radius:7px;padding:15px;line-height:1.75;max-width:100%;overflow-wrap:anywhere}#research-workbench .rw-markdown pre code{background:none;padding:0}#research-workbench .rw-markdown blockquote{border-left:2px solid var(--rw-line);margin:16px 0;padding:2px 14px;color:var(--rw-sub)}#research-workbench .rw-markdown img{display:block;max-width:100%;max-height:430px;object-fit:contain;border-radius:6px;margin:15px 0}#research-workbench .rw-markdown figure{margin:18px 0}#research-workbench .rw-markdown figcaption{color:var(--rw-sub);font-size:11px}#research-workbench .rw-meta{font-size:12px;color:var(--rw-sub);padding:12px 0;border-top:1px solid var(--rw-line)}#research-workbench .rw-meta summary{width:fit-content}#research-workbench .rw-meta p{margin-top:8px}#research-workbench .rw-comments{border-top:1px solid var(--rw-line);padding-top:17px;margin-top:18px}#research-workbench .rw-comment{margin:12px 0;padding-left:12px;border-left:2px solid var(--rw-line);font-size:12px}#research-workbench .rw-comment blockquote{color:var(--rw-sub);margin:4px 0}#research-workbench .rw-drop{outline:2px dashed var(--rw-purple);outline-offset:3px}#research-workbench .rw-search{max-width:250px;font-size:12px;padding:7px 9px}#research-workbench .rw-split{display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px;border-top:1px solid var(--rw-line);padding-top:18px}#research-workbench .rw-page-list{border-right:1px solid var(--rw-line);padding-right:14px}#research-workbench .rw-page-list button{width:100%;display:flex;align-items:center;gap:8px;padding:10px 8px;font-size:12px;border-radius:5px;overflow-wrap:anywhere}#research-workbench .rw-page-list button[aria-pressed=true]{background:var(--rw-select)}#research-workbench .rw-page-list small{display:block;color:var(--rw-sub);font-size:11px;padding:8px}#research-workbench .rw-reading-title{font-size:21px;font-weight:500;margin:14px 0 7px;line-height:1.5;overflow-wrap:anywhere}#research-workbench .rw-paper-info{display:flex;gap:12px;flex-wrap:wrap;color:var(--rw-sub);font-size:12px;margin:12px 0 18px}#research-workbench .rw-diff-old,#research-workbench .rw-diff-new{padding:12px;border-radius:5px;font-size:13px;margin:10px 0;white-space:pre-wrap}#research-workbench .rw-diff-old{background:var(--rw-del)}#research-workbench .rw-diff-new{background:var(--rw-add)}#research-workbench .rw-source-link{display:flex;width:100%;gap:9px;align-items:center;padding:13px 0;border-bottom:1px solid var(--rw-line);font-size:12px}
+#research-workbench .rw-overlay{position:absolute;inset:0;z-index:40;display:flex;align-items:flex-start;justify-content:center;background:light-dark(#0005,#0009);padding:65px 20px 30px;overflow:auto}#research-workbench .rw-dialog{width:min(550px,100%);background:var(--rw-paper);border:1px solid var(--rw-line);border-radius:11px;box-shadow:0 18px 65px #0002;padding:22px;max-height:none;min-width:0}#research-workbench .rw-dialog-head{display:flex;align-items:center;gap:14px;margin-bottom:17px}#research-workbench .rw-dialog-head h2{font-size:17px;font-weight:500;margin-right:auto}#research-workbench .rw-dialog p{font-size:13px;margin:9px 0;overflow-wrap:anywhere}#research-workbench .rw-dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}#research-workbench .rw-dialog-error{color:var(--rw-red);font-size:12px;min-height:0;margin-top:8px}#research-workbench .rw-project-option{display:flex;align-items:center;gap:12px;padding:14px 0;width:100%;border-bottom:1px solid var(--rw-line)}#research-workbench .rw-project-option span{flex:1}#research-workbench .rw-project-option small{display:block;color:var(--rw-sub);font-size:11px;margin-top:4px}#research-workbench .rw-project-option svg{color:var(--rw-sub)}#research-workbench .rw-tiny-note{font-size:11px;color:var(--rw-sub);margin-top:10px}
+#research-workbench #rw-git-host{padding:0 0 15px;min-width:0}#research-workbench #research-git-workbench .rg-side,#research-workbench #research-git-workbench .rg-breadcrumb,#research-workbench #research-git-workbench .rg-footer,#research-workbench #research-git-workbench-fpga .rf-side,#research-workbench #research-git-workbench-fpga .rf-breadcrumb,#research-workbench #research-git-workbench-fpga .rf-footer{display:none}#research-workbench #research-git-workbench .rg-app,#research-workbench #research-git-workbench-fpga .rf-app{display:block;border:0;border-radius:0;min-height:630px}#research-workbench #research-git-workbench .rg-header,#research-workbench #research-git-workbench-fpga .rf-header{padding-top:2px}#research-workbench #research-git-workbench .rg-toolbar,#research-workbench #research-git-workbench-fpga .rf-toolbar{margin-top:0}#research-workbench #research-git-workbench .rg-version-title,#research-workbench #research-git-workbench-fpga .rf-version-title{line-height:1.6}#research-workbench #rw-git-host .rg-overlay,#research-workbench #rw-git-host .rf-overlay{z-index:20}
+@media(max-width:800px){#research-workbench .rw-app{grid-template-columns:150px minmax(0,1fr)}#research-workbench .rw-header{padding:20px 18px 0}#research-workbench .rw-content{padding:0 18px 22px}#research-workbench .rw-split{grid-template-columns:145px minmax(0,1fr);gap:16px}#research-workbench .rw-timeline{grid-template-columns:minmax(120px,1.1fr) repeat(7,minmax(24px,1fr))}}
+@media(max-width:620px){#research-workbench .rw-app{display:block;min-height:700px}#research-workbench .rw-side{display:none;border-right:0;border-bottom:1px solid var(--rw-line);padding:15px}#research-workbench .rw-app[data-menu=true] .rw-side{display:flex;gap:15px}#research-workbench .rw-nav{grid-template-columns:1fr 1fr}#research-workbench .rw-profile{display:none}#research-workbench .rw-mobile-menu{display:inline-flex}#research-workbench .rw-header{padding:15px 14px 0}#research-workbench .rw-content{padding:0 14px 20px}#research-workbench .rw-crumb{flex-wrap:wrap;gap:7px}#research-workbench .rw-prototype{font-size:11px}#research-workbench .rw-toolbar{margin-top:15px}#research-workbench .rw-toolbar h1{width:100%;font-size:17px}#research-workbench .rw-footer{padding:10px 14px}#research-workbench .rw-split{display:block}#research-workbench .rw-page-list{border-right:0;border-bottom:1px solid var(--rw-line);padding:0 0 12px;display:flex;gap:3px;flex-wrap:wrap;margin-bottom:15px}#research-workbench .rw-page-list button{width:auto;font-size:11px}#research-workbench .rw-page-list small{width:100%}#research-workbench .rw-editor-body{padding:0}#research-workbench .rw-title-input{font-size:20px}#research-workbench .rw-title-button{font-size:13px}#research-workbench .rw-list-row{padding:14px 0;gap:9px;flex-wrap:wrap}#research-workbench .rw-list-row>.rw-tag{margin-left:24px}#research-workbench .rw-project-row{grid-template-columns:1fr}#research-workbench .rw-timeline{grid-template-columns:106px repeat(7,minmax(0,1fr))}#research-workbench .rw-day{font-size:11px}#research-workbench .rw-day span{display:none}#research-workbench .rw-bar{font-size:0;height:20px;padding:0;margin:0 1px}#research-workbench .rw-task-label{padding-right:5px;gap:5px}#research-workbench .rw-task-label>button:last-child{font-size:11px}#research-workbench .rw-dialog{padding:17px}#research-workbench .rw-overlay{padding:30px 10px}#research-workbench .rw-fields{grid-template-columns:1fr;gap:0}#research-workbench .rw-dialog input,#research-workbench .rw-dialog textarea,#research-workbench .rw-editor-text{font-size:16px}#research-workbench .rw-editor-header{gap:4px}#research-workbench .rw-resume h2{font-size:16px}}
+@media(prefers-reduced-motion:no-preference){#research-workbench .rw-button,#research-workbench .rw-nav button,#research-workbench .rw-bar{transition:background-color .15s,color .15s}}
+</style>
+<style>
+#research-workbench .rw-form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#research-workbench .rw-project-choice{display:flex;align-items:center;gap:12px;padding:16px 0;width:100%;border-bottom:1px solid var(--rw-line);text-align:left}
+#research-workbench .rw-project-choice span{flex:1;min-width:0;overflow-wrap:anywhere}
+#research-workbench .rw-compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:12px 0}
+#research-workbench .rw-compare>div{min-width:0}
+#research-workbench .rw-source-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 0}
+#research-workbench .rw-dialog code{overflow-wrap:anywhere;white-space:normal}
+#research-workbench #rw-toolbar:empty{display:none}
+#research-workbench .rw-overlay{overflow:visible}
+#research-workbench .rw-drag{background:var(--rw-hover);outline:2px dashed var(--rw-sub);outline-offset:5px}
+#research-workbench #rw-git-empty{padding:30px 0}
+#research-workbench .rw-dialog .rw-button{white-space:normal;text-align:left}
+@media(max-width:480px){#research-workbench .rw-form-row,#research-workbench .rw-compare{grid-template-columns:1fr;gap:3px}}
+</style>
+
+<div class="rw-app" id="rw-app">
+<aside class="rw-side" aria-label="工作台导航">
+<button type="button" class="rw-brand cursor-interaction" data-rw="overview"><i data-lucide="panels-top-left" aria-hidden="true"></i>科研工作台</button>
+<button type="button" class="rw-project-switch cursor-interaction" data-rw="projects" aria-label="切换科研项目"><span><small>当前项目</small><b id="rw-project-label">电缆表面检测</b></span><i data-lucide="chevrons-up-down" aria-hidden="true"></i></button>
+<nav class="rw-nav" id="rw-nav" aria-label="项目栏目"></nav>
+<div class="rw-profile"><span class="rw-avatar">刘</span><span>刘亚宁</span><button type="button" class="rw-icon-button rw-spacer cursor-interaction" data-rw="settings" aria-label="工作台设置"><i data-lucide="settings-2" aria-hidden="true"></i></button></div>
+</aside>
+<main class="rw-main">
+<header class="rw-header"><div class="rw-crumb"><button type="button" class="rw-icon-button rw-mobile-menu cursor-interaction" data-rw="menu" aria-label="展开导航"><i data-lucide="panel-left" aria-hidden="true"></i></button><span id="rw-crumb-project">电缆表面检测</span><span>/</span><strong id="rw-crumb-page">科研进度</strong><span class="rw-prototype">交互原型</span></div><div class="rw-toolbar" id="rw-toolbar"></div></header>
+<section class="rw-content" id="rw-content" aria-label="当前栏目"></section>
+<section id="rw-git-host" aria-label="代码管理" hidden><div id="rw-git-cable"><div id="research-git-workbench" aria-label="科研工作台：可视化代码管理">
+<style>
+#research-git-workbench{--rg-paper:light-dark(#fff,#212121);--rg-side:light-dark(#f8f8f7,#191919);--rg-ink:light-dark(#242424,#ededeb);--rg-sub:light-dark(#747471,#a7a7a2);--rg-line:light-dark(#e9e9e6,#383836);--rg-hover:light-dark(#f4f4f2,#2d2d2a);--rg-select:light-dark(#ededea,#353531);--rg-solid:light-dark(#282827,#e5e5df);--rg-on-solid:light-dark(#fff,#222220);--rg-purple:light-dark(#8974ac,#b49ad8);--rg-purple-soft:light-dark(#f1edf6,#332d3f);--rg-green:light-dark(#377857,#87bca0);--rg-red:light-dark(#a25050,#d99b9b);--rg-add:light-dark(#edf5ef,#283b2e);--rg-del:light-dark(#faeeee,#402d2d);color:var(--rg-ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;width:100%;text-align:left}
+#research-git-workbench *{box-sizing:border-box}
+#research-git-workbench button,#research-git-workbench input,#research-git-workbench textarea,#research-git-workbench select{font:inherit;color:inherit}
+#research-git-workbench button{border:0;background:none;text-align:left}
+#research-git-workbench button:disabled{opacity:.45}
+#research-git-workbench svg.lucide{width:16px;height:16px;flex-shrink:0;stroke-width:1.65}
+#research-git-workbench .rg-app{display:grid;grid-template-columns:158px minmax(0,1fr);min-height:654px;border:1px solid var(--rg-line);border-radius:12px;overflow:clip;background:var(--rg-paper);position:relative}
+#research-git-workbench .rg-side{background:var(--rg-side);border-right:1px solid var(--rg-line);padding:23px 12px 15px;display:flex;flex-direction:column;gap:26px}
+#research-git-workbench .rg-brand{display:flex;align-items:center;gap:9px;padding:0 8px;font-size:14px;font-weight:600;letter-spacing:.3px}
+#research-git-workbench .rg-project{padding:0 8px;color:var(--rg-sub);font-size:12px}
+#research-git-workbench .rg-project b{display:block;color:var(--rg-ink);font-size:13px;font-weight:500;margin-top:5px}
+#research-git-workbench .rg-nav{display:grid;gap:5px;margin-top:15px}
+#research-git-workbench .rg-nav-item{display:flex;align-items:center;gap:10px;padding:9px 11px;color:var(--rg-sub);font-size:13px;border-radius:7px}
+#research-git-workbench .rg-nav-item.rg-active{background:var(--rg-select);color:var(--rg-ink);font-weight:500}
+#research-git-workbench .rg-profile{margin-top:auto;padding:6px 8px 0;display:flex;gap:9px;align-items:center;font-size:12px;color:var(--rg-sub)}
+#research-git-workbench .rg-avatar{width:26px;height:26px;border-radius:50%;background:var(--rg-select);display:grid;place-items:center;color:var(--rg-ink);font-size:11px}
+#research-git-workbench .rg-main{min-width:0;display:flex;flex-direction:column}
+#research-git-workbench .rg-header{padding:22px 25px 0}
+#research-git-workbench .rg-breadcrumb{display:flex;align-items:center;gap:8px;color:var(--rg-sub);font-size:12px;flex-wrap:wrap}
+#research-git-workbench .rg-breadcrumb strong{color:var(--rg-ink);font-weight:500}
+#research-git-workbench .rg-demo{margin-left:auto;font-size:11px;letter-spacing:.3px}
+#research-git-workbench .rg-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:20px 0 18px}
+#research-git-workbench .rg-button{display:inline-flex;gap:7px;align-items:center;justify-content:center;padding:7px 10px;border-radius:7px;min-height:34px;font-size:12px;line-height:1.5;white-space:normal}
+#research-git-workbench .rg-button:hover{background:var(--rg-hover)}
+#research-git-workbench .rg-button.rg-outline{border:1px solid var(--rg-line);background:var(--rg-paper)}
+#research-git-workbench .rg-button.rg-primary{background:var(--rg-solid);color:var(--rg-on-solid)}
+#research-git-workbench .rg-button.rg-primary:hover{filter:brightness(.9)}
+#research-git-workbench .rg-spacer{flex:1}
+#research-git-workbench .rg-counter{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 4px;border-radius:4px;background:var(--rg-select);font-size:11px}
+#research-git-workbench .rg-changes{margin:0 25px;display:flex;gap:12px;align-items:center;padding:15px 0;border-top:1px solid var(--rg-line);border-bottom:1px solid var(--rg-line)}
+#research-git-workbench .rg-change-icon{color:var(--rg-sub);display:flex}
+#research-git-workbench .rg-change-text{flex:1;min-width:0;font-size:13px}
+#research-git-workbench .rg-change-text small{display:block;color:var(--rg-sub);font-size:11px;margin-top:2px}
+#research-git-workbench .rg-workspace{display:grid;grid-template-columns:minmax(0,1fr) 286px;flex:1;margin-top:22px;min-width:0}
+#research-git-workbench .rg-workspace.rg-no-detail{grid-template-columns:minmax(0,1fr)}
+#research-git-workbench .rg-history{min-width:0;padding:0 14px 12px 19px}
+#research-git-workbench .rg-section-header{display:flex;align-items:center;gap:10px;padding:0 7px 17px;font-size:13px;font-weight:500}
+#research-git-workbench .rg-section-header span:last-child{margin-left:auto;font-size:11px;color:var(--rg-sub);font-weight:400}
+#research-git-workbench .rg-list{position:relative;min-width:0}
+#research-git-workbench .rg-graph{position:absolute;top:0;left:4px;width:66px;pointer-events:none;z-index:2;overflow:visible}
+#research-git-workbench .rg-commit{display:flex;align-items:center;width:100%;height:68px;padding:7px 9px 7px 77px;border-radius:7px;position:relative;gap:9px}
+#research-git-workbench .rg-commit:hover{background:var(--rg-hover)}
+#research-git-workbench .rg-commit[aria-pressed="true"]{background:var(--rg-select)}
+#research-git-workbench .rg-commit-copy{min-width:0;flex:1}
+#research-git-workbench .rg-commit-title{font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#research-git-workbench .rg-commit-meta{margin-top:5px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--rg-sub)}
+#research-git-workbench .rg-hash{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;letter-spacing:.2px}
+#research-git-workbench .rg-tag{font-size:10px;line-height:17px;padding:0 5px;border-radius:4px;color:var(--rg-ink);background:var(--rg-paper);display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow-wrap:anywhere}
+#research-git-workbench .rg-tag.rg-experiment{color:var(--rg-purple);background:var(--rg-purple-soft)}
+#research-git-workbench .rg-tag.rg-remote{color:var(--rg-sub);background:none;padding-left:0}
+#research-git-workbench .rg-commit-time{font-size:11px;color:var(--rg-sub);white-space:nowrap;align-self:flex-start;margin-top:5px}
+#research-git-workbench .rg-details{border-left:1px solid var(--rg-line);padding:0 19px 18px;min-width:0;display:flex;flex-direction:column}
+#research-git-workbench .rg-detail-heading{display:flex;align-items:center;justify-content:space-between;color:var(--rg-sub);font-size:11px;margin-bottom:15px}
+#research-git-workbench .rg-icon-button{display:grid;place-items:center;min-width:27px;min-height:27px;border-radius:5px;padding:4px}
+#research-git-workbench .rg-icon-button:hover{background:var(--rg-hover)}
+#research-git-workbench .rg-version-title{font-size:15px;font-weight:500;line-height:1.6;margin:0 0 5px;overflow-wrap:anywhere}
+#research-git-workbench .rg-version-meta{font-size:11px;color:var(--rg-sub);display:flex;gap:7px;flex-wrap:wrap}
+#research-git-workbench .rg-files-label{font-size:11px;color:var(--rg-sub);margin:24px 0 7px;display:flex;justify-content:space-between}
+#research-git-workbench .rg-file-button{width:100%;display:flex;align-items:center;gap:7px;border-radius:5px;padding:7px 6px;font-size:11px;margin-bottom:2px}
+#research-git-workbench .rg-file-button span:first-of-type{min-width:0;overflow-wrap:anywhere;flex:1}
+#research-git-workbench .rg-file-button[aria-pressed="true"]{background:var(--rg-hover)}
+#research-git-workbench .rg-added{color:var(--rg-green);font-size:11px;white-space:nowrap}
+#research-git-workbench .rg-removed{color:var(--rg-red);font-size:11px;white-space:nowrap}
+#research-git-workbench .rg-diff{margin:10px 0 20px;padding:10px 0;background:var(--rg-side);border-radius:6px;font:11px/1.9 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere;white-space:pre-wrap}
+#research-git-workbench .rg-code-line{display:block;padding:0 8px}
+#research-git-workbench .rg-code-add{background:var(--rg-add);color:var(--rg-green)}
+#research-git-workbench .rg-code-del{background:var(--rg-del);color:var(--rg-red)}
+#research-git-workbench .rg-detail-actions{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:6px;align-items:stretch}
+#research-git-workbench .rg-detail-actions .rg-button{justify-content:flex-start;font-size:12px}
+#research-git-workbench .rg-footer{padding:13px 25px;border-top:1px solid var(--rg-line);display:flex;gap:10px;align-items:center;min-height:44px;font-size:11px;color:var(--rg-sub)}
+#research-git-workbench .rg-footer .rg-footer-demo{margin-left:auto;white-space:nowrap}
+#research-git-workbench .rg-status{min-width:0;overflow-wrap:anywhere}
+#research-git-workbench .rg-overlay{position:absolute;inset:0;z-index:20;background:light-dark(#22222238,#00000070);padding:80px 18px 28px;display:flex;align-items:flex-start;justify-content:center}
+#research-git-workbench .rg-dialog{background:var(--rg-paper);width:440px;max-width:100%;border:1px solid var(--rg-line);border-radius:12px;padding:23px;box-shadow:0 16px 50px light-dark(#0000001a,#00000050)}
+#research-git-workbench .rg-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+#research-git-workbench .rg-dialog h2{font:500 17px/1.5 inherit;font-size:17px;font-weight:500;margin:0}
+#research-git-workbench .rg-dialog p{font-size:12px;color:var(--rg-sub);line-height:1.75;margin:8px 0 16px}
+#research-git-workbench .rg-dialog label{font-size:12px;display:block;margin:16px 0 6px}
+#research-git-workbench .rg-input{width:100%;background:var(--rg-paper);border:1px solid var(--rg-line);padding:9px 10px;border-radius:6px;min-height:38px;font-size:13px;resize:vertical}
+#research-git-workbench .rg-check-row{display:flex!important;align-items:center;gap:9px;padding:11px 0;margin:0!important;border-bottom:1px solid var(--rg-line);font-size:12px!important}
+#research-git-workbench .rg-check-row input{accent-color:var(--rg-solid);width:15px;height:15px;flex-shrink:0}
+#research-git-workbench .rg-check-row span{flex:1;min-width:0;overflow-wrap:anywhere}
+#research-git-workbench .rg-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:23px;flex-wrap:wrap}
+#research-git-workbench .rg-summary{border-top:1px solid var(--rg-line);border-bottom:1px solid var(--rg-line);padding:13px 0;font-size:12px;display:grid;gap:8px}
+#research-git-workbench .rg-summary div{display:flex;justify-content:space-between;gap:12px;overflow-wrap:anywhere}
+#research-git-workbench .rg-summary span{color:var(--rg-sub)}
+#research-git-workbench .rg-summary b{font-weight:500;text-align:right;min-width:0}
+#research-git-workbench .rg-error{color:var(--rg-red);font-size:12px;margin-top:10px}
+#research-git-workbench .rg-branch-option{width:100%;display:flex;gap:10px;padding:12px 9px;border-radius:6px;align-items:center;font-size:13px;overflow-wrap:anywhere}
+#research-git-workbench .rg-branch-option:hover{background:var(--rg-hover)}
+#research-git-workbench .rg-branch-option small{margin-left:auto;color:var(--rg-sub);font-size:11px;white-space:nowrap}
+#research-git-workbench [hidden]{display:none!important}
+#research-git-workbench[data-detail="bottom"] .rg-workspace{grid-template-columns:minmax(0,1fr)}
+#research-git-workbench[data-detail="bottom"] .rg-details{border-left:0;border-top:1px solid var(--rg-line);margin:0 25px;padding:18px 0}
+#research-git-workbench[data-density="compact"] .rg-commit{height:58px}
+@media(max-width:900px){#research-git-workbench .rg-app{grid-template-columns:136px minmax(0,1fr)}#research-git-workbench .rg-side{padding-left:8px;padding-right:8px}#research-git-workbench .rg-workspace{grid-template-columns:minmax(0,1fr) 244px}#research-git-workbench .rg-header{padding-left:20px;padding-right:20px}#research-git-workbench .rg-changes{margin-left:20px;margin-right:20px}#research-git-workbench .rg-commit-time{display:none}#research-git-workbench .rg-history{padding-left:10px;padding-right:10px}#research-git-workbench .rg-details{padding-left:14px;padding-right:14px}}
+@media(max-width:735px){#research-git-workbench .rg-app{grid-template-columns:minmax(0,1fr)}#research-git-workbench .rg-side{display:none}#research-git-workbench .rg-workspace{grid-template-columns:minmax(0,1fr) 256px}#research-git-workbench .rg-commit-time{display:block}}
+@media(max-width:580px){#research-git-workbench .rg-workspace{grid-template-columns:minmax(0,1fr)}#research-git-workbench .rg-details{border-left:0;border-top:1px solid var(--rg-line);margin:0 18px;padding:18px 0}#research-git-workbench .rg-detail-actions{flex-direction:row;flex-wrap:wrap}#research-git-workbench .rg-changes{gap:8px}#research-git-workbench .rg-change-icon{display:none}#research-git-workbench .rg-header{padding:18px 16px 0}#research-git-workbench .rg-toolbar{gap:3px}#research-git-workbench .rg-toolbar .rg-spacer{flex:1;min-width:3px}#research-git-workbench .rg-button{padding:7px 8px}#research-git-workbench .rg-changes{margin-left:16px;margin-right:16px}#research-git-workbench .rg-history{padding:0 13px 18px 9px}#research-git-workbench .rg-footer{padding:12px 16px;flex-wrap:wrap}#research-git-workbench .rg-footer-demo{display:none}#research-git-workbench .rg-overlay{padding:60px 9px 20px}#research-git-workbench .rg-dialog{padding:18px}#research-git-workbench .rg-commit-title{font-size:12px}}
+@media(pointer:coarse){#research-git-workbench .rg-button,#research-git-workbench .rg-icon-button,#research-git-workbench .rg-file-button{min-height:44px}#research-git-workbench .rg-icon-button{min-width:44px}#research-git-workbench .rg-input{font-size:16px}}
+@media(prefers-reduced-motion:no-preference){#research-git-workbench .rg-button,#research-git-workbench .rg-commit,#research-git-workbench .rg-file-button{transition:background-color .15s ease}}
+</style>
+<div class="rg-app">
+  <aside class="rg-side">
+    <div class="rg-brand"><i data-lucide="panels-top-left" aria-hidden="true"></i>科研工作台</div>
+    <div>
+      <div class="rg-project">当前项目<b>电缆表面检测</b></div>
+      <nav class="rg-nav" aria-label="项目导航（布局示意）">
+        <div class="rg-nav-item"><i data-lucide="chart-no-axes-gantt" aria-hidden="true"></i>科研进度</div>
+        <div class="rg-nav-item"><i data-lucide="notebook-pen" aria-hidden="true"></i>科研记录</div>
+        <div class="rg-nav-item"><i data-lucide="file-text" aria-hidden="true"></i>日报与周报</div>
+        <div class="rg-nav-item"><i data-lucide="book-open" aria-hidden="true"></i>知识库</div>
+        <div class="rg-nav-item"><i data-lucide="library" aria-hidden="true"></i>文献</div>
+        <div class="rg-nav-item rg-active" aria-current="page"><i data-lucide="git-branch" aria-hidden="true"></i>代码</div>
+      </nav>
+    </div>
+    <div class="rg-profile"><span class="rg-avatar">刘</span>刘亚宁</div>
+  </aside>
+  <main class="rg-main">
+    <header class="rg-header">
+      <div class="rg-breadcrumb">电缆表面检测<span>/</span><strong>代码</strong><span class="rg-demo">交互示意</span></div>
+      <div class="rg-toolbar">
+        <button type="button" class="rg-button rg-outline cursor-interaction" data-action="branches" aria-label="切换或新建分支"><i data-lucide="git-branch" aria-hidden="true"></i><span id="rg-branch-label">main</span><i data-lucide="chevron-down" aria-hidden="true"></i></button>
+        <button type="button" class="rg-button cursor-interaction" data-action="merge"><i data-lucide="git-merge" aria-hidden="true"></i>合并</button>
+        <span class="rg-spacer"></span>
+        <button type="button" class="rg-button cursor-interaction" data-action="pull"><i data-lucide="arrow-down" aria-hidden="true"></i>拉取</button>
+        <button type="button" class="rg-button cursor-interaction" data-action="push"><i data-lucide="arrow-up" aria-hidden="true"></i>上传<span class="rg-counter" id="rg-push-count">2</span></button>
+      </div>
+    </header>
+    <section class="rg-changes" aria-label="工作区修改">
+      <span class="rg-change-icon"><i data-lucide="files" aria-hidden="true"></i></span>
+      <div class="rg-change-text" id="rg-change-text">3 个文件有改动<small>尚未保存为版本</small></div>
+      <button type="button" class="rg-button rg-primary cursor-interaction" data-action="save" id="rg-save-button">查看并保存</button>
+    </section>
+    <div class="rg-workspace" id="rg-workspace">
+      <section class="rg-history" aria-label="分支与版本记录">
+        <div class="rg-section-header">版本记录<span>全部分支</span></div>
+        <div class="rg-list" id="rg-list"></div>
+      </section>
+      <aside class="rg-details" id="rg-details" aria-label="所选版本详情"></aside>
+    </div>
+    <footer class="rg-footer"><span class="rg-status" id="rg-status" role="status" aria-live="polite">main · 2 个本地版本待上传</span><span class="rg-footer-demo">演示数据 · 未连接仓库</span></footer>
+  </main>
+  <div id="rg-overlay" class="rg-overlay" hidden></div>
+</div>
+<script>
+(function(){
+'use strict';
+const root=document.getElementById('research-git-workbench');
+const $=s=>root.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon=n=>'<i data-lucide="'+n+'" aria-hidden="true"></i>';
+const file=(path,add,del,lines)=>({path,add,del,lines});
+const camera=file('configs/camera.yaml',2,2,['  camera:','-   exposure_ms: 6.0','+   exposure_ms: 8.0','-   auto_exposure: true','+   auto_exposure: false','    fps: 30']);
+const capture=file('src/capture.py',8,3,['  def open_camera(config):','-   camera.set_auto(True)','+   camera.set_auto(False)','+   camera.set_exposure(','+       config.exposure_ms','+   )','    return camera']);
+const roi=file('src/tracking/roi_tracker.py',18,6,['  def track(frame, roi):','-   points = detect(frame)','+   crop = frame[roi]','+   points = detect(crop)','+   points = stabilize(points)','    return points']);
+const note=file('notes/experiment.md',12,0,['+ ## 低纹理区域跟踪','+ 调整 ROI 与曝光参数。','+ 记录弱纹理区域的跟踪结果。','+ 下一步：对比反光区域表现。']);
+let commits=[
+{id:'b73a19d',lane:0,title:'完善缺陷结果导出',parents:['92af684'],time:'18:20',files:[file('src/export.py',24,5,['  def export(results):','-   save(results)','+   save_csv(results)','+   save_preview(results)'])]},
+{id:'c42e801',lane:1,title:'验证低纹理区域跟踪',parents:['63cb1a2'],time:'17:35',files:[roi,note]},
+{id:'92af684',lane:0,title:'修正标定参数读取',parents:['a8f21c9'],time:'16:42',files:[camera,capture]},
+{id:'63cb1a2',lane:1,title:'加入 ROI 稳定性实验',parents:['a8f21c9'],time:'15:10',files:[roi]},
+{id:'a8f21c9',lane:0,title:'完成相机采集与标定',parents:['f17c403'],time:'昨天',files:[camera,capture]},
+{id:'f17c403',lane:0,title:'建立缺陷检测基线',parents:[],time:'周四',files:[file('README.md',16,0,['+ # 电缆表面缺陷检测','+ 相机采集 → 标定 → 缺陷检测'])]}
+];
+const branches={main:'b73a19d','roi-experiment':'c42e801'};
+const remotes={main:'a8f21c9','roi-experiment':'c42e801'};
+let branch='main',selected='92af684',fileIndex=0,dirty=[roi,camera,note],serial=1,modalKind='',previousFocus=null,statusMessage='';
+const design={detailPlacement:'side',density:'comfortable'};
+const initial=null;
+function acceptState(s){const p=s&&s.privateContent;if(!p)return;if(p.detailPlacement==='side'||p.detailPlacement==='bottom')design.detailPlacement=p.detailPlacement;if(p.density==='compact'||p.density==='comfortable')design.density=p.density;if(commits.some(c=>c.id===p.selected))selected=p.selected;}
+acceptState(initial);
+function remember(action){root.dispatchEvent(new CustomEvent('rw-git-action',{bubbles:true,detail:{action}}));}
+
+function idsFrom(head){const seen=new Set();const visit=id=>{if(!id||seen.has(id))return;seen.add(id);const c=commits.find(x=>x.id===id);if(c)c.parents.forEach(visit);};visit(head);return seen;}
+function ahead(){const local=idsFrom(branches[branch]),remote=idsFrom(remotes[branch]);return [...local].filter(id=>!remote.has(id)).length;}
+function defaultStatus(){const n=ahead();return branch+' · '+(n?n+' 个本地版本待上传':'已与远程同步');}
+function setStatus(message){statusMessage=message;$('#rg-status').textContent=message;}
+function icons(){if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:16,height:16}});}
+function render(){
+root.dataset.detail=design.detailPlacement;root.dataset.density=design.density;
+$('#rg-branch-label').textContent=branch;$('#rg-push-count').textContent=ahead();$('#rg-push-count').hidden=!ahead();
+$('#rg-change-text').innerHTML=dirty.length?dirty.length+' 个文件有改动<small>尚未保存为版本</small>':'所有修改已保存<small>工作区干净，可以切换分支或合并</small>';
+$('#rg-save-button').hidden=!dirty.length;
+$('#rg-status').textContent=statusMessage||defaultStatus();
+const rowHeight=design.density==='compact'?58:68;
+const position=new Map(commits.map((c,i)=>[c.id,{x:c.lane?49:20,y:i*rowHeight+rowHeight/2}]));
+let paths='';
+commits.forEach(c=>{const a=position.get(c.id);c.parents.forEach(pid=>{const b=position.get(pid);if(!b)return;const color=c.lane?'var(--rg-purple)':'var(--rg-sub)';const d=a.x===b.x?'M '+a.x+' '+a.y+' L '+b.x+' '+b.y:'M '+a.x+' '+a.y+' C '+a.x+' '+(a.y+(b.y-a.y)*.66)+', '+b.x+' '+(a.y+(b.y-a.y)*.34)+', '+b.x+' '+b.y;paths+='<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="2"/>';});});
+let circles='';commits.forEach(c=>{const p=position.get(c.id),color=c.lane?'var(--rg-purple)':'var(--rg-ink)';if(c.id===selected)circles+='<circle cx="'+p.x+'" cy="'+p.y+'" r="9" fill="var(--rg-paper)" stroke="'+color+'" stroke-width="1"/>';circles+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4.5" fill="'+color+'" stroke="var(--rg-paper)" stroke-width="1.5"/>';});
+const rows=commits.map(c=>{let tags=Object.entries(branches).filter(([,head])=>head===c.id).map(([name])=>'<span class="rg-tag '+(name==='main'?'':'rg-experiment')+'">'+esc(name)+(name===branch?' · 当前':'')+'</span>').join('');if(remotes.main===c.id)tags+='<span class="rg-tag rg-remote">origin/main</span>';return '<button type="button" class="rg-commit cursor-interaction" data-commit="'+c.id+'" aria-pressed="'+(c.id===selected)+'" aria-label="查看版本：'+esc(c.title)+'"><span class="rg-commit-copy"><span class="rg-commit-title">'+esc(c.title)+'</span><span class="rg-commit-meta">'+tags+'<span class="rg-hash">'+c.id+'</span></span></span><span class="rg-commit-time">'+esc(c.time)+'</span></button>';}).join('');
+$('#rg-list').innerHTML='<svg class="rg-graph" width="66" height="'+commits.length*rowHeight+'" viewBox="0 0 66 '+commits.length*rowHeight+'" role="img" aria-label="提交关系：主线与 ROI 实验分支，共用相机采集与标定版本">'+paths+circles+'</svg>'+rows;
+const c=commits.find(x=>x.id===selected);$('#rg-details').hidden=!c;$('#rg-workspace').classList.toggle('rg-no-detail',!c);
+if(c){fileIndex=Math.min(fileIndex,c.files.length-1);const f=c.files[fileIndex];$('#rg-details').innerHTML='<div class="rg-detail-heading">版本详情<button type="button" class="rg-icon-button cursor-interaction" data-action="close-detail" aria-label="关闭版本详情">'+icon('x')+'</button></div><h2 class="rg-version-title">'+esc(c.title)+'</h2><div class="rg-version-meta"><span class="rg-hash">'+c.id+'</span><span>刘亚宁 · '+esc(c.time)+'</span></div><div class="rg-files-label"><span>改动文件</span><span>'+c.files.length+' 个</span></div>'+c.files.map((x,i)=>'<button type="button" class="rg-file-button cursor-interaction" data-file="'+i+'" aria-pressed="'+(i===fileIndex)+'">'+icon('file-code-2')+'<span>'+esc(x.path)+'</span><b class="rg-added">+'+x.add+'</b><b class="rg-removed">−'+x.del+'</b></button>').join('')+'<pre class="rg-diff" aria-label="'+esc(f.path)+' 的差异"><code>'+f.lines.map(line=>'<span class="rg-code-line '+(line.startsWith('+')?'rg-code-add':line.startsWith('-')?'rg-code-del':'')+'">'+esc(line)+'</span>').join('')+'</code></pre><div class="rg-detail-actions"><button type="button" class="rg-button cursor-interaction" data-action="create">'+icon('git-branch-plus')+'从此创建分支</button><button type="button" class="rg-button rg-outline cursor-interaction" data-action="restore">'+icon('rotate-ccw')+'恢复到此版本</button></div>';}
+icons();
+}
+function closeModal(){const overlay=$('#rg-overlay');overlay.hidden=true;overlay.innerHTML='';$('.rg-side').inert=false;$('.rg-main').inert=false;modalKind='';if(previousFocus?.isConnected)previousFocus.focus();}
+function modal(title,body,actionText,action){
+if($('#rg-overlay').hidden)previousFocus=document.activeElement;
+$('.rg-side').inert=true;$('.rg-main').inert=true;
+$('#rg-overlay').innerHTML='<section class="rg-dialog" role="dialog" aria-modal="true" aria-labelledby="rg-dialog-title"><div class="rg-dialog-head"><h2 id="rg-dialog-title">'+esc(title)+'</h2><button type="button" class="rg-icon-button cursor-interaction" data-action="cancel" aria-label="关闭">'+icon('x')+'</button></div>'+body+'<div id="rg-error" class="rg-error" role="alert"></div><div class="rg-dialog-actions"><button type="button" class="rg-button cursor-interaction" data-action="cancel">取消</button>'+(actionText?'<button type="button" class="rg-button rg-primary cursor-interaction" data-action="'+action+'">'+esc(actionText)+'</button>':'')+'</div></section>';
+$('#rg-overlay').hidden=false;icons();const focus=$('#rg-overlay input:not([type="checkbox"]),#rg-overlay textarea,#rg-overlay select')||$('#rg-overlay button');focus?.focus();
+}
+function guardClean(action){if(!dirty.length)return true;modalKind='blocked';modal('先保存当前修改','<p>还有 '+dirty.length+' 个文件未保存。'+esc(action)+'前先保存，避免把未完成的修改带到其他版本。</p><div class="rg-summary"><div><span>当前分支</span><b>'+esc(branch)+'</b></div><div><span>你的修改</span><b>保留，不会自动丢弃</b></div></div>','查看并保存','save');return false;}
+function openSave(){modalKind='save';modal('保存一个版本','<p>把这次修改留在本地。保存后可继续编辑，需要时再上传到 GitHub。</p>'+dirty.map((f,i)=>'<label class="rg-check-row"><input type="checkbox" value="'+i+'" checked data-save-file><span>'+esc(f.path)+'</span><b class="rg-added">+'+f.add+'</b><b class="rg-removed">−'+f.del+'</b></label>').join('')+'<label for="rg-commit-message">这次做了什么</label><textarea id="rg-commit-message" class="rg-input" rows="2" placeholder="例如：调整 ROI 跟踪参数并记录实验结果"></textarea>','保存到本地','confirm-save');}
+function newCommit(title,files,parents){const id='d'+(0x650000+serial++).toString(16);const head=commits.find(c=>c.id===branches[branch]);const c={id,lane:head?.lane||0,title,parents:parents||[branches[branch]],time:'刚刚',files:files.length?files:[note]};commits.unshift(c);branches[branch]=id;selected=id;fileIndex=0;return c;}
+function openRestore(){if(!guardClean('恢复代码'))return;const c=commits.find(x=>x.id===selected);if(!c)return;modalKind='restore';modal('恢复到这个版本','<p>让当前分支的代码恢复到所选版本，并生成一个新的恢复版本。原来的提交、分支和历史全部保留。</p><div class="rg-summary"><div><span>当前分支</span><b>'+esc(branch)+'</b></div><div><span>恢复目标</span><b>'+esc(c.title)+'</b></div><div><span>目标版本</span><b class="rg-hash">'+c.id+'</b></div><div><span>修改范围</span><b>当前分支的受跟踪文件</b></div><div><span>GitHub</span><b>不会自动上传</b></div></div>','生成恢复版本','confirm-restore');}
+function openBranches(){modalKind='branches';modal('分支','<p>主线保留稳定结果，实验放在独立分支。</p>'+Object.keys(branches).map(name=>'<button type="button" class="rg-branch-option cursor-interaction" data-switch="'+esc(name)+'">'+icon('git-branch')+'<span>'+esc(name)+'</span>'+(name===branch?'<small>当前分支</small>':'')+'</button>').join('')+'<button type="button" class="rg-branch-option cursor-interaction" data-action="create-head">'+icon('plus')+'从当前版本新建分支</button>','','');}
+function openCreate(){modalKind='create';const c=commits.find(x=>x.id===selected);modal('从此创建分支','<p>从「'+esc(c.title)+'」开始一条实验分支。创建后仍留在 '+esc(branch)+'，不会改动工作区。</p><label for="rg-branch-name">分支名称</label><input id="rg-branch-name" class="rg-input" placeholder="例如：lighting-experiment" autocomplete="off">','创建分支','confirm-create');}
+function openMerge(){if(!guardClean('合并分支'))return;const names=Object.keys(branches).filter(n=>n!==branch);modalKind='merge';modal('合并到 '+branch,'<p>把实验分支的成果合入当前分支。原分支会保留，本示意演示无冲突的合并。</p><label for="rg-merge-source">选择要合入的分支</label><select id="rg-merge-source" class="rg-input">'+names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('')+'</select><div class="rg-summary" style="margin-top:18px"><div><span>目标分支</span><b>'+esc(branch)+'</b></div><div><span>工作区</span><b>无未保存修改</b></div></div>','合并分支','confirm-merge');}
+function openPush(){if(!ahead()){setStatus('演示：没有待上传版本');return;}modalKind='push';modal('上传到 GitHub','<p>把当前分支的 '+ahead()+' 个本地版本同步到远程仓库。</p><div class="rg-summary"><div><span>本地分支</span><b>'+esc(branch)+'</b></div><div><span>上传目标</span><b>origin / '+esc(branch)+'</b></div><div><span>未保存的文件</span><b>不会上传</b></div></div>','确认上传（演示）','confirm-push');}
+root.addEventListener('click',e=>{
+const commitButton=e.target.closest('[data-commit]');if(commitButton){selected=commitButton.dataset.commit;fileIndex=0;render();remember('查看版本详情');return;}
+const fileButton=e.target.closest('[data-file]');if(fileButton){fileIndex=Number(fileButton.dataset.file);render();return;}
+const switchButton=e.target.closest('[data-switch]');if(switchButton){const name=switchButton.dataset.switch;if(name===branch){closeModal();return;}if(!guardClean('切换分支'))return;branch=name;selected=branches[name];fileIndex=0;closeModal();statusMessage='演示：已切换到 '+branch;render();remember('切换分支');return;}
+const b=e.target.closest('[data-action]');if(!b)return;const action=b.dataset.action;
+if(action==='cancel'){closeModal();return;}
+if(action==='close-detail'){selected=null;render();remember('收起版本详情');return;}
+if(action==='save'){openSave();return;}
+if(action==='restore'){openRestore();return;}
+if(action==='branches'){openBranches();return;}
+if(action==='create-head'){selected=branches[branch];fileIndex=0;render();openCreate();return;}
+if(action==='create'){openCreate();return;}
+if(action==='merge'){openMerge();return;}
+if(action==='push'){openPush();return;}
+if(action==='pull'){if(!guardClean('拉取更新'))return;setStatus('演示：已检查远程，没有新的版本需要拉取');remember('查看拉取反馈');return;}
+if(action==='confirm-save'){
+const title=$('#rg-commit-message').value.trim();const checks=[...root.querySelectorAll('[data-save-file]:checked')].map(x=>Number(x.value));
+if(!checks.length){$('#rg-error').textContent='至少选择一个需要保存的文件。';return;}if(!title){$('#rg-error').textContent='写一句版本说明，之后更容易找回来。';$('#rg-commit-message').focus();return;}
+const saved=dirty.filter((f,i)=>checks.includes(i));newCommit(title,saved);dirty=dirty.filter((f,i)=>!checks.includes(i));closeModal();statusMessage='演示：已保存到本地 · 尚未上传 GitHub';render();remember('保存本地版本');return;
+}
+if(action==='confirm-restore'){
+const target=commits.find(c=>c.id===selected);newCommit('恢复到：'+target.title,target.files);closeModal();statusMessage='演示：已生成恢复版本，原有历史全部保留';render();remember('恢复旧代码，保留历史');return;
+}
+if(action==='confirm-create'){
+const name=$('#rg-branch-name').value.trim();if(!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$/.test(name)){$('#rg-error').textContent='示意中请使用 1–40 位字母、数字、短横线或下划线。';return;}if(branches[name]){$('#rg-error').textContent='分支名称已存在。';return;}
+branches[name]=selected;closeModal();statusMessage='演示：已创建 '+name+'，仍在 '+branch;render();remember('创建实验分支');return;
+}
+if(action==='confirm-merge'){
+const source=$('#rg-merge-source').value;if(!source)return;const sourceHead=branches[source];if(idsFrom(branches[branch]).has(sourceHead)){$('#rg-error').textContent='当前分支已包含这些版本，无需再次合并。';return;}
+newCommit('合并 '+source+' 的实验结果',[roi,note],[branches[branch],sourceHead]);closeModal();statusMessage='演示：合并完成，实验分支与历史均保留';render();remember('合并实验分支');return;
+}
+if(action==='confirm-push'){remotes[branch]=branches[branch];closeModal();statusMessage='演示：上传完成 · 没有进行真实网络操作';render();remember('上传本地版本');}
+});
+$('#rg-overlay').addEventListener('click',e=>{if(e.target===$('#rg-overlay'))closeModal();});
+root.addEventListener('keydown',e=>{if($('#rg-overlay').hidden)return;if(e.key==='Escape'){e.preventDefault();closeModal();return;}if(e.key==='Tab'){const focusable=[...$('#rg-overlay').querySelectorAll('button,input,textarea,select')].filter(el=>!el.disabled&&!el.hidden);const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+render();
+
+})();
+</script>
+</div>
+</div><div id="rw-git-fpga" hidden><div id="research-git-workbench-fpga" aria-label="科研工作台：可视化代码管理">
+<style>
+#research-git-workbench-fpga{--rf-paper:light-dark(#fff,#212121);--rf-side:light-dark(#f8f8f7,#191919);--rf-ink:light-dark(#242424,#ededeb);--rf-sub:light-dark(#747471,#a7a7a2);--rf-line:light-dark(#e9e9e6,#383836);--rf-hover:light-dark(#f4f4f2,#2d2d2a);--rf-select:light-dark(#ededea,#353531);--rf-solid:light-dark(#282827,#e5e5df);--rf-on-solid:light-dark(#fff,#222220);--rf-purple:light-dark(#8974ac,#b49ad8);--rf-purple-soft:light-dark(#f1edf6,#332d3f);--rf-green:light-dark(#377857,#87bca0);--rf-red:light-dark(#a25050,#d99b9b);--rf-add:light-dark(#edf5ef,#283b2e);--rf-del:light-dark(#faeeee,#402d2d);color:var(--rf-ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;width:100%;text-align:left}
+#research-git-workbench-fpga *{box-sizing:border-box}
+#research-git-workbench-fpga button,#research-git-workbench-fpga input,#research-git-workbench-fpga textarea,#research-git-workbench-fpga select{font:inherit;color:inherit}
+#research-git-workbench-fpga button{border:0;background:none;text-align:left}
+#research-git-workbench-fpga button:disabled{opacity:.45}
+#research-git-workbench-fpga svg.lucide{width:16px;height:16px;flex-shrink:0;stroke-width:1.65}
+#research-git-workbench-fpga .rf-app{display:grid;grid-template-columns:158px minmax(0,1fr);min-height:654px;border:1px solid var(--rf-line);border-radius:12px;overflow:clip;background:var(--rf-paper);position:relative}
+#research-git-workbench-fpga .rf-side{background:var(--rf-side);border-right:1px solid var(--rf-line);padding:23px 12px 15px;display:flex;flex-direction:column;gap:26px}
+#research-git-workbench-fpga .rf-brand{display:flex;align-items:center;gap:9px;padding:0 8px;font-size:14px;font-weight:600;letter-spacing:.3px}
+#research-git-workbench-fpga .rf-project{padding:0 8px;color:var(--rf-sub);font-size:12px}
+#research-git-workbench-fpga .rf-project b{display:block;color:var(--rf-ink);font-size:13px;font-weight:500;margin-top:5px}
+#research-git-workbench-fpga .rf-nav{display:grid;gap:5px;margin-top:15px}
+#research-git-workbench-fpga .rf-nav-item{display:flex;align-items:center;gap:10px;padding:9px 11px;color:var(--rf-sub);font-size:13px;border-radius:7px}
+#research-git-workbench-fpga .rf-nav-item.rf-active{background:var(--rf-select);color:var(--rf-ink);font-weight:500}
+#research-git-workbench-fpga .rf-profile{margin-top:auto;padding:6px 8px 0;display:flex;gap:9px;align-items:center;font-size:12px;color:var(--rf-sub)}
+#research-git-workbench-fpga .rf-avatar{width:26px;height:26px;border-radius:50%;background:var(--rf-select);display:grid;place-items:center;color:var(--rf-ink);font-size:11px}
+#research-git-workbench-fpga .rf-main{min-width:0;display:flex;flex-direction:column}
+#research-git-workbench-fpga .rf-header{padding:22px 25px 0}
+#research-git-workbench-fpga .rf-breadcrumb{display:flex;align-items:center;gap:8px;color:var(--rf-sub);font-size:12px;flex-wrap:wrap}
+#research-git-workbench-fpga .rf-breadcrumb strong{color:var(--rf-ink);font-weight:500}
+#research-git-workbench-fpga .rf-demo{margin-left:auto;font-size:11px;letter-spacing:.3px}
+#research-git-workbench-fpga .rf-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:20px 0 18px}
+#research-git-workbench-fpga .rf-button{display:inline-flex;gap:7px;align-items:center;justify-content:center;padding:7px 10px;border-radius:7px;min-height:34px;font-size:12px;line-height:1.5;white-space:normal}
+#research-git-workbench-fpga .rf-button:hover{background:var(--rf-hover)}
+#research-git-workbench-fpga .rf-button.rf-outline{border:1px solid var(--rf-line);background:var(--rf-paper)}
+#research-git-workbench-fpga .rf-button.rf-primary{background:var(--rf-solid);color:var(--rf-on-solid)}
+#research-git-workbench-fpga .rf-button.rf-primary:hover{filter:brightness(.9)}
+#research-git-workbench-fpga .rf-spacer{flex:1}
+#research-git-workbench-fpga .rf-counter{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 4px;border-radius:4px;background:var(--rf-select);font-size:11px}
+#research-git-workbench-fpga .rf-changes{margin:0 25px;display:flex;gap:12px;align-items:center;padding:15px 0;border-top:1px solid var(--rf-line);border-bottom:1px solid var(--rf-line)}
+#research-git-workbench-fpga .rf-change-icon{color:var(--rf-sub);display:flex}
+#research-git-workbench-fpga .rf-change-text{flex:1;min-width:0;font-size:13px}
+#research-git-workbench-fpga .rf-change-text small{display:block;color:var(--rf-sub);font-size:11px;margin-top:2px}
+#research-git-workbench-fpga .rf-workspace{display:grid;grid-template-columns:minmax(0,1fr) 286px;flex:1;margin-top:22px;min-width:0}
+#research-git-workbench-fpga .rf-workspace.rf-no-detail{grid-template-columns:minmax(0,1fr)}
+#research-git-workbench-fpga .rf-history{min-width:0;padding:0 14px 12px 19px}
+#research-git-workbench-fpga .rf-section-header{display:flex;align-items:center;gap:10px;padding:0 7px 17px;font-size:13px;font-weight:500}
+#research-git-workbench-fpga .rf-section-header span:last-child{margin-left:auto;font-size:11px;color:var(--rf-sub);font-weight:400}
+#research-git-workbench-fpga .rf-list{position:relative;min-width:0}
+#research-git-workbench-fpga .rf-graph{position:absolute;top:0;left:4px;width:66px;pointer-events:none;z-index:2;overflow:visible}
+#research-git-workbench-fpga .rf-commit{display:flex;align-items:center;width:100%;height:68px;padding:7px 9px 7px 77px;border-radius:7px;position:relative;gap:9px}
+#research-git-workbench-fpga .rf-commit:hover{background:var(--rf-hover)}
+#research-git-workbench-fpga .rf-commit[aria-pressed="true"]{background:var(--rf-select)}
+#research-git-workbench-fpga .rf-commit-copy{min-width:0;flex:1}
+#research-git-workbench-fpga .rf-commit-title{font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#research-git-workbench-fpga .rf-commit-meta{margin-top:5px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--rf-sub)}
+#research-git-workbench-fpga .rf-hash{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;letter-spacing:.2px}
+#research-git-workbench-fpga .rf-tag{font-size:10px;line-height:17px;padding:0 5px;border-radius:4px;color:var(--rf-ink);background:var(--rf-paper);display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow-wrap:anywhere}
+#research-git-workbench-fpga .rf-tag.rf-experiment{color:var(--rf-purple);background:var(--rf-purple-soft)}
+#research-git-workbench-fpga .rf-tag.rf-remote{color:var(--rf-sub);background:none;padding-left:0}
+#research-git-workbench-fpga .rf-commit-time{font-size:11px;color:var(--rf-sub);white-space:nowrap;align-self:flex-start;margin-top:5px}
+#research-git-workbench-fpga .rf-details{border-left:1px solid var(--rf-line);padding:0 19px 18px;min-width:0;display:flex;flex-direction:column}
+#research-git-workbench-fpga .rf-detail-heading{display:flex;align-items:center;justify-content:space-between;color:var(--rf-sub);font-size:11px;margin-bottom:15px}
+#research-git-workbench-fpga .rf-icon-button{display:grid;place-items:center;min-width:27px;min-height:27px;border-radius:5px;padding:4px}
+#research-git-workbench-fpga .rf-icon-button:hover{background:var(--rf-hover)}
+#research-git-workbench-fpga .rf-version-title{font-size:15px;font-weight:500;line-height:1.6;margin:0 0 5px;overflow-wrap:anywhere}
+#research-git-workbench-fpga .rf-version-meta{font-size:11px;color:var(--rf-sub);display:flex;gap:7px;flex-wrap:wrap}
+#research-git-workbench-fpga .rf-files-label{font-size:11px;color:var(--rf-sub);margin:24px 0 7px;display:flex;justify-content:space-between}
+#research-git-workbench-fpga .rf-file-button{width:100%;display:flex;align-items:center;gap:7px;border-radius:5px;padding:7px 6px;font-size:11px;margin-bottom:2px}
+#research-git-workbench-fpga .rf-file-button span:first-of-type{min-width:0;overflow-wrap:anywhere;flex:1}
+#research-git-workbench-fpga .rf-file-button[aria-pressed="true"]{background:var(--rf-hover)}
+#research-git-workbench-fpga .rf-added{color:var(--rf-green);font-size:11px;white-space:nowrap}
+#research-git-workbench-fpga .rf-removed{color:var(--rf-red);font-size:11px;white-space:nowrap}
+#research-git-workbench-fpga .rf-diff{margin:10px 0 20px;padding:10px 0;background:var(--rf-side);border-radius:6px;font:11px/1.9 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere;white-space:pre-wrap}
+#research-git-workbench-fpga .rf-code-line{display:block;padding:0 8px}
+#research-git-workbench-fpga .rf-code-add{background:var(--rf-add);color:var(--rf-green)}
+#research-git-workbench-fpga .rf-code-del{background:var(--rf-del);color:var(--rf-red)}
+#research-git-workbench-fpga .rf-detail-actions{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:6px;align-items:stretch}
+#research-git-workbench-fpga .rf-detail-actions .rf-button{justify-content:flex-start;font-size:12px}
+#research-git-workbench-fpga .rf-footer{padding:13px 25px;border-top:1px solid var(--rf-line);display:flex;gap:10px;align-items:center;min-height:44px;font-size:11px;color:var(--rf-sub)}
+#research-git-workbench-fpga .rf-footer .rf-footer-demo{margin-left:auto;white-space:nowrap}
+#research-git-workbench-fpga .rf-status{min-width:0;overflow-wrap:anywhere}
+#research-git-workbench-fpga .rf-overlay{position:absolute;inset:0;z-index:20;background:light-dark(#22222238,#00000070);padding:80px 18px 28px;display:flex;align-items:flex-start;justify-content:center}
+#research-git-workbench-fpga .rf-dialog{background:var(--rf-paper);width:440px;max-width:100%;border:1px solid var(--rf-line);border-radius:12px;padding:23px;box-shadow:0 16px 50px light-dark(#0000001a,#00000050)}
+#research-git-workbench-fpga .rf-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+#research-git-workbench-fpga .rf-dialog h2{font:500 17px/1.5 inherit;font-size:17px;font-weight:500;margin:0}
+#research-git-workbench-fpga .rf-dialog p{font-size:12px;color:var(--rf-sub);line-height:1.75;margin:8px 0 16px}
+#research-git-workbench-fpga .rf-dialog label{font-size:12px;display:block;margin:16px 0 6px}
+#research-git-workbench-fpga .rf-input{width:100%;background:var(--rf-paper);border:1px solid var(--rf-line);padding:9px 10px;border-radius:6px;min-height:38px;font-size:13px;resize:vertical}
+#research-git-workbench-fpga .rf-check-row{display:flex!important;align-items:center;gap:9px;padding:11px 0;margin:0!important;border-bottom:1px solid var(--rf-line);font-size:12px!important}
+#research-git-workbench-fpga .rf-check-row input{accent-color:var(--rf-solid);width:15px;height:15px;flex-shrink:0}
+#research-git-workbench-fpga .rf-check-row span{flex:1;min-width:0;overflow-wrap:anywhere}
+#research-git-workbench-fpga .rf-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:23px;flex-wrap:wrap}
+#research-git-workbench-fpga .rf-summary{border-top:1px solid var(--rf-line);border-bottom:1px solid var(--rf-line);padding:13px 0;font-size:12px;display:grid;gap:8px}
+#research-git-workbench-fpga .rf-summary div{display:flex;justify-content:space-between;gap:12px;overflow-wrap:anywhere}
+#research-git-workbench-fpga .rf-summary span{color:var(--rf-sub)}
+#research-git-workbench-fpga .rf-summary b{font-weight:500;text-align:right;min-width:0}
+#research-git-workbench-fpga .rf-error{color:var(--rf-red);font-size:12px;margin-top:10px}
+#research-git-workbench-fpga .rf-branch-option{width:100%;display:flex;gap:10px;padding:12px 9px;border-radius:6px;align-items:center;font-size:13px;overflow-wrap:anywhere}
+#research-git-workbench-fpga .rf-branch-option:hover{background:var(--rf-hover)}
+#research-git-workbench-fpga .rf-branch-option small{margin-left:auto;color:var(--rf-sub);font-size:11px;white-space:nowrap}
+#research-git-workbench-fpga [hidden]{display:none!important}
+#research-git-workbench-fpga[data-detail="bottom"] .rf-workspace{grid-template-columns:minmax(0,1fr)}
+#research-git-workbench-fpga[data-detail="bottom"] .rf-details{border-left:0;border-top:1px solid var(--rf-line);margin:0 25px;padding:18px 0}
+#research-git-workbench-fpga[data-density="compact"] .rf-commit{height:58px}
+@media(max-width:900px){#research-git-workbench-fpga .rf-app{grid-template-columns:136px minmax(0,1fr)}#research-git-workbench-fpga .rf-side{padding-left:8px;padding-right:8px}#research-git-workbench-fpga .rf-workspace{grid-template-columns:minmax(0,1fr) 244px}#research-git-workbench-fpga .rf-header{padding-left:20px;padding-right:20px}#research-git-workbench-fpga .rf-changes{margin-left:20px;margin-right:20px}#research-git-workbench-fpga .rf-commit-time{display:none}#research-git-workbench-fpga .rf-history{padding-left:10px;padding-right:10px}#research-git-workbench-fpga .rf-details{padding-left:14px;padding-right:14px}}
+@media(max-width:735px){#research-git-workbench-fpga .rf-app{grid-template-columns:minmax(0,1fr)}#research-git-workbench-fpga .rf-side{display:none}#research-git-workbench-fpga .rf-workspace{grid-template-columns:minmax(0,1fr) 256px}#research-git-workbench-fpga .rf-commit-time{display:block}}
+@media(max-width:580px){#research-git-workbench-fpga .rf-workspace{grid-template-columns:minmax(0,1fr)}#research-git-workbench-fpga .rf-details{border-left:0;border-top:1px solid var(--rf-line);margin:0 18px;padding:18px 0}#research-git-workbench-fpga .rf-detail-actions{flex-direction:row;flex-wrap:wrap}#research-git-workbench-fpga .rf-changes{gap:8px}#research-git-workbench-fpga .rf-change-icon{display:none}#research-git-workbench-fpga .rf-header{padding:18px 16px 0}#research-git-workbench-fpga .rf-toolbar{gap:3px}#research-git-workbench-fpga .rf-toolbar .rf-spacer{flex:1;min-width:3px}#research-git-workbench-fpga .rf-button{padding:7px 8px}#research-git-workbench-fpga .rf-changes{margin-left:16px;margin-right:16px}#research-git-workbench-fpga .rf-history{padding:0 13px 18px 9px}#research-git-workbench-fpga .rf-footer{padding:12px 16px;flex-wrap:wrap}#research-git-workbench-fpga .rf-footer-demo{display:none}#research-git-workbench-fpga .rf-overlay{padding:60px 9px 20px}#research-git-workbench-fpga .rf-dialog{padding:18px}#research-git-workbench-fpga .rf-commit-title{font-size:12px}}
+@media(pointer:coarse){#research-git-workbench-fpga .rf-button,#research-git-workbench-fpga .rf-icon-button,#research-git-workbench-fpga .rf-file-button{min-height:44px}#research-git-workbench-fpga .rf-icon-button{min-width:44px}#research-git-workbench-fpga .rf-input{font-size:16px}}
+@media(prefers-reduced-motion:no-preference){#research-git-workbench-fpga .rf-button,#research-git-workbench-fpga .rf-commit,#research-git-workbench-fpga .rf-file-button{transition:background-color .15s ease}}
+</style>
+<div class="rf-app">
+  <aside class="rf-side">
+    <div class="rf-brand"><i data-lucide="panels-top-left" aria-hidden="true"></i>科研工作台</div>
+    <div>
+      <div class="rf-project">当前项目<b>相机板 FPGA</b></div>
+      <nav class="rf-nav" aria-label="项目导航（布局示意）">
+        <div class="rf-nav-item"><i data-lucide="chart-no-axes-gantt" aria-hidden="true"></i>科研进度</div>
+        <div class="rf-nav-item"><i data-lucide="notebook-pen" aria-hidden="true"></i>科研记录</div>
+        <div class="rf-nav-item"><i data-lucide="file-text" aria-hidden="true"></i>日报与周报</div>
+        <div class="rf-nav-item"><i data-lucide="book-open" aria-hidden="true"></i>知识库</div>
+        <div class="rf-nav-item"><i data-lucide="library" aria-hidden="true"></i>文献</div>
+        <div class="rf-nav-item rf-active" aria-current="page"><i data-lucide="git-branch" aria-hidden="true"></i>代码</div>
+      </nav>
+    </div>
+    <div class="rf-profile"><span class="rf-avatar">刘</span>刘亚宁</div>
+  </aside>
+  <main class="rf-main">
+    <header class="rf-header">
+      <div class="rf-breadcrumb">相机板 FPGA<span>/</span><strong>代码</strong><span class="rf-demo">交互示意</span></div>
+      <div class="rf-toolbar">
+        <button type="button" class="rf-button rf-outline cursor-interaction" data-action="branches" aria-label="切换或新建分支"><i data-lucide="git-branch" aria-hidden="true"></i><span id="rf-branch-label">main</span><i data-lucide="chevron-down" aria-hidden="true"></i></button>
+        <button type="button" class="rf-button cursor-interaction" data-action="merge"><i data-lucide="git-merge" aria-hidden="true"></i>合并</button>
+        <span class="rf-spacer"></span>
+        <button type="button" class="rf-button cursor-interaction" data-action="pull"><i data-lucide="arrow-down" aria-hidden="true"></i>拉取</button>
+        <button type="button" class="rf-button cursor-interaction" data-action="push"><i data-lucide="arrow-up" aria-hidden="true"></i>上传<span class="rf-counter" id="rf-push-count">2</span></button>
+      </div>
+    </header>
+    <section class="rf-changes" aria-label="工作区修改">
+      <span class="rf-change-icon"><i data-lucide="files" aria-hidden="true"></i></span>
+      <div class="rf-change-text" id="rf-change-text">3 个文件有改动<small>尚未保存为版本</small></div>
+      <button type="button" class="rf-button rf-primary cursor-interaction" data-action="save" id="rf-save-button">查看并保存</button>
+    </section>
+    <div class="rf-workspace" id="rf-workspace">
+      <section class="rf-history" aria-label="分支与版本记录">
+        <div class="rf-section-header">版本记录<span>全部分支</span></div>
+        <div class="rf-list" id="rf-list"></div>
+      </section>
+      <aside class="rf-details" id="rf-details" aria-label="所选版本详情"></aside>
+    </div>
+    <footer class="rf-footer"><span class="rf-status" id="rf-status" role="status" aria-live="polite">main · 2 个本地版本待上传</span><span class="rf-footer-demo">演示数据 · 未连接仓库</span></footer>
+  </main>
+  <div id="rf-overlay" class="rf-overlay" hidden></div>
+</div>
+<script>
+(function(){
+'use strict';
+const root=document.getElementById('research-git-workbench-fpga');
+const $=s=>root.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon=n=>'<i data-lucide="'+n+'" aria-hidden="true"></i>';
+const file=(path,add,del,lines)=>({path,add,del,lines});
+const camera=file('configs/camera.yaml',2,2,['  camera:','-   exposure_ms: 6.0','+   exposure_ms: 8.0','-   auto_exposure: true','+   auto_exposure: false','    fps: 30']);
+const capture=file('src/capture.py',8,3,['  def open_camera(config):','-   camera.set_auto(True)','+   camera.set_auto(False)','+   camera.set_exposure(','+       config.exposure_ms','+   )','    return camera']);
+const roi=file('src/tracking/i2c_controller.v',18,6,['  def track(frame, roi):','-   points = detect(frame)','+   crop = frame[roi]','+   points = detect(crop)','+   points = stabilize(points)','    return points']);
+const note=file('notes/experiment.md',12,0,['+ ## 低纹理区域跟踪','+ 调整 ROI 与曝光参数。','+ 记录弱纹理区域的跟踪结果。','+ 下一步：对比反光区域表现。']);
+let commits=[
+{id:'b73a19d',lane:0,title:'整理仿真结果与波形',parents:['92af684'],time:'18:20',files:[file('src/export.py',24,5,['  def export(results):','-   save(results)','+   save_csv(results)','+   save_preview(results)'])]},
+{id:'c42e801',lane:1,title:'验证 I²C 寄存器读写',parents:['63cb1a2'],time:'17:35',files:[roi,note]},
+{id:'92af684',lane:0,title:'修正复位时序约束',parents:['a8f21c9'],time:'16:42',files:[camera,capture]},
+{id:'63cb1a2',lane:1,title:'加入接口时序仿真',parents:['a8f21c9'],time:'15:10',files:[roi]},
+{id:'a8f21c9',lane:0,title:'完成时钟与接口梳理',parents:['f17c403'],time:'昨天',files:[camera,capture]},
+{id:'f17c403',lane:0,title:'导入相机板工程',parents:[],time:'周四',files:[file('README.md',16,0,['+ # 相机板 FPGA 适配','+ 相机采集 → 标定 → 缺陷检测'])]}
+];
+const branches={main:'b73a19d','i2c-simulation':'c42e801'};
+const remotes={main:'a8f21c9','i2c-simulation':'c42e801'};
+let branch='main',selected='92af684',fileIndex=0,dirty=[roi,camera,note],serial=1,modalKind='',previousFocus=null,statusMessage='';
+const design={detailPlacement:'side',density:'comfortable'};
+const initial=null;
+function acceptState(s){const p=s&&s.privateContent;if(!p)return;if(p.detailPlacement==='side'||p.detailPlacement==='bottom')design.detailPlacement=p.detailPlacement;if(p.density==='compact'||p.density==='comfortable')design.density=p.density;if(commits.some(c=>c.id===p.selected))selected=p.selected;}
+acceptState(initial);
+function remember(action){root.dispatchEvent(new CustomEvent('rw-git-action',{bubbles:true,detail:{action}}));}
+
+function idsFrom(head){const seen=new Set();const visit=id=>{if(!id||seen.has(id))return;seen.add(id);const c=commits.find(x=>x.id===id);if(c)c.parents.forEach(visit);};visit(head);return seen;}
+function ahead(){const local=idsFrom(branches[branch]),remote=idsFrom(remotes[branch]);return [...local].filter(id=>!remote.has(id)).length;}
+function defaultStatus(){const n=ahead();return branch+' · '+(n?n+' 个本地版本待上传':'已与远程同步');}
+function setStatus(message){statusMessage=message;$('#rf-status').textContent=message;}
+function icons(){if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:16,height:16}});}
+function render(){
+root.dataset.detail=design.detailPlacement;root.dataset.density=design.density;
+$('#rf-branch-label').textContent=branch;$('#rf-push-count').textContent=ahead();$('#rf-push-count').hidden=!ahead();
+$('#rf-change-text').innerHTML=dirty.length?dirty.length+' 个文件有改动<small>尚未保存为版本</small>':'所有修改已保存<small>工作区干净，可以切换分支或合并</small>';
+$('#rf-save-button').hidden=!dirty.length;
+$('#rf-status').textContent=statusMessage||defaultStatus();
+const rowHeight=design.density==='compact'?58:68;
+const position=new Map(commits.map((c,i)=>[c.id,{x:c.lane?49:20,y:i*rowHeight+rowHeight/2}]));
+let paths='';
+commits.forEach(c=>{const a=position.get(c.id);c.parents.forEach(pid=>{const b=position.get(pid);if(!b)return;const color=c.lane?'var(--rf-purple)':'var(--rf-sub)';const d=a.x===b.x?'M '+a.x+' '+a.y+' L '+b.x+' '+b.y:'M '+a.x+' '+a.y+' C '+a.x+' '+(a.y+(b.y-a.y)*.66)+', '+b.x+' '+(a.y+(b.y-a.y)*.34)+', '+b.x+' '+b.y;paths+='<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="2"/>';});});
+let circles='';commits.forEach(c=>{const p=position.get(c.id),color=c.lane?'var(--rf-purple)':'var(--rf-ink)';if(c.id===selected)circles+='<circle cx="'+p.x+'" cy="'+p.y+'" r="9" fill="var(--rf-paper)" stroke="'+color+'" stroke-width="1"/>';circles+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4.5" fill="'+color+'" stroke="var(--rf-paper)" stroke-width="1.5"/>';});
+const rows=commits.map(c=>{let tags=Object.entries(branches).filter(([,head])=>head===c.id).map(([name])=>'<span class="rf-tag '+(name==='main'?'':'rf-experiment')+'">'+esc(name)+(name===branch?' · 当前':'')+'</span>').join('');if(remotes.main===c.id)tags+='<span class="rf-tag rf-remote">origin/main</span>';return '<button type="button" class="rf-commit cursor-interaction" data-commit="'+c.id+'" aria-pressed="'+(c.id===selected)+'" aria-label="查看版本：'+esc(c.title)+'"><span class="rf-commit-copy"><span class="rf-commit-title">'+esc(c.title)+'</span><span class="rf-commit-meta">'+tags+'<span class="rf-hash">'+c.id+'</span></span></span><span class="rf-commit-time">'+esc(c.time)+'</span></button>';}).join('');
+$('#rf-list').innerHTML='<svg class="rf-graph" width="66" height="'+commits.length*rowHeight+'" viewBox="0 0 66 '+commits.length*rowHeight+'" role="img" aria-label="提交关系：主线与 ROI 实验分支，共用相机采集与标定版本">'+paths+circles+'</svg>'+rows;
+const c=commits.find(x=>x.id===selected);$('#rf-details').hidden=!c;$('#rf-workspace').classList.toggle('rf-no-detail',!c);
+if(c){fileIndex=Math.min(fileIndex,c.files.length-1);const f=c.files[fileIndex];$('#rf-details').innerHTML='<div class="rf-detail-heading">版本详情<button type="button" class="rf-icon-button cursor-interaction" data-action="close-detail" aria-label="关闭版本详情">'+icon('x')+'</button></div><h2 class="rf-version-title">'+esc(c.title)+'</h2><div class="rf-version-meta"><span class="rf-hash">'+c.id+'</span><span>刘亚宁 · '+esc(c.time)+'</span></div><div class="rf-files-label"><span>改动文件</span><span>'+c.files.length+' 个</span></div>'+c.files.map((x,i)=>'<button type="button" class="rf-file-button cursor-interaction" data-file="'+i+'" aria-pressed="'+(i===fileIndex)+'">'+icon('file-code-2')+'<span>'+esc(x.path)+'</span><b class="rf-added">+'+x.add+'</b><b class="rf-removed">−'+x.del+'</b></button>').join('')+'<pre class="rf-diff" aria-label="'+esc(f.path)+' 的差异"><code>'+f.lines.map(line=>'<span class="rf-code-line '+(line.startsWith('+')?'rf-code-add':line.startsWith('-')?'rf-code-del':'')+'">'+esc(line)+'</span>').join('')+'</code></pre><div class="rf-detail-actions"><button type="button" class="rf-button cursor-interaction" data-action="create">'+icon('git-branch-plus')+'从此创建分支</button><button type="button" class="rf-button rf-outline cursor-interaction" data-action="restore">'+icon('rotate-ccw')+'恢复到此版本</button></div>';}
+icons();
+}
+function closeModal(){const overlay=$('#rf-overlay');overlay.hidden=true;overlay.innerHTML='';$('.rf-side').inert=false;$('.rf-main').inert=false;modalKind='';if(previousFocus?.isConnected)previousFocus.focus();}
+function modal(title,body,actionText,action){
+if($('#rf-overlay').hidden)previousFocus=document.activeElement;
+$('.rf-side').inert=true;$('.rf-main').inert=true;
+$('#rf-overlay').innerHTML='<section class="rf-dialog" role="dialog" aria-modal="true" aria-labelledby="rf-dialog-title"><div class="rf-dialog-head"><h2 id="rf-dialog-title">'+esc(title)+'</h2><button type="button" class="rf-icon-button cursor-interaction" data-action="cancel" aria-label="关闭">'+icon('x')+'</button></div>'+body+'<div id="rf-error" class="rf-error" role="alert"></div><div class="rf-dialog-actions"><button type="button" class="rf-button cursor-interaction" data-action="cancel">取消</button>'+(actionText?'<button type="button" class="rf-button rf-primary cursor-interaction" data-action="'+action+'">'+esc(actionText)+'</button>':'')+'</div></section>';
+$('#rf-overlay').hidden=false;icons();const focus=$('#rf-overlay input:not([type="checkbox"]),#rf-overlay textarea,#rf-overlay select')||$('#rf-overlay button');focus?.focus();
+}
+function guardClean(action){if(!dirty.length)return true;modalKind='blocked';modal('先保存当前修改','<p>还有 '+dirty.length+' 个文件未保存。'+esc(action)+'前先保存，避免把未完成的修改带到其他版本。</p><div class="rf-summary"><div><span>当前分支</span><b>'+esc(branch)+'</b></div><div><span>你的修改</span><b>保留，不会自动丢弃</b></div></div>','查看并保存','save');return false;}
+function openSave(){modalKind='save';modal('保存一个版本','<p>把这次修改留在本地。保存后可继续编辑，需要时再上传到 GitHub。</p>'+dirty.map((f,i)=>'<label class="rf-check-row"><input type="checkbox" value="'+i+'" checked data-save-file><span>'+esc(f.path)+'</span><b class="rf-added">+'+f.add+'</b><b class="rf-removed">−'+f.del+'</b></label>').join('')+'<label for="rf-commit-message">这次做了什么</label><textarea id="rf-commit-message" class="rf-input" rows="2" placeholder="例如：调整 ROI 跟踪参数并记录实验结果"></textarea>','保存到本地','confirm-save');}
+function newCommit(title,files,parents){const id='d'+(0x650000+serial++).toString(16);const head=commits.find(c=>c.id===branches[branch]);const c={id,lane:head?.lane||0,title,parents:parents||[branches[branch]],time:'刚刚',files:files.length?files:[note]};commits.unshift(c);branches[branch]=id;selected=id;fileIndex=0;return c;}
+function openRestore(){if(!guardClean('恢复代码'))return;const c=commits.find(x=>x.id===selected);if(!c)return;modalKind='restore';modal('恢复到这个版本','<p>让当前分支的代码恢复到所选版本，并生成一个新的恢复版本。原来的提交、分支和历史全部保留。</p><div class="rf-summary"><div><span>当前分支</span><b>'+esc(branch)+'</b></div><div><span>恢复目标</span><b>'+esc(c.title)+'</b></div><div><span>目标版本</span><b class="rf-hash">'+c.id+'</b></div><div><span>修改范围</span><b>当前分支的受跟踪文件</b></div><div><span>GitHub</span><b>不会自动上传</b></div></div>','生成恢复版本','confirm-restore');}
+function openBranches(){modalKind='branches';modal('分支','<p>主线保留稳定结果，实验放在独立分支。</p>'+Object.keys(branches).map(name=>'<button type="button" class="rf-branch-option cursor-interaction" data-switch="'+esc(name)+'">'+icon('git-branch')+'<span>'+esc(name)+'</span>'+(name===branch?'<small>当前分支</small>':'')+'</button>').join('')+'<button type="button" class="rf-branch-option cursor-interaction" data-action="create-head">'+icon('plus')+'从当前版本新建分支</button>','','');}
+function openCreate(){modalKind='create';const c=commits.find(x=>x.id===selected);modal('从此创建分支','<p>从「'+esc(c.title)+'」开始一条实验分支。创建后仍留在 '+esc(branch)+'，不会改动工作区。</p><label for="rf-branch-name">分支名称</label><input id="rf-branch-name" class="rf-input" placeholder="例如：lighting-experiment" autocomplete="off">','创建分支','confirm-create');}
+function openMerge(){if(!guardClean('合并分支'))return;const names=Object.keys(branches).filter(n=>n!==branch);modalKind='merge';modal('合并到 '+branch,'<p>把实验分支的成果合入当前分支。原分支会保留，本示意演示无冲突的合并。</p><label for="rf-merge-source">选择要合入的分支</label><select id="rf-merge-source" class="rf-input">'+names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('')+'</select><div class="rf-summary" style="margin-top:18px"><div><span>目标分支</span><b>'+esc(branch)+'</b></div><div><span>工作区</span><b>无未保存修改</b></div></div>','合并分支','confirm-merge');}
+function openPush(){if(!ahead()){setStatus('演示：没有待上传版本');return;}modalKind='push';modal('上传到 GitHub','<p>把当前分支的 '+ahead()+' 个本地版本同步到远程仓库。</p><div class="rf-summary"><div><span>本地分支</span><b>'+esc(branch)+'</b></div><div><span>上传目标</span><b>origin / '+esc(branch)+'</b></div><div><span>未保存的文件</span><b>不会上传</b></div></div>','确认上传（演示）','confirm-push');}
+root.addEventListener('click',e=>{
+const commitButton=e.target.closest('[data-commit]');if(commitButton){selected=commitButton.dataset.commit;fileIndex=0;render();remember('查看版本详情');return;}
+const fileButton=e.target.closest('[data-file]');if(fileButton){fileIndex=Number(fileButton.dataset.file);render();return;}
+const switchButton=e.target.closest('[data-switch]');if(switchButton){const name=switchButton.dataset.switch;if(name===branch){closeModal();return;}if(!guardClean('切换分支'))return;branch=name;selected=branches[name];fileIndex=0;closeModal();statusMessage='演示：已切换到 '+branch;render();remember('切换分支');return;}
+const b=e.target.closest('[data-action]');if(!b)return;const action=b.dataset.action;
+if(action==='cancel'){closeModal();return;}
+if(action==='close-detail'){selected=null;render();remember('收起版本详情');return;}
+if(action==='save'){openSave();return;}
+if(action==='restore'){openRestore();return;}
+if(action==='branches'){openBranches();return;}
+if(action==='create-head'){selected=branches[branch];fileIndex=0;render();openCreate();return;}
+if(action==='create'){openCreate();return;}
+if(action==='merge'){openMerge();return;}
+if(action==='push'){openPush();return;}
+if(action==='pull'){if(!guardClean('拉取更新'))return;setStatus('演示：已检查远程，没有新的版本需要拉取');remember('查看拉取反馈');return;}
+if(action==='confirm-save'){
+const title=$('#rf-commit-message').value.trim();const checks=[...root.querySelectorAll('[data-save-file]:checked')].map(x=>Number(x.value));
+if(!checks.length){$('#rf-error').textContent='至少选择一个需要保存的文件。';return;}if(!title){$('#rf-error').textContent='写一句版本说明，之后更容易找回来。';$('#rf-commit-message').focus();return;}
+const saved=dirty.filter((f,i)=>checks.includes(i));newCommit(title,saved);dirty=dirty.filter((f,i)=>!checks.includes(i));closeModal();statusMessage='演示：已保存到本地 · 尚未上传 GitHub';render();remember('保存本地版本');return;
+}
+if(action==='confirm-restore'){
+const target=commits.find(c=>c.id===selected);newCommit('恢复到：'+target.title,target.files);closeModal();statusMessage='演示：已生成恢复版本，原有历史全部保留';render();remember('恢复旧代码，保留历史');return;
+}
+if(action==='confirm-create'){
+const name=$('#rf-branch-name').value.trim();if(!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$/.test(name)){$('#rf-error').textContent='示意中请使用 1–40 位字母、数字、短横线或下划线。';return;}if(branches[name]){$('#rf-error').textContent='分支名称已存在。';return;}
+branches[name]=selected;closeModal();statusMessage='演示：已创建 '+name+'，仍在 '+branch;render();remember('创建实验分支');return;
+}
+if(action==='confirm-merge'){
+const source=$('#rf-merge-source').value;if(!source)return;const sourceHead=branches[source];if(idsFrom(branches[branch]).has(sourceHead)){$('#rf-error').textContent='当前分支已包含这些版本，无需再次合并。';return;}
+newCommit('合并 '+source+' 的实验结果',[roi,note],[branches[branch],sourceHead]);closeModal();statusMessage='演示：合并完成，实验分支与历史均保留';render();remember('合并实验分支');return;
+}
+if(action==='confirm-push'){remotes[branch]=branches[branch];closeModal();statusMessage='演示：上传完成 · 没有进行真实网络操作';render();remember('上传本地版本');}
+});
+$('#rf-overlay').addEventListener('click',e=>{if(e.target===$('#rf-overlay'))closeModal();});
+root.addEventListener('keydown',e=>{if($('#rf-overlay').hidden)return;if(e.key==='Escape'){e.preventDefault();closeModal();return;}if(e.key==='Tab'){const focusable=[...$('#rf-overlay').querySelectorAll('button,input,textarea,select')].filter(el=>!el.disabled&&!el.hidden);const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+render();
+
+})();
+</script>
+</div>
+</div></section>
+<footer class="rw-footer"><span role="status" id="rw-status">从上次停下的地方继续。</span><span>示例数据 · 操作仅在本次预览生效</span></footer>
+</main>
+<div class="rw-overlay" id="rw-overlay" hidden></div>
+</div>
+<script>
+(function(){
+'use strict';
+const root=document.getElementById('research-workbench');
+const $=s=>root.querySelector(s), $$=s=>[...root.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon=n=>'<i data-lucide="'+n+'" aria-hidden="true"></i>';
+const button=(label,act,ic='',style='',extra='')=>'<button type="button" class="rw-button cursor-interaction '+style+'" data-rw="'+act+'" '+extra+'>'+ (ic?icon(ic):'')+label+'</button>';
+const ib=(label,act,ic,extra='')=>'<button type="button" class="rw-icon-button cursor-interaction" data-rw="'+act+'" aria-label="'+esc(label)+'" '+extra+'>'+icon(ic)+'</button>';
+const uid=()=>Math.random().toString(36).slice(2,10);
+const stamp=()=>new Date().toLocaleString('zh-CN',{hour12:false});
+const nav=[['progress','科研进度','chart-no-axes-gantt'],['notes','科研记录','notebook-pen'],['reports','日报与周报','file-text'],['knowledge','知识库','book-open'],['literature','文献','library'],['code','代码','git-branch']];
+const assets={};
+const projects={
+cable:{name:'电缆表面检测',full:'电缆表面低纹理跟踪与缺陷检测',path:'E:/Research/cable-inspection',last:'9月18日 22:46',tasks:[{id:'ct1',name:'低纹理区域跟踪对比',start:'2026-09-16',end:'2026-09-20',done:false,last:'完成 ROI 裁剪与固定曝光，弱纹理样本能连续跟踪；反光段仍有漂移。',next:'补测反光段，比较不同 ROI 尺寸的稳定性。',manual:'',note:'cn1'},{id:'ct2',name:'相机曝光与标定检查',start:'2026-09-14',end:'2026-09-16',done:true,last:'修正参数读取，保存标定基线。',next:'',manual:'',note:'cn2'},{id:'ct3',name:'整理实验与缺陷结果',start:'2026-09-18',end:'2026-09-20',done:false,last:'完成结果导出，待补充样本对比。',next:'汇总低纹理与反光样本。',manual:'',note:'cn1'},{id:'ct4',name:'补充低纹理跟踪文献',start:'',end:'',done:false,last:'',next:'',manual:'',note:'cn1'}],notes:[{id:'cn1',title:'低纹理区域跟踪 · 第一次对比',date:'2026-09-18',created:'2026-09-18 21:12',updated:'2026-09-18 22:46',source:'手动记录',body:'## 今天观察到的现象\n\n固定曝光后，**弱纹理段的 ROI 跟踪更稳定**，但反光较强时仍有短暂漂移。\n\n### 实验设置\n\n- 固定曝光，关闭自动曝光。\n- ROI 尺寸先保持一致。\n- 对比正常表面、弱纹理和反光三个片段。\n\n```python\ncamera.set_auto(False)\ncamera.set_exposure(8.0)\nresult = tracker.track(frame, roi)\n```\n\n> 当前只是样本观察，尚不能说明整个检测系统已经验证通过。\n\n### 接下来\n\n补测反光片段，记录漂移发生的位置，再比较不同 ROI 尺寸。',comments:[{quote:'反光较强时仍有短暂漂移',text:'下一次先固定其他变量，只比较 ROI 尺寸。',time:'9月18日 22:46'}]},{id:'cn2',title:'相机采集与标定检查',date:'2026-09-17',created:'2026-09-17 17:30',updated:'2026-09-17 19:05',source:'助手记录',body:'## 参数检查\n\n完成配置读取路径核对，确认曝光与标定参数可以正确加载。\n\n- 已检查：配置读取与采集接口。\n- 已保存：本地代码版本。\n- 待验证：不同光照下的持续采集。\n\n**代码修复完成，不等于完整系统验证完成。**',comments:[]}],knowledge:[{id:'ck1',title:'项目架构',body:'## 从采集到缺陷结果\n\n项目按三个阶段组织：**相机采集 → ROI 跟踪 → 缺陷分析与导出**。\n\n### 1. 相机采集\n\n负责曝光配置、图像采集与标定参数读取。固定采集条件，才能比较后续算法。\n\n### 2. ROI 跟踪\n\n在连续帧中保持目标区域对应关系，为多帧缺陷定位提供基础。\n\n### 3. 缺陷分析\n\n对跟踪区域开展分析，输出可复核的结果和原始片段。\n\n> 当前反光区域跟踪仍待验证，不把模块存在当作实验结论。',updated:'9月18日 23:00',manual:false},{id:'ck2',title:'关键概念 · ROI 与弱纹理',body:'## ROI\n\n**Region of Interest，感兴趣区域。** 限定需要处理的图像范围，减少背景干扰。\n\n## 弱纹理\n\n局部缺少稳定、易区分的视觉结构；并不是图像分辨率低。\n\n## 与本项目的关系\n\n电缆表面纹理弱且可能反光，需要观察 ROI 在连续帧中的漂移，而不只看单帧检测结果。',updated:'9月18日 23:00',manual:false},{id:'ck3',title:'阶段认识与待验证问题',body:'## 已有认识\n\n固定曝光有助于减少图像变化，但当前观察只覆盖少量样本。\n\n## 待验证\n\n- ROI 尺寸是否影响反光片段的跟踪稳定性。\n- 漂移会不会进一步影响缺陷定位。\n- 是否需要更多角度与光照条件的样本。',updated:'9月18日 23:00',manual:false}],papers:[{id:'cp1',title:'低纹理区域跟踪方法调研',author:'示例文献 · 待补全作者与年份',url:'',note:'## 阅读目的\n\n围绕电缆表面检测，关注弱纹理区域的多帧对应关系。\n\n## 需要回答的问题\n\n1. 方法依赖哪些视觉信息？\n2. 遇到反光或遮挡时如何处理？\n3. 是否适合目前的采集条件？',source:'对话中提及',date:'9月18日',read:true},{id:'cp2',title:'电缆表面缺陷检测相关研究',author:'示例文献 · 等待补充原文',url:'',note:'',source:'手动添加',date:'9月17日',read:false}]},
+fpga:{name:'相机板 FPGA',full:'相机板 FPGA 代码适配与验证',path:'E:/Research/camera-fpga',last:'9月18日 19:10',tasks:[{id:'ft1',name:'I²C 接口时序适配',start:'2026-09-15',end:'2026-09-19',done:false,last:'完成接口与寄存器映射梳理，仿真序列可以运行，尚未上板。',next:'核对复位时序，再安排上板读取。',manual:'',note:'fn1'},{id:'ft2',name:'梳理原工程接口',start:'2026-09-14',end:'2026-09-16',done:true,last:'完成时钟、复位与接口清单。',next:'',manual:'',note:'fn1'},{id:'ft3',name:'上板通信与出图验证',start:'2026-09-20',end:'2026-09-20',done:false,last:'等待测试板。',next:'准备验证步骤与预期现象。',manual:'',note:'fn1'}],notes:[{id:'fn1',title:'相机板接口适配记录',date:'2026-09-18',created:'2026-09-18 16:20',updated:'2026-09-18 19:10',source:'手动记录',body:'## 当前进度\n\n完成 **I²C 接口与寄存器映射** 梳理，已有仿真序列。\n\n```verilog\nif (!rst_n) begin\n  state <= IDLE;\nend\n```\n\n## 尚未验证\n\n上板通信、出图稳定性和真实复位时序仍需实测。\n\n## 下次继续\n\n先核对复位约束，再准备板上读写验证。',comments:[]}],knowledge:[{id:'fk1',title:'工程结构与接口',body:'## 模块关系\n\n**时钟与复位 → I²C 配置 → 相机数据采集 → 输出接口**。\n\n## 当前边界\n\n代码适配与仿真不代表硬件验证通过。接下来需要实际测试板验证通信与出图。',updated:'9月18日 23:00',manual:false},{id:'fk2',title:'关键概念 · I²C 与复位',body:'## I²C\n\n本项目用它配置相机寄存器。关注设备地址、应答与读写时序。\n\n## 复位\n\n检查复位信号与时钟域的关系；测试结果应区分仿真和实际硬件。',updated:'9月18日 23:00',manual:false}],papers:[{id:'fp1',title:'图像传感器接口与采集相关论文',author:'示例文献 · 待补充完整书目信息',url:'',note:'## 阅读关注\n\n关注配置时序和采集流程与本项目的关系。',source:'手动添加',date:'9月18日',read:false}]}
+};
+let reports=[{id:'rd1',type:'daily',title:'9月18日 · 研究日报',date:'2026-09-18',scope:'cable',state:'draft',created:'2026-09-18 23:00',updated:'2026-09-18 23:00',body:'# 9月18日研究日报\n\n## 电缆表面检测\n\n### 今天做了什么\n\n围绕弱纹理区域跟踪，完成固定曝光与 ROI 裁剪设置，比较正常表面、弱纹理和反光样本；同时修正标定参数读取，完善结果导出。\n\n### 当前观察\n\n固定曝光后弱纹理片段的连续跟踪有所改善，**反光片段仍出现短暂漂移**。目前样本较少，不足以得出整体性能结论。\n\n### 停在了哪里\n\n第一次对比已记录，尚未完成不同 ROI 尺寸的系统比较。\n\n### 下一步\n\n补测反光片段，固定其余变量，对比 ROI 尺寸并保存原始视频与结果。\n\n### 依据与缺口\n\n- 手动记录：低纹理区域跟踪 · 第一次对比。\n- 代码版本：修正标定参数读取、完善缺陷结果导出。\n- 未纳入未授权或尚未接入的外部聊天；代码改动不等同于实验成功。',comments:[]},{id:'rd2',type:'daily',title:'9月18日 · 研究日报',date:'2026-09-18',scope:'fpga',state:'draft',created:'2026-09-18 23:00',updated:'2026-09-18 23:00',body:'# 9月18日研究日报\n\n## 相机板 FPGA 适配\n\n完成接口梳理和 I²C 寄存器映射核对，运行初步仿真序列。\n\n**尚未完成上板验证。**\n\n下一步核对复位时序，准备实际读写与出图测试。需要协调测试板。',comments:[]},{id:'rd3',type:'daily',title:'9月17日 · 研究日报',date:'2026-09-17',scope:'cable',state:'final',created:'2026-09-17 23:00',updated:'2026-09-18 09:15',body:'# 9月17日研究日报\n\n## 相机采集与标定\n\n完成参数读取检查与配置修正，保存本地代码版本。\n\n## 待推进\n\n继续比较弱纹理样本的 ROI 跟踪表现，并记录反光片段。',comments:[]}];
+const weekly='# 刘亚宁周报（2026年09月14日—09月20日）\n\n## 本周工作\n\n### 一、电缆表面低纹理区域跟踪与缺陷检测研究\n\n1. 围绕电缆表面缺陷检测任务，开展低纹理区域跟踪方法与样本对比，重点关注反光和弱纹理对多帧关联的影响。\n2. 完成相机配置读取修正与 ROI 对比流程整理，建立实验记录和结果导出的基础。\n3. 初步观察固定曝光条件下的跟踪表现，梳理反光片段的漂移现象，仍需通过更多样本进一步验证。\n\n### 二、相机板 FPGA 代码适配与验证\n\n1. 完成原工程接口与寄存器映射分析，明确当前适配范围和主要验证步骤。\n2. 开展 I²C 接口时序核对与初步仿真，为后续板上读写验证提供基础。\n3. 梳理复位与采集链路中仍需实测的问题，尚未完成上板通信与出图验证。\n\n## 下周计划\n\n### 一、电缆表面低纹理区域跟踪与缺陷检测研究\n\n1. 补充反光与弱纹理样本，完成不同 ROI 尺寸的对比。\n2. 结合原始视频与跟踪结果，进一步分析漂移对缺陷定位的影响。\n\n### 二、相机板 FPGA 代码适配与验证\n\n1. 核对复位约束，准备板上寄存器读写测试。\n2. 根据实际测试结果确认通信与出图链路的问题原因。\n\n## 需要协调与帮助\n\n- 需要协调相机测试板与测试环境，用于完成上板通信和出图验证。';
+reports.unshift({id:'rw1',type:'weekly',title:'刘亚宁周报 · 9月14日—20日',date:'2026-09-20',scope:'all',state:'draft',created:'2026-09-19 09:00',updated:'2026-09-19 09:00',body:weekly,comments:[]});
+const state={project:'cable',view:'progress',detail:null,mode:'preview',reportType:'daily',reportScope:'all',reportStatus:'all',knowledge:'ck1',week:0,doneOpen:false,query:'',menu:false};
+let editor=null,previousFocus=null,modalAction='',selectionQuote='',sequence=0;
+const prefs={time:'23:00',day:'5',weeklyTime:'17:30',daily:true,weekly:true,knowledge:false,literature:false};
+function p(){return projects[state.project]}
+function icons(){if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:16,height:16}})}
+function tell(message){$('#rw-status').textContent=message}
+function remember(action){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{view:'完整科研工作台',project:p().name,section:nav.find(n=>n[0]===state.view)?.[1]||'全部项目',detail:editor?.title||null,lastAction:action,reportsNavigation:'独立一级栏目'},privateContent:{project:state.project,view:state.view,reportType:state.reportType,reportScope:state.reportScope}}).catch(()=>{})}
+function applyState(s){const x=s?.privateContent;if(!x)return;if(projects[x.project])state.project=x.project;if(nav.some(n=>n[0]===x.view)||x.view==='overview')state.view=x.view;if(['daily','weekly'].includes(x.reportType))state.reportType=x.reportType;if(x.reportScope==='all'||projects[x.reportScope])state.reportScope=x.reportScope}
+applyState(window.openai?.widgetState);
+window.addEventListener('openai:set_globals',e=>{if(editor||!$('#rw-overlay').hidden)return;applyState(e.detail?.globals?.widgetState);render()});
+function safeUrl(s){try{const u=new URL(s);return ['https:','http:'].includes(u.protocol)?u.href:null}catch{return null}}
+function inline(s){let x=esc(s);x=x.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>');return x.replace(/\[([^\]]+)\]\(([^)]+)\)/g,(_,t,u)=>{const url=safeUrl(u.replace(/&amp;/g,'&'));return url?'<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">'+t+'</a>':t})}
+function markdown(text){const lines=String(text).split('\n');let html='',list='',code=false,block=[];const endList=()=>{if(list){html+='</'+list+'>';list=''}};for(const line of lines){if(line.startsWith('```')){endList();if(code){html+='<pre><code>'+esc(block.join('\n'))+'</code></pre>';block=[]}code=!code;continue}if(code){block.push(line);continue}const img=line.match(/^!\[([^\]]*)\]\(attachment:([^)]+)\)$/);if(img){endList();html+=assets[img[2]]?'<figure><img src="'+assets[img[2]]+'" alt="'+esc(img[1])+'"><figcaption>'+esc(img[1])+'</figcaption></figure>':'<p class="rw-sub">'+esc(img[1])+'（图片仅在本次预览中保留）</p>';continue}const h=line.match(/^(#{1,3})\s+(.*)$/);if(h){endList();html+='<h'+h[1].length+'>'+inline(h[2])+'</h'+h[1].length+'>';continue}const li=line.match(/^(- |\d+\. )(.*)$/);if(li){const tag=li[1]==='- '?'ul':'ol';if(list!==tag){endList();list=tag;html+='<'+tag+'>'}html+='<li>'+inline(li[2])+'</li>';continue}endList();if(line.startsWith('> ')){html+='<blockquote>'+inline(line.slice(2))+'</blockquote>'}else if(line==='---'){html+='<hr class="rw-rule">'}else if(line.trim()){html+='<p>'+inline(line)+'</p>'}}endList();if(code)html+='<pre><code>'+esc(block.join('\n'))+'</code></pre>';return html||'<p class="rw-sub">直接输入文字，或粘贴 Markdown、截图。无需添加内容块。</p>'}
+function field(label,id,value='',type='text',extra=''){return '<label class="rw-field"><span>'+label+'</span><input class="rw-input" id="'+id+'" type="'+type+'" value="'+esc(value)+'" '+extra+'></label>'}
+function modal(title,body,action='',label='保存'){previousFocus=document.activeElement;modalAction=action;$('#rw-overlay').innerHTML='<section class="rw-dialog" role="dialog" aria-modal="true" aria-labelledby="rw-dialog-title"><div class="rw-dialog-head"><h2 id="rw-dialog-title">'+title+'</h2>'+ib('关闭','close','x')+'</div>'+body+'<div class="rw-dialog-error" id="rw-error" role="alert"></div><div class="rw-dialog-actions">'+button('取消','close')+(action?button(label,'modal-confirm','','rw-primary'):'')+'</div></section>';$('#rw-overlay').hidden=false;$('.rw-side').inert=true;$('.rw-main').inert=true;icons();setTimeout(()=>{($('#rw-overlay input:not([type=checkbox]),#rw-overlay textarea,#rw-overlay select')||$('#rw-overlay button'))?.focus();$('#rw-app').style.minHeight=Math.max(740,$('.rw-dialog').scrollHeight+110)+'px'},0)}
+function closeModal(){$('#rw-app').style.minHeight='';$('#rw-overlay').hidden=true;$('#rw-overlay').innerHTML='';$('.rw-side').inert=false;$('.rw-main').inert=false;modalAction='';if(previousFocus?.isConnected)previousFocus.focus()}
+function error(t){$('#rw-error').textContent=t}
+function flush(){if(!editor)return;const t=$('#rw-edit-text'),title=$('#rw-edit-title');if(t)editor.body=t.value;if(title)editor.title=title.value;}
+function go(view,detail=null){flush();state.view=view;state.detail=detail;state.mode='preview';state.query='';state.menu=false;editor=null;render();remember('打开'+(nav.find(n=>n[0]===view)?.[1]||'项目总览'))}
+function switchProject(id){flush();state.project=id;state.detail=null;state.knowledge=projects[id].knowledge[0].id;state.query='';editor=null;state.menu=false;render();tell('已切换到 '+p().name+'，各项目内容独立。');remember('切换项目')}
+function currentReport(){return reports.find(r=>r.id===state.detail)}
+function getEditor(){if(state.view==='notes')return p().notes.find(n=>n.id===state.detail);if(state.view==='reports')return currentReport();return null}
+function render(){
+const section=nav.find(n=>n[0]===state.view)?.[1]||'全部项目';$('#rw-project-label').textContent=p().name;$('#rw-crumb-project').textContent=state.view==='reports'||state.view==='overview'?'科研工作台':p().name;$('#rw-crumb-page').textContent=section;$('#rw-app').dataset.menu=String(state.menu);$('#rw-nav').innerHTML=nav.map(([id,name,ic])=>'<button type="button" class="cursor-interaction" data-view="'+id+'" '+(state.view===id?'aria-current="page"':'')+'>'+icon(ic)+name+'</button>').join('');$('#rw-content').hidden=state.view==='code';$('#rw-git-host').hidden=state.view!=='code';$('#rw-git-cable').hidden=state.project!=='cable';$('#rw-git-fpga').hidden=state.project!=='fpga';let empty=$('#rw-git-empty');if(!empty){empty=document.createElement('div');empty.id='rw-git-empty';empty.className='rw-empty';$('#rw-git-host').append(empty)}empty.hidden=['cable','fpga'].includes(state.project);empty.textContent='这个示例项目还未绑定仓库。切换到电缆或 FPGA 项目体验版本图、保存、合并与恢复。';editor=null;
+if(state.view==='overview')renderOverview();else if(state.view==='progress')renderProgress();else if(state.view==='notes')renderNotes();else if(state.view==='reports')renderReports();else if(state.view==='knowledge')renderKnowledge();else if(state.view==='literature')renderLiterature();else{$('#rw-toolbar').innerHTML='';$('#rw-content').innerHTML=''}icons();}
+function toolbar(title,buttons=''){$('#rw-toolbar').innerHTML=(title?'<h1>'+title+'</h1>':'')+buttons}
+function renderOverview(){toolbar('全部项目',button('添加项目','new-project','plus','rw-outline'));$('#rw-content').innerHTML='<div class="rw-sub" style="margin-bottom:22px">每个项目保留自己的任务、记录、知识、文献和代码。周报可以汇总多个项目。</div>'+Object.entries(projects).map(([id,x])=>'<article class="rw-project-row"><div><h2>'+esc(x.full)+'</h2><p>'+esc(x.tasks.find(t=>!t.done)?.next||'暂无待推进任务')+'</p><div class="rw-list-meta"><span>'+x.tasks.filter(t=>!t.done).length+' 项待办</span><span>'+x.notes.length+' 篇记录</span><span>上次：'+x.last+'</span></div></div><div class="rw-row">'+button('继续项目','enter-project','arrow-up-right','rw-outline','data-id="'+id+'"')+'</div></article>').join('')+'<hr class="rw-rule"><div class="rw-row"><span class="rw-sub">跨项目汇报</span>'+button('查看本周周报','open-weekly','file-text')+'</div>'}
+function renderProgress(){toolbar('科研进度',button('新建任务','new-task','plus','rw-primary'));const active=p().tasks.find(t=>!t.done);const dates=Array.from({length:7},(_,i)=>new Date(Date.UTC(2026,8,14+state.week*7+i)).toISOString().slice(0,10));const days=dates.map(d=>Number(d.slice(-2)));const rangeLabel=dates.map(d=>Number(d.slice(5,7))+'月'+Number(d.slice(-2))+'日');let out=active?'<section class="rw-resume"><div class="rw-resume-label">'+icon('corner-down-right')+'继续上次 <span class="rw-spacer">'+p().last+'</span></div><h2>'+esc(active.name)+'</h2><p>'+esc(active.last||'这项任务还没有自动上下文。')+'</p><p><span class="rw-sub">下一步</span>　'+esc(active.next||'点击任务补充你的安排。')+'</p><div class="rw-row">'+button('打开任务','task','','rw-outline','data-id="'+active.id+'"')+button('查看记录','open-note','notebook-pen','','data-id="'+active.note+'"')+'<span class="rw-sub rw-spacer">助手整理 · 不自动完成任务</span></div></section>':'<div class="rw-empty">当前任务已完成。可以新增下一阶段任务。</div>';out+='<div class="rw-section-title"><span>任务安排</span><span class="rw-sub">'+rangeLabel[0]+'—'+rangeLabel[6]+'</span><span class="rw-spacer"></span>'+ib('上一周','prev-week','chevron-left')+button('本周','this-week')+ib('下一周','next-week','chevron-right')+'</div><div class="rw-timeline"><div class="rw-day" style="text-align:left">待办任务</div>'+days.map((d,i)=>'<div class="rw-day '+(dates[i]==='2026-09-19'?'rw-today':'')+'"><span>'+['一','二','三','四','五','六','日'][i]+' </span>'+d+'</div>').join('');for(const t of p().tasks.filter(t=>!t.done&&t.start)){const s=Math.round((Date.parse(t.start)-Date.parse(dates[0]))/86400000),e=Math.round((Date.parse(t.end)-Date.parse(dates[0]))/86400000),left=Math.max(1,s+1),right=Math.min(8,e+2);out+='<div class="rw-task-label"><button type="button" class="rw-done-toggle cursor-interaction" data-rw="toggle-done" data-id="'+t.id+'" aria-label="完成 '+esc(t.name)+'"></button><button type="button" class="cursor-interaction" data-rw="task" data-id="'+t.id+'">'+esc(t.name)+'</button></div><div class="rw-track">'+(right>left?'<button type="button" class="rw-bar cursor-interaction '+(active?.id===t.id?'is-current':'')+'" style="grid-column:'+left+'/'+right+'" data-rw="task" data-id="'+t.id+'" aria-label="查看 '+esc(t.name)+'">'+esc(t.name)+'</button>':'')+'</div>'}out+='</div>';const unplanned=p().tasks.filter(t=>!t.done&&!t.start);if(unplanned.length)out+='<div class="rw-unplanned">未排期 '+unplanned.map(t=>button(esc(t.name),'task','','','data-id="'+t.id+'"')).join('')+'</div>';const done=p().tasks.filter(t=>t.done);out+='<div class="rw-section-title">'+button((state.doneOpen?'收起':'展开')+'已完成 · '+done.length,'toggle-done-list',state.doneOpen?'chevron-down':'chevron-right')+'</div>'+(state.doneOpen?'<div class="rw-done-list">'+done.map(t=>'<div class="rw-done-row"><button type="button" class="rw-done-toggle is-done cursor-interaction" data-rw="toggle-done" data-id="'+t.id+'" aria-label="重新打开 '+esc(t.name)+'">'+icon('check')+'</button><button type="button" class="rw-title-button cursor-interaction" data-rw="task" data-id="'+t.id+'">'+esc(t.name)+'</button><small>'+t.end+'</small></div>').join('')+'</div>':'');$('#rw-content').innerHTML=out;}
+function renderNotes(){if(state.detail){editor=getEditor();if(editor){renderDocument('note');return}state.detail=null}toolbar('科研记录',button('新建记录','new-note','plus','rw-primary'));$('#rw-content').innerHTML='<div class="rw-row" style="margin-bottom:17px"><span class="rw-sub">手动笔记与助手记录，保留在同一处。日报周报独立管理。</span></div><div class="rw-list">'+p().notes.map(n=>'<article class="rw-list-row">'+icon(n.source==='手动记录'?'notebook-pen':'message-square')+'<div class="rw-list-main"><button type="button" class="rw-title-button cursor-interaction" data-rw="open-note" data-id="'+n.id+'">'+esc(n.title||'未命名记录')+'</button><div class="rw-list-meta"><span>'+n.date+'</span><span>'+n.source+'</span><span>'+n.comments.length+' 条批注</span></div></div>'+ib('打开记录','open-note','arrow-up-right','data-id="'+n.id+'"')+'</article>').join('')+'</div>'}
+function renderReports(){if(state.detail){editor=getEditor();if(editor){renderDocument('report');return}state.detail=null}toolbar('日报与周报',button('生成设置','schedule','clock-3')+button('生成草稿','generate','sparkles','rw-primary'));const filtered=reports.filter(r=>r.type===state.reportType&&(state.reportScope==='all'||r.scope===state.reportScope||r.scope==='all')&&(state.reportStatus==='all'||r.state===state.reportStatus));$('#rw-content').innerHTML='<div class="rw-row" style="margin-bottom:22px"><div class="rw-segments" aria-label="报告类型">'+['daily','weekly'].map(t=>'<button type="button" class="cursor-interaction" data-report-type="'+t+'" aria-pressed="'+(state.reportType===t)+'">'+(t==='daily'?'日报':'周报')+'</button>').join('')+'</div><label class="rw-spacer"><span class="rw-sub">项目 </span><select id="rw-report-scope" class="rw-input" style="width:auto;font-size:12px;padding:6px"><option value="all">全部项目</option>'+Object.entries(projects).map(([id,x])=>'<option value="'+id+'" '+(state.reportScope===id?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></label><select id="rw-report-status" class="rw-input" style="width:auto;font-size:12px;padding:6px" aria-label="报告状态"><option value="all">全部状态</option><option value="draft" '+(state.reportStatus==='draft'?'selected':'')+'>草稿</option><option value="final" '+(state.reportStatus==='final'?'selected':'')+'>正式版</option></select></div><div class="rw-list">'+(filtered.length?filtered.map(r=>'<article class="rw-list-row">'+icon('file-text')+'<div class="rw-list-main"><button type="button" class="rw-title-button cursor-interaction" data-rw="open-report" data-id="'+r.id+'">'+esc(r.title)+'</button><div class="rw-list-meta"><span>'+esc(r.scope==='all'?'跨项目汇总':projects[r.scope].name)+'</span><span>'+(r.type==='weekly'?'从日报提炼':'详细过程与下一步')+'</span></div></div><span class="rw-tag rw-status-'+r.state+'">'+(r.state==='draft'?'待确认':'正式版')+'</span>'+ib('打开报告','open-report','arrow-up-right','data-id="'+r.id+'"')+'</article>').join(''):'<div class="rw-empty">这个范围还没有报告。可以生成一份草稿。</div>')+'</div><div class="rw-row" style="margin-top:20px"><span class="rw-sub">日报详尽留痕，周报按你的模板提炼。确认后才成为正式版。</span></div>'}
+function renderDocument(kind){const report=kind==='report',locked=report&&editor.state==='final';toolbar('',button(report?'返回报告':'返回记录','back','arrow-left')+'<span class="rw-spacer"></span>'+(report?'<span class="rw-tag rw-status-'+editor.state+'">'+(locked?'正式版':'草稿')+'</span>':'')+button('导出 Markdown','export','download')+(report?(locked?button('修改正式版','reopen-report','pencil','rw-outline'):button('确认正式版','confirm-report','check','rw-primary')):button('保存','save-document','check','rw-primary')));let out='<div class="rw-editor-header"><div class="rw-segments" aria-label="编辑模式"><button type="button" class="cursor-interaction" data-rw="mode-preview" aria-pressed="'+(state.mode==='preview')+'">预览</button><button type="button" class="cursor-interaction" data-rw="mode-edit" aria-pressed="'+(state.mode==='edit')+'" '+(locked?'disabled':'')+'>编辑</button></div>'+(!locked?button('代码','insert-code','code-2'):'')+button('批注','comment','message-square')+(report?button('来源','sources','link'):'')+'<span class="rw-spacer">'+(locked?'已确认 · 自动整理不会覆盖':'支持 Markdown · Ctrl+V 粘贴截图')+'</span></div><div class="rw-editor-body" id="rw-editor-body">';if(!report)out+='<input id="rw-edit-title" class="rw-title-input" aria-label="记录标题" value="'+esc(editor.title)+'" placeholder="未命名记录">';out+=state.mode==='edit'?'<textarea id="rw-edit-text" class="rw-editor-text" aria-label="Markdown 正文" placeholder="在这里直接写下想法，或粘贴文字、截图……">'+esc(editor.body)+'</textarea>':'<article class="rw-markdown" id="rw-preview">'+markdown(editor.body)+'</article>';if(editor.comments?.length)out+='<div class="rw-comments"><span class="rw-sub">批注 · '+editor.comments.length+'</span>'+editor.comments.map(c=>'<div class="rw-comment">'+(c.quote?'<blockquote>'+esc(c.quote)+'</blockquote>':'')+'<p>'+esc(c.text)+'</p><small class="rw-sub">'+esc(c.time)+'</small></div>').join('')+'</div>';out+='<details class="rw-meta"><summary>文档信息</summary><p>创建：'+esc(editor.created)+'<br>修改：'+esc(editor.updated)+(report?'<br>范围：'+esc(editor.scope==='all'?'全部项目':projects[editor.scope].name):'<br>来源：'+esc(editor.source))+'</p></details></div>';$('#rw-content').innerHTML=out;}
+function renderKnowledge(){const k=p().knowledge.find(k=>k.id===state.knowledge)||p().knowledge[0];state.knowledge=k.id;toolbar('知识库',button('维护设置','knowledge-settings','settings-2')+button('查看更新','knowledge-updates','git-pull-request','rw-outline'));$('#rw-content').innerHTML='<div class="rw-split"><div class="rw-page-list"><small>项目理解</small>'+p().knowledge.map(x=>'<button type="button" class="cursor-interaction" data-knowledge="'+x.id+'" aria-pressed="'+(x.id===k.id)+'">'+icon('file-text')+esc(x.title)+'</button>').join('')+'</div><div><div class="rw-row"><span class="rw-sub">'+(k.manual?'包含人工修改 · 不自动覆盖':'依据项目记录整理')+'</span>'+button('编辑','edit-knowledge','pencil','','data-id="'+k.id+'"')+button('来源','knowledge-sources','link')+'</div><article class="rw-markdown">'+markdown(k.body)+'</article><details class="rw-meta"><summary>页面信息</summary><p>最近整理：'+k.updated+'<br>知识讲解不是日报，不按日期重复堆积。</p></details></div></div>'}
+function renderLiterature(){if(state.detail){const paper=p().papers.find(x=>x.id===state.detail);if(paper){renderPaper(paper);return}state.detail=null}toolbar('文献',button('添加文献','new-paper','plus','rw-primary'));const papers=p().papers.filter(x=>x.title.toLowerCase().includes(state.query.toLowerCase()));$('#rw-content').innerHTML='<div class="rw-row" style="margin-bottom:18px"><span class="rw-sub">'+esc(p().name)+' · '+p().papers.length+' 篇文献</span><input id="rw-paper-search" class="rw-input rw-search rw-spacer" aria-label="搜索当前项目文献" placeholder="搜索当前项目" value="'+esc(state.query)+'"></div><div class="rw-list" id="rw-paper-list">'+paperRows(papers)+'</div><div class="rw-tiny-note">只收录文献。可以先保存地址，再补充原文或阅读笔记。</div>'}
+function paperRows(items){return items.length?items.map(x=>'<article class="rw-list-row">'+icon('book-open')+'<div class="rw-list-main"><button type="button" class="rw-title-button cursor-interaction" data-rw="open-paper" data-id="'+x.id+'">'+esc(x.title)+'</button><div class="rw-list-meta"><span>'+esc(x.author)+'</span><span>'+x.source+'</span></div></div><span class="rw-tag">'+(x.read?'已读':'待阅读')+'</span>'+ib('打开文献','open-paper','arrow-up-right','data-id="'+x.id+'"')+'</article>').join(''):'<div class="rw-empty">没有匹配的文献。</div>'}
+function renderPaper(paper){toolbar('',button('返回文献','back','arrow-left')+'<span class="rw-spacer"></span>'+button('编辑信息','edit-paper','pencil')+button(paper.read?'标记未读':'标记已读','paper-read',paper.read?'circle':'check','rw-outline'));$('#rw-content').innerHTML='<div class="rw-editor-body"><h1 class="rw-reading-title">'+esc(paper.title)+'</h1><div class="rw-paper-info"><span>'+esc(paper.author)+'</span><span>'+esc(p().name)+'</span><span>'+paper.source+'</span></div><div class="rw-row">'+(safeUrl(paper.url)?'<a class="rw-button rw-outline cursor-interaction" href="'+esc(safeUrl(paper.url))+'" target="_blank" rel="noopener noreferrer">'+icon('external-link')+'打开原文地址</a>':button('补充原文地址','edit-paper','link','rw-outline'))+button('编辑阅读笔记','paper-note','notebook-pen')+button('移出本项目','remove-paper','trash-2')+'</div><hr class="rw-rule"><span class="rw-sub">阅读笔记</span><article class="rw-markdown">'+(paper.note?markdown(paper.note):'<p class="rw-sub">还没有阅读笔记。文献可以先收藏，不必先下载。</p>')+'</article></div>'}
+let dialogData=null;
+function taskDialog(id){const t=p().tasks.find(x=>x.id===id)||{name:'',start:'',end:'',done:false,last:'还没有可整理的工作记录。',next:'',manual:''};dialogData={id:id||null};modal(id?'任务详情':'新建任务',field('任务名称','rw-task-name',t.name)+ '<div class="rw-form-row">'+field('计划开始','rw-task-start',t.start,'date')+field('计划结束','rw-task-end',t.end,'date')+'</div><label class="rw-check"><input id="rw-task-done" type="checkbox" '+(t.done?'checked':'')+'> 已完成</label><hr class="rw-rule"><span class="rw-sub">助手整理 · 与手写内容分开</span><p>'+esc(t.last)+'</p><p><span class="rw-sub">下一步：</span>'+esc(t.next||'等待后续项目记录')+'</p><label class="rw-field"><span>我的补充</span><textarea class="rw-input" id="rw-task-manual" rows="3" placeholder="可选，不会被自动整理覆盖">'+esc(t.manual||'')+'</textarea></label>','save-task')}
+function projectDialog(){modal('切换项目','<div class="rw-list">'+Object.entries(projects).map(([id,x])=>'<button type="button" class="rw-project-choice cursor-interaction" data-project="'+id+'">'+icon('folder')+'<span>'+esc(x.name)+'</span>'+(id===state.project?icon('check'):icon('chevron-right'))+'</button>').join('')+'</div><hr class="rw-rule">'+button('查看全部项目','all-projects','layout-grid')+button('添加项目','new-project','plus'))}
+function paperDialog(isNew){const x=isNew?{title:'',author:'',url:''}:p().papers.find(x=>x.id===state.detail);dialogData={id:isNew?null:x.id};modal(isNew?'添加文献':'编辑文献信息',field('文献标题','rw-paper-title',x.title)+field('作者 / 来源','rw-paper-author',x.author)+field('原文地址（可选）','rw-paper-url',x.url,'url')+'<p class="rw-sub">保存在「'+esc(p().name)+'」的文献中。先保存地址即可，无需下载。</p>','save-paper')}
+function scheduleDialog(section='all'){dialogData={section};modal(section==='all'?'日报与周报 · 生成设置':'知识与文献 · 维护设置','<label class="rw-check"><input id="rw-auto-daily" type="checkbox" '+(prefs.daily?'checked':'')+'> 每天生成日报草稿</label>'+field('每日时间','rw-daily-time',prefs.time,'time')+'<label class="rw-check"><input id="rw-auto-weekly" type="checkbox" '+(prefs.weekly?'checked':'')+'> 每周从日报提炼周报草稿</label><div class="rw-form-row"><label class="rw-field"><span>每周</span><select class="rw-input" id="rw-weekly-day">'+['一','二','三','四','五','六','日'].map((d,i)=>'<option value="'+(i+1)+'" '+(String(i+1)===prefs.day?'selected':'')+'>星期'+d+'</option>').join('')+'</select></label>'+field('时间','rw-weekly-time',prefs.weeklyTime,'time')+'</div><hr class="rw-rule"><label class="rw-check"><input id="rw-auto-knowledge" type="checkbox" '+(prefs.knowledge?'checked':'')+'> 同时整理知识库，有冲突时再确认</label><label class="rw-check"><input id="rw-auto-literature" type="checkbox" '+(prefs.literature?'checked':'')+'> 同时收录项目对话中提到的文献</label><p class="rw-sub">体验设置，不会创建真实定时任务。自动整理不覆盖正式报告和人工修改，也不阻塞当前工作。</p>','save-schedule')}
+function generateDialog(){modal('生成报告草稿','<label class="rw-field"><span>报告类型</span><select id="rw-generate-type" class="rw-input"><option value="daily" '+(state.reportType==='daily'?'selected':'')+'>日报 · 详细工作留痕</option><option value="weekly" '+(state.reportType==='weekly'?'selected':'')+'>周报 · 按刘亚宁模板提炼</option></select></label>'+field('工作日期 / 周报结束日期','rw-generate-date','2026-09-19','date')+'<span class="rw-sub">纳入的项目</span><div style="margin:8px 0">'+Object.entries(projects).map(([id,x])=>'<label class="rw-check"><input type="checkbox" name="rw-generate-project" value="'+id+'" '+(state.reportScope==='all'||state.reportScope===id?'checked':'')+'> '+esc(x.name)+'</label>').join('')+'</div><p class="rw-sub">这里用示例记录演示生成结果，不读取真实聊天或文件，不调用 AI。不覆盖已有草稿或正式版。</p>','generate-report','生成草稿')}
+function reportBody(type,date,ids){const end=new Date(date+'T00:00:00Z'),start=new Date(end);start.setUTCDate(start.getUTCDate()-(start.getUTCDay()+6)%7);const label=d=>d.getUTCFullYear()+'年'+String(d.getUTCMonth()+1).padStart(2,'0')+'月'+String(d.getUTCDate()).padStart(2,'0')+'日';const heading='# 刘亚宁周报（'+label(start)+'—'+label(end)+'）';if(type==='weekly'&&ids.includes('cable')&&ids.includes('fpga'))return weekly.replace(/^# [^\n]*/,heading);if(type==='weekly'){return heading+'\n\n## 本周工作\n\n'+ids.map((id,i)=>'### '+['一','二','三','四'][i%4]+'、'+projects[id].full+'\n\n'+projects[id].tasks.slice(0,3).map((t,j)=>(j+1)+'. '+(t.done?'完成':'开展')+t.name+'。'+(t.done?'':t.last||'尚待补充工作记录。')).join('\n')).join('\n\n')+'\n\n## 下周计划\n\n'+ids.map((id,i)=>'### '+['一','二','三','四'][i%4]+'、'+projects[id].name+'\n\n'+projects[id].tasks.filter(t=>!t.done).slice(0,2).map((t,j)=>(j+1)+'. '+(t.next||t.name)+'。').join('\n')).join('\n\n')+'\n\n## 需要协调与帮助\n\n暂无。'}return '# '+date+' 科研日报\n\n'+ids.map(id=>{const x=projects[id];return '## '+x.name+'\n\n### 今日工作与观察\n\n'+(x.notes[0]?.body||'暂无可用科研记录，需要补充实际工作。')+'\n\n### 当前停在哪里\n\n'+x.tasks.filter(t=>!t.done).map(t=>'- **'+t.name+'**：'+(t.last||'尚无上下文')).join('\n')+'\n\n### 下一步\n\n'+x.tasks.filter(t=>!t.done).map(t=>'- '+(t.next||t.name)).join('\n')+'\n\n### 来源与证据边界\n\n来自本原型内的科研记录和任务上下文；不代表真实的当日活动，也没有自动把任务标为完成。'}).join('\n\n---\n\n')}
+function sourcesDialog(kind){let body='';if(kind==='report'&&editor?.type==='weekly'){body='<p class="rw-sub">周报从日报提炼，不把代码修改直接等同于科研成果。</p>'+reports.filter(r=>r.type==='daily').map(r=>'<div class="rw-source-row">'+button(esc(r.title),'source-report','file-text','','data-id="'+r.id+'"')+'<span class="rw-tag">'+(r.state==='final'?'正式版':'草稿')+'</span></div>').join('')}else{const ids=kind==='report'&&editor?.scope==='all'?Object.keys(projects):[kind==='report'?editor.scope:state.project];body=ids.map(id=>'<div class="rw-section-title">'+esc(projects[id].name)+'</div>'+projects[id].notes.map(n=>'<div class="rw-source-row">'+button(esc(n.title),'source-note','notebook-pen','','data-id="'+n.id+'" data-project-id="'+id+'"')+'</div>').join('')).join('')+'<p class="rw-sub">此处展示来源跳转；真实聊天与文件采集尚未接入本预览。</p>'}modal('查看来源',body)}
+function documentChanged(){if(editor){editor.updated=stamp();tell('已暂存在本次预览中。')}}
+function insertText(text,preview=false){if(!editor||editor.state==='final')return;const t=$('#rw-edit-text');if(t){const a=t.selectionStart,b=t.selectionEnd;t.setRangeText(text,a,b,'end');editor.body=t.value}else editor.body+=(editor.body?'\n\n':'')+text;documentChanged();if(preview){state.mode='preview';render();$('[data-rw=mode-preview]')?.focus()}else if(t)t.focus();else render();remember('编辑文档')}
+function importImages(files){if(!editor||editor.state==='final')return;flush();const target=editor;const selected=Array.from(files).filter(f=>/^image\/(png|jpeg|webp)$/.test(f.type));if(!selected.length){tell('请选择 PNG、JPG 或 WebP 图片。');return}for(const f of selected){if(f.size>8*1024*1024){tell('单张图片请小于 8 MB。');continue}const reader=new FileReader();reader.onload=()=>{const id=uid();assets[id]=reader.result;const mark='\n\n![截图](attachment:'+id+')\n';if(editor===target)insertText(mark,true);else{target.body+=mark;target.updated=stamp()}tell('截图已插入正文 · 仅保存在本次预览，不上传。')};reader.onerror=()=>tell('图片读取失败，请重新粘贴。');reader.readAsDataURL(f)}}
+function submitModal(){
+if(modalAction==='save-task'){const name=$('#rw-task-name').value.trim(),start=$('#rw-task-start').value,end=$('#rw-task-end').value;if(!name)return error('请填写任务名称。');if((start&&!end)||(!start&&end)||end&&end<start)return error('请同时填写开始与结束日期，结束不得早于开始。');let t=p().tasks.find(x=>x.id===dialogData.id);if(!t){t={id:uid(),last:'还没有可整理的工作记录。',next:'',note:p().notes[0]?.id||'',manual:''};p().tasks.push(t)}Object.assign(t,{name,start,end,done:$('#rw-task-done').checked,manual:$('#rw-task-manual').value});closeModal();render();tell('任务安排已保存，助手不会擅自修改日期和完成状态。')}
+else if(modalAction==='save-project'){const name=$('#rw-new-project-name').value.trim(),path=$('#rw-new-project-path').value.trim();if(!name)return error('请填写项目名称。');const id=uid();projects[id]={name,full:name,path:path||'尚未绑定',last:'暂无工作记录',tasks:[],notes:[],knowledge:[{id:id+'k',title:'项目概览',body:'# '+name+'\n\n从一条科研记录开始，逐步积累项目理解。',updated:stamp(),manual:false}],papers:[]};closeModal();state.project=id;state.view='progress';state.detail=null;state.knowledge=id+'k';render();tell('已添加示例项目，没有注册真实目录。')}
+else if(modalAction==='save-paper'){const title=$('#rw-paper-title').value.trim(),url=$('#rw-paper-url').value.trim(),author=$('#rw-paper-author').value.trim();if(!title)return error('请填写文献标题。');if(url&&!safeUrl(url))return error('请输入完整的 http:// 或 https:// 地址。');let paper=p().papers.find(x=>x.id===dialogData.id);if(!paper){paper={id:uid(),source:'手动收藏',read:false,note:'',date:'2026-09-19'};p().papers.unshift(paper)}Object.assign(paper,{title,url,author:author||'作者待补充'});closeModal();state.detail=paper.id;render();tell('已保存文献信息，不下载原文。')}
+else if(modalAction==='save-paper-note'){p().papers.find(x=>x.id===state.detail).note=$('#rw-paper-note').value;closeModal();render();tell('阅读笔记已保存到本次预览。')}
+else if(modalAction==='remove-paper'){p().papers=p().papers.filter(x=>x.id!==state.detail);closeModal();state.detail=null;render();tell('已从当前项目移出，不删除任何本地文件。')}
+else if(modalAction==='save-schedule'){Object.assign(prefs,{daily:$('#rw-auto-daily').checked,weekly:$('#rw-auto-weekly').checked,time:$('#rw-daily-time').value,day:$('#rw-weekly-day').value,weeklyTime:$('#rw-weekly-time').value,knowledge:$('#rw-auto-knowledge').checked,literature:$('#rw-auto-literature').checked});closeModal();tell('设置已在本次预览保留；没有创建后台任务。')}
+else if(modalAction==='generate-report'){const type=$('#rw-generate-type').value,date=$('#rw-generate-date').value,ids=$$('input[name="rw-generate-project"]:checked').map(x=>x.value);if(!date)return error('请选择日期。');if(!ids.length)return error('至少选择一个项目。');const r={id:uid(),type,title:date+' '+(type==='daily'?'科研日报':'科研周报'),date,scope:ids.length===1?ids[0]:'all',state:'draft',created:stamp(),updated:stamp(),comments:[],body:reportBody(type,date,ids)};reports.unshift(r);closeModal();state.reportType=type;go('reports',r.id);tell('新的示例草稿已生成，可直接编辑后确认。')}
+else if(modalAction==='confirm-report'){editor.state='final';editor.updated=stamp();closeModal();state.mode='preview';render();tell('已确认为正式版。自动生成不会覆盖这份报告。')}
+else if(modalAction==='reopen-report'){editor.state='draft';closeModal();state.mode='edit';render();tell('已转回草稿，请修改后重新确认。')}
+else if(modalAction==='save-comment'){const text=$('#rw-comment').value.trim();if(!text)return error('请填写批注。');editor.comments.push({quote:selectionQuote,text,time:stamp()});editor.updated=stamp();closeModal();render();tell('批注已添加。')}
+else if(modalAction==='save-knowledge'){const k=p().knowledge.find(x=>x.id===state.knowledge);k.body=$('#rw-knowledge-text').value;k.manual=true;k.updated=stamp();closeModal();render();tell('人工修改已保存，后续自动整理不会直接覆盖。')}
+else if(modalAction==='accept-knowledge'){const k=p().knowledge.find(x=>x.id===state.knowledge);k.body+='\n\n## 补充：下一轮验证\n\n- 固定输入条件后再比较结果，区分代码已完成与实测已验证。\n- 保留失败样例及实验条件，便于复现。';k.updated=stamp();closeModal();render();tell('已接受这次补充，原有人工内容保留。')}
+remember('确认操作')}
+root.addEventListener('click',e=>{
+if(e.target.closest('#rw-git-host'))return;
+const navButton=e.target.closest('[data-view]');if(navButton){go(navButton.dataset.view);return}
+const projectButton=e.target.closest('[data-project]');if(projectButton){closeModal();switchProject(projectButton.dataset.project);return}
+const typeButton=e.target.closest('[data-report-type]');if(typeButton){state.reportType=typeButton.dataset.reportType;render();remember('切换报告类型');return}
+const knowledgeButton=e.target.closest('[data-knowledge]');if(knowledgeButton){state.knowledge=knowledgeButton.dataset.knowledge;render();remember('阅读知识');return}
+const b=e.target.closest('[data-rw]');if(!b||b.disabled)return;const a=b.dataset.rw,id=b.dataset.id;
+if(a==='close'){closeModal();return}if(a==='modal-confirm'){submitModal();return}
+if(a==='overview'){go('overview');return}if(a==='menu'){state.menu=!state.menu;$('#rw-app').dataset.menu=String(state.menu);return}
+if(a==='projects'){projectDialog();return}if(a==='all-projects'){closeModal();go('overview');return}if(a==='enter-project'){switchProject(id);go('progress');return}
+if(a==='new-project'){modal('添加项目',field('项目名称','rw-new-project-name')+field('源代码目录（可后补）','rw-new-project-path')+'<p class="rw-sub">仅添加预览中的项目，不读取或改动电脑目录。</p>','save-project');return}
+if(a==='settings'){modal('工作台设置','<div class="rw-section-title">当前项目</div><p>'+esc(p().name)+'</p><code>'+esc(p().path)+'</code><hr class="rw-rule">'+button('日报与周报生成','schedule','clock-3')+button('知识维护','knowledge-settings','book-open')+'<p class="rw-sub">本次原型不连接真实仓库、聊天记录或自动化。离开后，笔记与操作数据不会永久保存。</p>');return}
+if(a==='new-task'||a==='task'){taskDialog(a==='task'?id:null);return}
+if(a==='toggle-done'){const t=p().tasks.find(x=>x.id===id);t.done=!t.done;render();tell(t.done?'已完成：'+t.name+'。详细过程保留在科研记录和日报中。':'已重新加入待办：'+t.name);remember('修改任务完成状态');return}
+if(a==='toggle-done-list'){state.doneOpen=!state.doneOpen;render();return}
+if(a==='prev-week'||a==='next-week'||a==='this-week'){state.week=a==='this-week'?0:state.week+(a==='next-week'?1:-1);render();return}
+if(a==='open-note'){if(p().notes.some(n=>n.id===id))go('notes',id);else{go('notes');tell('这项任务还没有关联记录，可以直接新建。')}return}
+if(a==='new-note'){const n={id:uid(),title:'',body:'',date:'2026-09-19',created:stamp(),updated:stamp(),source:'手动记录',comments:[]};p().notes.unshift(n);go('notes',n.id);state.mode='edit';render();$('#rw-edit-text')?.focus();return}
+if(a==='open-report'){go('reports',id);return}if(a==='open-weekly'){state.reportType='weekly';go('reports','rw1');return}
+if(a==='back'){go(state.view);return}
+if(a==='mode-preview'||a==='mode-edit'){if(editor?.state==='final'&&a==='mode-edit')return;flush();state.mode=a==='mode-edit'?'edit':'preview';render();if(state.mode==='edit')$('#rw-edit-text')?.focus();remember('切换编辑预览');return}
+if(a==='save-document'){flush();documentChanged();remember('保存记录');return}
+if(a==='insert-code'){flush();state.mode='edit';render();const t=$('#rw-edit-text');t.focus();t.setSelectionRange(t.value.length,t.value.length);insertText('\n\n```python\n# 在这里写代码\n```\n');return}
+if(a==='comment'){flush();modal('添加批注',(selectionQuote?'<blockquote>'+esc(selectionQuote)+'</blockquote>':'<p class="rw-sub">为整份文档添加批注；也可先选中预览文字。</p>')+'<label class="rw-field"><span>批注内容</span><textarea class="rw-input" id="rw-comment" rows="4" placeholder="写下想法或待核对的问题"></textarea></label>','save-comment','添加批注');return}
+if(a==='confirm-report'){flush();modal('确认为正式版','<p>确认这份报告已核对。确认后不再被自动整理覆盖，需要修改时可转回草稿。</p>','confirm-report','确认正式版');return}
+if(a==='reopen-report'){modal('修改正式版','<p>先将当前报告转回草稿，再进行编辑。修改完成后需要重新确认。</p>','reopen-report','转回草稿');return}
+if(a==='export'){flush();modal('导出 Markdown','<p class="rw-sub">选择下方正文并复制，可直接保存为 .md 文件。</p><textarea id="rw-export" class="rw-input" rows="12" aria-label="Markdown 全文" readonly>'+esc((state.view==='notes'?'# '+(editor.title||'未命名记录')+'\n\n':'')+editor.body)+'</textarea>');$('#rw-export').select();return}
+if(a==='schedule'||a==='knowledge-settings'){scheduleDialog(a==='schedule'?'all':'knowledge');return}
+if(a==='generate'){generateDialog();return}
+if(a==='sources'){sourcesDialog('report');return}
+if(a==='source-report'){closeModal();go('reports',id);return}
+if(a==='source-note'){const pid=b.dataset.projectId;closeModal();switchProject(pid);go('notes',id);return}
+if(a==='knowledge-sources'){sourcesDialog('knowledge');return}
+if(a==='edit-knowledge'){const k=p().knowledge.find(x=>x.id===state.knowledge);modal('编辑 · '+esc(k.title),'<label class="rw-field"><span>Markdown 正文</span><textarea id="rw-knowledge-text" class="rw-input" rows="14">'+esc(k.body)+'</textarea></label><p class="rw-sub">手动内容会保留；后续整理涉及修改时再确认。</p>','save-knowledge');return}
+if(a==='knowledge-updates'){const k=p().knowledge.find(x=>x.id===state.knowledge);modal('知识更新 · 待确认','<p class="rw-sub">'+esc(k.title)+' · '+(k.manual?'检测到人工修改，先核对再更新':'示例补充，不直接改写原文')+'</p><div class="rw-compare"><div><span class="rw-sub">当前内容</span><p>'+esc(k.body.slice(0,180))+'</p></div><div><span class="rw-sub">建议追加</span><p>固定输入条件后再比较结果，区分代码已完成与实测已验证；保留失败样例与实验条件。</p></div></div><p class="rw-sub">取消即保持现状，不阻塞其他操作。</p>','accept-knowledge','接受补充');return}
+if(a==='new-paper'||a==='edit-paper'){paperDialog(a==='new-paper');return}
+if(a==='open-paper'){go('literature',id);return}
+if(a==='paper-read'){const paper=p().papers.find(x=>x.id===state.detail);paper.read=!paper.read;render();tell(paper.read?'已标记为已读。':'已标记为待阅读。');return}
+if(a==='paper-note'){const paper=p().papers.find(x=>x.id===state.detail);modal('阅读笔记','<label class="rw-field"><span>Markdown 正文</span><textarea class="rw-input" id="rw-paper-note" rows="12">'+esc(paper.note)+'</textarea></label>','save-paper-note');return}
+if(a==='remove-paper'){modal('移出本项目','<p>移出当前项目的文献列表，不删除原文或本地文件。</p>','remove-paper','移出');return}
+});
+root.addEventListener('dblclick',e=>{if(e.target.closest('#rw-preview')&&editor?.state!=='final'&&!window.getSelection()?.toString()){state.mode='edit';render();$('#rw-edit-text')?.focus()}});
+root.addEventListener('input',e=>{if(e.target.id==='rw-edit-text'||e.target.id==='rw-edit-title'){flush();documentChanged()}if(e.target.id==='rw-paper-search'){state.query=e.target.value;$('#rw-paper-list').innerHTML=paperRows(p().papers.filter(x=>x.title.toLowerCase().includes(state.query.toLowerCase())));icons()}});
+root.addEventListener('change',e=>{if(e.target.id==='rw-report-scope'){state.reportScope=e.target.value;render();remember('筛选报告项目')}if(e.target.id==='rw-report-status'){state.reportStatus=e.target.value;render()}});
+root.addEventListener('mouseup',()=>{const s=window.getSelection();if(s&&!s.isCollapsed&&$('#rw-editor-body')?.contains(s.anchorNode))selectionQuote=s.toString().slice(0,600)});
+root.addEventListener('paste',e=>{if(!editor||editor.state==='final'||!$('#rw-overlay').hidden)return;const files=Array.from(e.clipboardData?.items||[]).filter(x=>x.kind==='file').map(x=>x.getAsFile()).filter(Boolean);if(files.length){e.preventDefault();importImages(files);return}if(e.target.id==='rw-edit-title')return;const text=e.clipboardData?.getData('text/plain');if(!text)return;if(e.target.id==='rw-edit-text'||e.target.closest('#rw-editor-body')||e.target.closest('[data-rw=mode-preview]')){e.preventDefault();insertText(text,/^(#{1,6}\s|```|[-*]\s)|\*\*[^*]+\*\*/m.test(text)||state.mode==='preview')}});
+root.addEventListener('dragover',e=>{if(editor&&editor.state!=='final'&&e.target.closest('#rw-editor-body')){e.preventDefault();$('#rw-editor-body').classList.add('rw-drag')}});
+root.addEventListener('dragleave',e=>{if(editor&&!$('#rw-editor-body')?.contains(e.relatedTarget))$('#rw-editor-body')?.classList.remove('rw-drag')});
+root.addEventListener('drop',e=>{if(editor&&editor.state!=='final'&&e.target.closest('#rw-editor-body')){e.preventDefault();$('#rw-editor-body').classList.remove('rw-drag');importImages(e.dataTransfer.files)}});
+root.addEventListener('keydown',e=>{if(e.target.closest('#rw-git-host'))return;if(!$('#rw-overlay').hidden){if(e.key==='Escape'){e.preventDefault();closeModal()}if(e.key==='Tab'){const nodes=Array.from($('#rw-overlay').querySelectorAll('button:not(:disabled),input,textarea,select,a[href]'));const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}return}if((e.ctrlKey||e.metaKey)&&e.key==='s'&&editor){e.preventDefault();flush();documentChanged()}if(e.key==='Escape'&&state.menu){state.menu=false;$('#rw-app').dataset.menu='false'}});
+root.addEventListener('rw-git-action',e=>{remember(e.detail.action);tell('代码操作已在示例仓库中完成，不改动真实 Git。')});
+render();
+})();
+</script>
+</div>

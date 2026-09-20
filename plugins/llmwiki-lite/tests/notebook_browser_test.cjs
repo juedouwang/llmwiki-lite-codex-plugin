@@ -1,183 +1,118 @@
-/* Optional browser regression: LLMWIKI_PLAYWRIGHT points to an installed Playwright module. */
-const { chromium } = require(process.env.LLMWIKI_PLAYWRIGHT || 'playwright');
-const assert = require('node:assert/strict');
-const os = require('node:os'), path = require('node:path');
+/* Real local HTTP/browser regression for the continuous notebook, no user data. */
+const {chromium}=require(process.env.LLMWIKI_PLAYWRIGHT || 'playwright');
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 (async()=>{
-  const browser=await chromium.launch({headless:true, ...(process.env.LLMWIKI_BROWSER_CHANNEL ? {channel:process.env.LLMWIKI_BROWSER_CHANNEL} : {})});
-  const context=await browser.newContext({viewport:{width:1440,height:1000}});
-  const page=await context.newPage();
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
-  const origin=process.argv[2],pid=process.argv[3];
-  await page.goto(`${origin}/project/${pid}/records`);
-  await page.getByRole('link',{name:'＋ 手动记录',exact:true}).click();
-  await page.locator('#nb-title').fill('低纹理配准 · 第一轮实验');
-  await page.locator('.nb-input').fill('## 实验观察\n\n**关键发现**：弱纹理场景下，增加几何约束后误差明显下降。\n\n- 基线误差：0.082\n- 改进误差：0.046\n- 待验证：跨场景泛化');
-  await page.locator('#nb-tags').fill('配准，实验，待验证');
-  await page.waitForFunction(()=>document.querySelector('#nb-status').textContent.startsWith('已保存'));
-  const url=page.url(),nid=url.split('/').pop();
-  assert.equal(await page.locator('.nb-block-time, #nb-timestamps').count(),0);
-  assert.ok(!(await page.locator('.nb-paper').innerText()).includes('最近修改：'));
-  assert.equal(await page.locator('#nb-status').textContent(),'已保存');
-  await page.getByLabel('笔记菜单').click();
-  await page.getByRole('button',{name:'笔记信息',exact:true}).click();
-  const firstTime=await page.locator('#nb-info-times').textContent();
-  assert.match(firstTime,/创建：.*\d{2}:\d{2}:\d{2} UTC\+08:00/);
-  assert.match(firstTime,/最近修改：/);
-  await page.getByRole('button',{name:'关闭',exact:true}).click();
-  const downloadEvent=page.waitForEvent('download');
-  await page.getByLabel('笔记菜单').click();
-  await page.locator('#nb-export').click();
-  const download=await downloadEvent;
-  const exported=require('node:fs').readFileSync(await download.path(),'utf8');
-  assert.ok(exported.startsWith('---\ntype: research-notebook\nrecorded_at:'));
-  assert.ok(!exported.includes('创建：')&&!exported.includes('最近修改：'));
-  const reader=await context.newPage();
-  await reader.goto(`${origin}/project/${pid}/page/records/manual/${nid}.md`);
-  assert.equal(await reader.locator('details.frontmatter[open]').count(),0);
-  assert.ok(!(await reader.locator('article.document').innerText()).includes('最近修改：'));
-  await reader.getByText('笔记信息',{exact:true}).click();
-  assert.ok(await reader.locator('details.frontmatter[open]').count());
-  await reader.close();
-  await page.reload();await page.locator('#nb-title:not([disabled])').waitFor();
-  await page.getByLabel('笔记菜单').click();
-  await page.getByRole('button',{name:'笔记信息',exact:true}).click();
-  assert.equal(await page.locator('#nb-info-times').textContent(),firstTime);
-  await page.getByRole('button',{name:'关闭',exact:true}).click();
-  await page.getByRole('button',{name:'预览',exact:true}).click();
-  await page.locator('.nb-preview strong').waitFor();
-  assert.equal(await page.locator('.nb-preview strong').textContent(),'关键发现');
-  await page.getByRole('button',{name:'编辑',exact:true}).click();
-  // Generate a real screenshot for upload rather than relying on a malformed fixture.
-  const png=await page.locator('.nb-paper').screenshot();
-  await page.locator('#nb-bottom .nb-plus').click();
-  await page.locator('#nb-bottom').getByRole('button',{name:'图片',exact:true}).click();
-  await page.locator('#nb-file').setInputFiles({name:'实验截图.png',mimeType:'image/png',buffer:png});
-  await page.locator('.nb-image').waitFor();
-  const imageCell=page.locator('.nb-image').locator('xpath=ancestor::section[1]');
-  await imageCell.locator('.nb-input').fill('图 1 · 实验界面截图。记录当前参数，方便后续复现。');
-  await imageCell.getByRole('button',{name:'批注',exact:true}).click();
-  await imageCell.locator('.nb-comment textarea').fill('这组结果还需要增加夜间场景测试，暂不作为最终结论。');
-  await page.waitForFunction(()=>document.querySelector('#nb-status').textContent.startsWith('已保存'));
-  await imageCell.getByRole('button',{name:'放大截图'}).click();
-  await page.locator('#nb-dialog[open] .nb-lightbox').waitFor();
-  await page.getByRole('button',{name:'关闭',exact:true}).click();
-  // Paste image from clipboard payload.
-  await page.locator('#nb-title').focus();
-  await page.evaluate(b64=>{
-    const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));const dt=new DataTransfer();
-    dt.items.add(new File([bytes],'clipboard.png',{type:'image/png'}));
-    document.querySelector('#nb-title').dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:dt}));
-  },png.toString('base64'));
-  await page.waitForFunction(()=>document.querySelectorAll('.nb-image').length===2);
-  await page.waitForFunction(()=>document.querySelector('#nb-status').textContent.startsWith('已保存'));
-  // Delete/recover without losing comments; then reload from disk.
-  await page.locator('.nb-cell').last().getByLabel('块菜单').click();
-  await page.locator('.nb-cell').last().getByRole('button',{name:'删除',exact:true}).click();
-  assert.equal(await page.locator('.nb-image').count(),1);
-  await page.locator('#nb-undo').click();assert.equal(await page.locator('.nb-image').count(),2);
-  await page.locator('#nb-save').click();
-  await page.waitForFunction(()=>document.querySelector('#nb-status').textContent.startsWith('已保存'));
-  await page.reload();await page.locator('.nb-image').first().waitFor();
-  assert.equal(await page.locator('.nb-image').count(),2);
-  assert.equal(await page.locator('.nb-comment textarea').first().inputValue(),'这组结果还需要增加夜间场景测试，暂不作为最终结论。');
-  // Timeline links reopen the editable notebook, not a read-only document.
-  await page.goto(`${origin}/project/${pid}/records`);
-  await page.locator('.timeline-card').filter({hasText:'低纹理配准 · 第一轮实验'}).click();
-  await page.locator('#nb-title:not([disabled])').waitFor();
-  assert.equal(await page.locator('#nb-title').inputValue(),'低纹理配准 · 第一轮实验');
-  // New text with notebook keyboard shortcut.
-  await page.locator('.nb-input').last().focus();await page.keyboard.press('Control+Enter');
-  assert.equal(await page.locator('.nb-cell').count(),4);
-  await page.locator('.nb-input').last().fill('下一步：复现实验、补充消融，并保存配置文件。');
-  await page.keyboard.press('Control+s');
-  await page.waitForFunction(()=>document.querySelector('#nb-status').textContent.startsWith('已保存'));
-  await page.getByLabel('笔记菜单').click();
-  await page.locator('#nb-history').click();await page.locator('.nb-history-item').first().waitFor();assert.ok(await page.locator('.nb-history-item').count()>0);
-  await page.getByRole('button',{name:'关闭',exact:true}).click();
-  // Screenshots go to the system temp dir, never the repository root.
-  await page.screenshot({path:process.env.LLMWIKI_SCREENSHOT || path.join(os.tmpdir(),'llmwiki-notebook-desktop.png'),fullPage:true});
-  // Direct clipboard flow: no + menu, picker or blank spacer required.
-  const pastePage=await context.newPage();await pastePage.goto(`${origin}/project/${pid}/notebook`);
-  await pastePage.locator('#nb-title:not([disabled])').waitFor();
-  let pickers=0;pastePage.on('filechooser',()=>pickers++);
-  const pasteImages=async (count=1,selector='body')=>pastePage.evaluate(({b64,count,selector})=>{
-    const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),data=new DataTransfer();
-    for(let n=0;n<count;n++)data.items.add(new File([bytes],`image-${n}.png`,{type:'image/png'}));
-    const target=document.querySelector(selector);target.focus();target.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data}));
-  },{b64:png.toString('base64'),count,selector});
-  // Focus on navigation/main content used to silently reject the screenshot.
-  await pastePage.locator('#main-content').focus();await pasteImages();
-  await pastePage.waitForFunction(()=>document.querySelectorAll('.nb-image').length===1);
-  assert.equal(await pastePage.locator('.nb-cell').count(),1);assert.equal(pickers,0);
-  await pastePage.locator('.nb-input').fill('截图直接作为第一块，不留下空白文本块');
-  await pastePage.locator('#nb-bottom .nb-plus').click();await pastePage.locator('#nb-bottom').getByRole('button',{name:'图片',exact:true}).click();
-  assert.equal(pickers,0);await pasteImages(2);
-  await pastePage.waitForFunction(()=>document.querySelectorAll('.nb-image').length===3);
-  assert.equal(await pastePage.locator('.nb-cell').count(),3);assert.equal(pickers,0);
-  await pastePage.locator('.nb-continue').click();
-  assert.equal(await pastePage.locator('.nb-input').last().evaluate(e=>e===document.activeElement),true);
-  await pastePage.locator('.nb-input').last().fill('普通文字粘贴仍正常');
-  await pastePage.locator('#nb-tags').focus();await pasteImages(1,'#nb-tags');
-  assert.equal(await pastePage.locator('.nb-image').count(),3);
-  // M-01: the title keeps the normal text paste. Copying from a chat window or a
-  // document yields text + image; the image used to win and the title lost the text.
-  const hijacked=await pastePage.evaluate(b64=>{
-    const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),data=new DataTransfer();
-    data.setData('text/plain','配准误差 0.046');
-    data.items.add(new File([bytes],'rich.png',{type:'image/png'}));
-    const target=document.querySelector('#nb-title');target.focus();
-    const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});
-    target.dispatchEvent(event);return event.defaultPrevented;
-  },png.toString('base64'));
-  assert.equal(hijacked,false,'a text+image paste into the title must not be hijacked');
-  assert.equal(await pastePage.locator('.nb-image').count(),3,'a text+image paste into the title must not add an image block');
-  assert.equal((await pastePage.locator('#nb-title').inputValue()).includes('rich.png'),false);
-  // Drop targets the pointed-at empty text cell rather than the stale active cell.
-  await pastePage.locator('.nb-input').last().fill('');
-  await pastePage.locator('.nb-cell').first().locator('.nb-input').focus();
-  await pastePage.evaluate(b64=>{const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],'drop.png',{type:'image/png'}));document.querySelector('.nb-cell:last-child .nb-input').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt}));},png.toString('base64'));
-  await pastePage.waitForFunction(()=>document.querySelectorAll('.nb-image').length===4);
-  assert.equal(await pastePage.locator('.nb-cell').count(),4);
-  // A file dropped outside the note used to navigate the browser to the image.
-  const outsideDrop=await pastePage.evaluate(b64=>{
-    const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],'outside.png',{type:'image/png'}));
-    const event=new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt});
-    document.body.dispatchEvent(event);return event.defaultPrevented;
-  },png.toString('base64'));
-  assert.equal(outsideDrop,true,'a file dropped outside the note must not navigate away');
-  assert.equal(await pastePage.locator('.nb-image').count(),4);
-  await pastePage.waitForFunction(()=>document.querySelector('#nb-status').textContent==='已保存');
-  await pastePage.reload();await pastePage.locator('.nb-image').first().waitFor();assert.equal(await pastePage.locator('.nb-image').count(),4);
-  await pastePage.close();
-  // Autosave race: second tab wins, first retains draft and cannot overwrite it.
-  const other=await context.newPage();await other.goto(url);await other.locator('#nb-title').fill('另一页面的标题');
-  await other.waitForFunction(()=>document.querySelector('#nb-status').textContent.startsWith('已保存'));
-  await page.locator('#nb-title').fill('本页未合并的标题');await page.locator('#nb-save').click();
-  await page.getByRole('button',{name:'保存为新笔记',exact:true}).waitFor();
-  assert.equal(await page.locator('#nb-title').isDisabled(),true);
-  await page.getByRole('button',{name:'对比服务器版本',exact:true}).click();
-  assert.ok((await page.locator('.nb-version-text').textContent()).includes('另一页面的标题'));
-  await page.getByRole('button',{name:'关闭',exact:true}).click();
-  await page.getByRole('button',{name:'保存为新笔记',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('#nb-status').textContent.startsWith('已保存'));
-  assert.notEqual(page.url(),url);
-  const original=await (await context.request.get(`${origin}/api/project/${pid}/notebook/${nid}`)).json();
-  assert.equal(original.document.title,'另一页面的标题');
-  // Offline draft recovery.
-  await page.route('**/api/**',route=>route.abort());
-  await page.locator('#nb-title').fill('离线草稿保留');await page.locator('#nb-save').click();
-  await page.waitForFunction(()=>document.querySelector('#nb-status').textContent==='未保存到 Wiki');
-  page.on('dialog',dialog=>dialog.accept());
-  await page.unroute('**/api/**');await page.reload();
-  await page.getByRole('button',{name:'恢复草稿',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('#nb-status').textContent.startsWith('已保存'));
-  assert.equal(await page.locator('#nb-title').inputValue(),'离线草稿保留');
-  // Narrow viewport is usable without horizontal overflow.
-  await page.setViewportSize({width:390,height:844});
-  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  const unexpected=errors.filter(e=>!e.includes('409')&&!e.includes('ERR_FAILED')&&!e.includes('404'));
-  assert.deepEqual(unexpected,[]);
-  await browser.close();console.log('Notebook browser checks passed: blocks / preview / upload / direct paste / multi-image paste / empty-block reuse / drop target / comments / undo / persistence / shortcuts / history / conflict / offline draft / mobile.');
-})().catch(e=>{console.error(e);process.exit(1);});
-
+  const browser=await chromium.launch({headless:true,...(process.env.LLMWIKI_BROWSER_CHANNEL?{channel:process.env.LLMWIKI_BROWSER_CHANNEL}:{})});
+  try{
+    const context=await browser.newContext({viewport:{width:1280,height:960}}),page=await context.newPage(),errors=[];
+    page.on('pageerror',e=>errors.push(e.message));let pickers=0;page.on('filechooser',()=>pickers++);
+    const origin=process.argv[2],pid=process.argv[3],base=`${origin}/project/${pid}`;
+    const saved=async p=>p.waitForFunction(()=>document.querySelector('#nb-save-state').textContent==='已保存');
+    async function paste(p,{text='',html='',images=0,png='',selector}={}){
+      return p.evaluate(({text,html,images,png,selector})=>{
+        const data=new DataTransfer();if(text)data.setData('text/plain',text);if(html)data.setData('text/html',html);
+        for(let i=0;i<images;i++)data.items.add(new File([Uint8Array.from(atob(png),c=>c.charCodeAt(0))],`shot${i}.png`,{type:'image/png'}));
+        const target=selector?document.querySelector(selector):document.activeElement;target.focus();
+        const e=new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true});target.dispatchEvent(e);return e.defaultPrevented;
+      },{text,html,images,png,selector});
+    }
+    await page.goto(base+'/records');await page.getByRole('link',{name:'＋ 手动记录',exact:true}).click();
+    await page.locator('#nb-source').waitFor({state:'visible'});
+    assert.equal(await page.locator('#nb-source').evaluate(e=>e===document.activeElement),true);
+    assert.equal(await page.locator('input[type=file],.nb-plus,.nb-cell').count(),0);
+    await paste(page,{text:'### 1. 编辑器\n\n**观察**：代码完成不等于硬件验证完成。\n\n```python\nx=1\n```'});
+    await page.locator('#nb-preview h3').waitFor();assert.equal(await page.locator('#nb-preview strong').innerText(),'观察');
+    await page.locator('#nb-title').fill('低纹理配准 · 第一轮实验');await saved(page);
+    const url=page.url(),nid=url.split('/').pop(),api=`${origin}/api/project/${pid}/notebook/${nid}`;
+    const initial=await (await context.request.get(api+'?format=markdown')).json();
+    assert.equal(initial.document.format,'markdown');assert.equal(initial.document.comments.length,0);
+    assert.ok(!initial.document.body.includes(initial.document.created_at));
+    const png=(await page.locator('.rw-editor-body').screenshot()).toString('base64');
+    // Repeated Ctrl+V into preview retains focus and inserts both occurrences.
+    await page.locator('#nb-preview').focus();await paste(page,{images:1,png});
+    await page.waitForFunction(()=>document.querySelectorAll('#nb-preview img').length===1);
+    assert.equal(await page.locator('#nb-preview').evaluate(e=>document.activeElement===e),true);
+    await paste(page,{images:1,png});await page.waitForFunction(()=>document.querySelectorAll('#nb-preview img').length===2);await saved(page);
+    assert.equal(pickers,0);
+    // Title text+image remains a native text paste; pure image routes to body.
+    assert.equal(await paste(page,{selector:'#nb-title',text:'标题文字',images:1,png}),false);
+    assert.equal(await page.locator('#nb-title').inputValue(),'低纹理配准 · 第一轮实验');
+    await paste(page,{selector:'#nb-title',images:1,png});await page.waitForFunction(()=>document.querySelectorAll('#nb-preview img').length===3);await saved(page);
+    // Quoted annotations are separate, not a timestamp paragraph in the body.
+    await page.locator('#nb-edit').click();await page.locator('#nb-source').evaluate(e=>{e.setSelectionRange(0,9);e.dispatchEvent(new Event('select'));});
+    await page.locator('#nb-comment').click();await page.getByLabel('批注内容').fill('补充夜间场景，暂不作为最终结论。');
+    await page.locator('#nb-dialog-actions').getByRole('button',{name:'添加',exact:true}).click();await saved(page);
+    const annotated=await (await context.request.get(api)).json();
+    assert.equal(annotated.document.comments[0].text,'补充夜间场景，暂不作为最终结论。');
+    assert.ok(annotated.document.comments[0].quote);assert.ok(!annotated.document.body.includes('暂不作为最终结论'));
+    await page.getByLabel('文档更多操作').click();await page.locator('#nb-info').click();
+    assert.ok((await page.locator('#nb-dialog-content').innerText()).includes('创建时间'));
+    await page.getByLabel('标签',{exact:true}).fill('实验, 待验证');await page.getByRole('button',{name:'保存标签',exact:true}).click();await saved(page);
+    const downloadEvent=page.waitForEvent('download');await page.locator('#nb-export').click();const download=await downloadEvent;
+    const exported=fs.readFileSync(await download.path(),'utf8');assert.match(exported,/## 批注/);assert.ok(!exported.includes('llmwiki-notebook-v2'));
+    await page.reload();await page.locator('#nb-preview img').first().waitFor();assert.equal(await page.locator('#nb-preview img').count(),3);
+    assert.match(await page.locator('#nb-comments').innerText(),/补充夜间场景/);
+    // Native text and injected-paste undo/redo preserve text around each transaction.
+    await page.locator('#nb-edit').click();await page.locator('#nb-source').press('Control+End');
+    const before=await page.locator('#nb-source').inputValue();await paste(page,{text:'\n补充记录'});await page.locator('#nb-source').press('Control+z');
+    assert.equal(await page.locator('#nb-source').inputValue(),before);await page.locator('#nb-source').press('Control+Shift+z');
+    assert.equal(await page.locator('#nb-source').inputValue(),before+'\n补充记录');await saved(page);
+    // Undo an image while its HTTP request is in flight; redo resolves the same upload.
+    let release;const gate=new Promise(r=>release=r);await page.route('**/notebook/upload',async route=>{await gate;await route.continue();});
+    await paste(page,{images:1,png});await page.waitForFunction(()=>document.querySelector('#nb-source').value.includes('<!--report-upload:'));
+    await page.locator('#nb-source').press('Control+z');release();await page.waitForFunction(()=>!document.querySelector('#nb-uploads').textContent.includes('上传中'));
+    await page.locator('#nb-source').press('Control+Shift+z');assert.ok(!(await page.locator('#nb-source').inputValue()).includes('<!--report-upload:'));
+    assert.equal((await page.locator('#nb-source').inputValue()).match(/!\[截图\]/g).length,4);await page.unroute('**/notebook/upload');await saved(page);
+    // Upload failure retains a retry at the original position; never opens a picker.
+    await page.route('**/notebook/upload',route=>route.abort());await paste(page,{images:1,png});await page.getByRole('button',{name:'重试',exact:true}).waitFor();
+    await page.unroute('**/notebook/upload');await page.getByRole('button',{name:'重试',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#nb-uploads').children.length===0);await saved(page);
+    assert.equal((await page.locator('#nb-source').inputValue()).match(/!\[截图\]/g).length,5);assert.equal(pickers,0);
+    for(const image of (await page.locator('#nb-source').inputValue()).matchAll(/!\[截图\]\(([^)]+)\)/g)) assert.match(image[1], /^\.\.\/assets\/[a-f0-9]{64}\.png$/);
+    // Ordinary typing uses the textarea's native undo/redo, not whole-document resets.
+    const beforeTyping=await page.locator('#nb-source').inputValue();await page.locator('#nb-source').press('Control+End');
+    await page.locator('#nb-source').pressSequentially(' native typing');
+    let nativeSteps=0;while(await page.locator('#nb-source').inputValue()!==beforeTyping){assert.ok(nativeSteps++<30,'native undo must reach the insertion boundary');await page.locator('#nb-source').press('Control+z');assert.ok((await page.locator('#nb-source').inputValue()).startsWith(beforeTyping),'native undo must not remove an earlier screenshot');}
+    for(let i=0;i<nativeSteps;i++)await page.locator('#nb-source').press('Control+Shift+z');assert.equal(await page.locator('#nb-source').inputValue(),beforeTyping+' native typing');await saved(page);
+    // History is reachable; current notebook identity and image URLs survive refresh.
+    await page.getByLabel('文档更多操作').click();await page.locator('#nb-history').click();await page.locator('#nb-dialog-actions button').first().waitFor();
+    await page.locator('#nb-dialog-actions button').first().click();await page.getByRole('button',{name:'恢复为当前笔记'}).waitFor();await page.locator('#nb-dialog-close').click();
+    // Two-tab conflict keeps both drafts; loading the remote version is explicit.
+    const other=await context.newPage();await other.goto(url);await other.locator('#nb-preview').waitFor();await other.waitForFunction(()=>document.querySelector('#nb-save-state').textContent==='已保存');
+    await other.locator('#nb-title').fill('另一页面的标题');await saved(other);await page.locator('#nb-title').fill('本页未合并标题');await page.locator('#nb-save').click();
+    await page.getByRole('heading',{name:'正文发生冲突'}).waitFor();assert.equal(await page.locator('#nb-title').inputValue(),'本页未合并标题');
+    assert.equal((await (await context.request.get(api)).json()).document.title,'另一页面的标题');
+    await page.getByRole('button',{name:'加载服务器稿',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#nb-title').value==='另一页面的标题');await page.locator('#nb-dialog').waitFor({state:'hidden'});await other.close();
+    // Offline recovery never silently overwrites the disk version.
+    await page.route('**/api/**',route=>route.abort());await page.locator('#nb-title').fill('离线恢复标题');await page.locator('#nb-save').click();
+    await page.waitForFunction(()=>document.querySelector('#nb-save-state').textContent==='保存失败');await page.unroute('**/api/**');
+    page.on('dialog',dialog=>dialog.accept());await page.reload();await page.getByRole('button',{name:'恢复本机稿',exact:true}).click();await saved(page);
+    assert.equal(await page.locator('#nb-title').inputValue(),'离线恢复标题');
+    // Inert HTML-only clipboard becomes text, never a live element or script.
+    await page.locator('#nb-edit').click();await page.locator('#nb-source').press('Control+End');
+    await paste(page,{html:'<b>HTML剪贴板</b><img src=x onerror="window.injected=1"><script>window.injected=1</script>'});await saved(page);
+    assert.equal(await page.evaluate(()=>window.injected),undefined);assert.match(await page.locator('#nb-source').inputValue(),/HTML剪贴板/);
+    // Multiple files in one paste are one undoable insertion, even when their
+    // asynchronous uploads complete at different moments.
+    await page.locator('#nb-source').press('Control+End');const beforeMulti=await page.locator('#nb-source').inputValue();
+    await paste(page,{images:2,png});await page.waitForFunction(()=>document.querySelector('#nb-uploads').children.length===0);await saved(page);
+    assert.equal((await page.locator('#nb-source').inputValue()).match(/!\[截图\]/g).length,7);
+    await page.locator('#nb-source').press('Control+z');assert.equal(await page.locator('#nb-source').inputValue(),beforeMulti);
+    await page.locator('#nb-source').press('Control+Shift+z');assert.equal((await page.locator('#nb-source').inputValue()).match(/!\[截图\]/g).length,7);await saved(page);
+    // Dropping outside the document must never navigate the browser to the file.
+    const didPrevent=await page.evaluate(png=>{const d=new DataTransfer();d.items.add(new File([Uint8Array.from(atob(png),c=>c.charCodeAt(0))],'outside.png',{type:'image/png'}));const e=new DragEvent('drop',{dataTransfer:d,bubbles:true,cancelable:true});document.body.dispatchEvent(e);return e.defaultPrevented;},png);
+    assert.equal(didPrevent,true);assert.equal(page.url(),url);
+    // Composition postpones saves until the whole word is committed.
+    await saved(page);let writes=0;const countWrite=r=>{if(r.url()===api&&r.method()==='POST')writes++;};page.on('request',countWrite);
+    await page.locator('#nb-source').evaluate(e=>{e.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));e.value+='\n中文组合输入';e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',isComposing:true}));});
+    await page.waitForTimeout(800);assert.equal(writes,0);await page.locator('#nb-source').evaluate(e=>e.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'中文组合输入'})));await saved(page);assert.equal(writes,1);page.off('request',countWrite);
+    // Switching modes doesn't write a new version or move the source cursor.
+    await page.locator('#nb-source').evaluate(e=>{e.setSelectionRange(2,7);e.dispatchEvent(new Event('select'));});
+    const stable=(await (await context.request.get(api)).json()).revision;await page.locator('#nb-preview-mode').click();await page.locator('#nb-edit').click();
+    assert.deepEqual(await page.locator('#nb-source').evaluate(e=>[e.selectionStart,e.selectionEnd]),[2,7]);assert.equal((await (await context.request.get(api)).json()).revision,stable);
+    for(const scheme of ['light','dark']){await page.emulateMedia({colorScheme:scheme});for(const width of [1280,1024,736,580,375,320]){
+      await page.setViewportSize({width,height:960});await page.waitForFunction(()=>{const e=document.querySelector('#nb-source');return e.scrollHeight<=e.clientHeight+2;});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`overflow ${width} ${scheme}`);
+      if(width===1280||width===375)await page.screenshot({path:path.join(os.tmpdir(),`llmwiki-continuous-${scheme}-${width}.png`),fullPage:true});
+    }}
+    assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks:['continuous body','Markdown default preview','repeated clipboard screenshots','title clipboard priority','quoted comments','timestamps in info','export','persistence','paste and native typing undo/redo','multi-image paste transaction','IME save delay','mode selection stability','drop navigation protection','in-flight upload undo/redo','upload retry','history','two-tab conflict','offline recovery','HTML sanitization','six widths / light and dark','no filechooser']}));
+  }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

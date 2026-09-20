@@ -49,7 +49,81 @@ class ProgressTests(unittest.TestCase):
         task = self.create()["tasks"][0]
         self.assertEqual(task["start"], "")
         self.assertEqual(task["end"], "")
+        self.assertIsNone(task["completed_at"])
         self.assertNotIn("percent", task)
+
+    def test_same_task_survives_across_days_without_copying(self):
+        created = self.create(title="验证夜间数据", status="planned")
+        task = created["tasks"][0]
+        path = self.root / "wiki/.research-progress/tasks.json"
+        before = path.read_bytes()
+        progress.load_summary(self.project)
+        self.assertEqual(path.read_bytes(), before)
+        updated = progress.update(self.project, {"action": "update", "revision": created["revision"],
+                                                 "id": task["id"], "task": dict(task, status="active")})
+        again = progress.load_summary(self.project)["tasks"][0]
+        self.assertEqual(len(updated["tasks"]), 1)
+        self.assertEqual(again["id"], task["id"])
+        self.assertEqual(again["title"], "验证夜间数据")
+        self.assertEqual(again["status"], "active")
+
+    def test_complete_reopen_and_unknown_completed_at(self):
+        created = self.create(status="active")
+        task = created["tasks"][0]
+        done = progress.update(self.project, {"action": "update", "revision": created["revision"],
+                                              "id": task["id"], "task": dict(task, status="done", title="完成一次")})
+        first = done["tasks"][0]["completed_at"]
+        self.assertTrue(first)
+        titled = progress.update(self.project, {"action": "update", "revision": done["revision"],
+                                                "id": task["id"], "task": dict(done["tasks"][0], title="改名仍完成")})
+        self.assertEqual(titled["tasks"][0]["completed_at"], first)
+        reopened = progress.update(self.project, {"action": "update", "revision": titled["revision"],
+                                                  "id": task["id"], "task": dict(titled["tasks"][0], status="active")})
+        self.assertIsNone(reopened["tasks"][0]["completed_at"])
+        self.assertEqual(reopened["tasks"][0]["status"], "active")
+        again = progress.update(self.project, {"action": "update", "revision": reopened["revision"],
+                                               "id": task["id"], "task": dict(reopened["tasks"][0], status="done")})
+        self.assertEqual(len(again["tasks"]), 1)
+        self.assertNotEqual(again["tasks"][0]["completed_at"], first)
+        self.assertEqual(again["tasks"][0]["history"][1]["status"], "done")
+        self.assertEqual(again["tasks"][0]["history"][1]["completed_at"], first)
+        path = self.root / "wiki/.research-progress/tasks.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["tasks"][0]["status"] = "done"
+        data["tasks"][0]["completed_at"] = None
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        loaded = progress.load_summary(self.project)["tasks"][0]
+        self.assertEqual(loaded["status"], "done")
+        self.assertIsNone(loaded["completed_at"])
+
+    def test_readonly_old_file_bytes_unchanged(self):
+        payload = {
+            "version": 1,
+            "tasks": [{
+                "id": "a" * 32,
+                "title": "旧任务",
+                "status": "done",
+                "start": "",
+                "end": "",
+                "checkpoint": "手写停点",
+                "next_step": "",
+                "record_id": "",
+                "created_at": "2026-09-01T00:00:00Z",
+                "updated_at": "2026-09-01T00:00:00Z",
+                "history": [{"at": "2026-09-01T00:00:00Z", "title": "旧任务", "status": "done",
+                             "start": "", "end": "", "checkpoint": "手写停点", "next_step": "", "record_id": ""}],
+            }],
+        }
+        path = self.root / "wiki/.research-progress/tasks.json"
+        path.parent.mkdir()
+        raw = (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode()
+        path.write_bytes(raw)
+        loaded = progress.load_summary(self.project)["tasks"][0]
+        self.assertEqual(path.read_bytes(), raw)
+        self.assertEqual(loaded["context_mode"]["checkpoint"], "manual")
+        self.assertEqual(loaded["context_mode"]["next_step"], "auto")
+        self.assertEqual(loaded["effective_context"]["checkpoint"], "手写停点")
+        self.assertIsNone(loaded["completed_at"])
 
     def note(self, note_id="a" * 32, title="阶段成果：配准误差 0.046"):
         return notebook_save(
@@ -239,7 +313,8 @@ class ProgressTests(unittest.TestCase):
             server.server_close()
             worker.join()
         self.assertEqual(response.status, 200)
-        self.assertNotIn("继续上次", body)
+        self.assertNotIn("<h2>继续上次</h2>", body)
+        self.assertNotIn("以后再做", body)
 
 
 if __name__ == "__main__":

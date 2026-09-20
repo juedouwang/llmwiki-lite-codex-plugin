@@ -1,612 +1,255 @@
-"""
-Tests for strict literature catalog management.
-
-Covers:
-- AT-10: Pure link entries without download
-- AT-11: DOI deduplication (case-insensitive)
-- AT-12: arXiv version handling (v1/v2 same base ID)
-- AT-13: Same title different identifiers (warning, no auto-merge)
-- AT-14: Failed metadata fetch (preserve known info)
-- AT-15: Attach PDF to existing entry (ID/annotations preserved)
-"""
-
-import os
-import sys
+"""D-02/D-03 catalog contract. Supersedes old conflict-on-duplicate assumptions."""
+import copy
 import json
-import tempfile
-import unittest
+import multiprocessing
 from pathlib import Path
+import time
+from unittest.mock import patch
+import unittest
 
-# Add scripts to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
-
+from test_literature_support import Fixture
 from literature_catalog import (
-    LiteratureCatalog,
-    LiteratureCatalogError,
-    RevisionConflictError,
-    _normalize_doi,
-    _normalize_arxiv,
-    _normalize_url,
-    _validate_item,
-    _check_identity_conflict,
-    MAX_TITLE_LENGTH,
-    MAX_AUTHORS
+    LiteratureCatalog, LiteratureCatalogError, RevisionConflictError, _normalize_doi,
+    _normalize_arxiv, _normalize_url, parse_locator, project_for, item_revision,
+    source_ref, short_lock, literature_collect, safe_path,
 )
 
 
-class TestNormalization(unittest.TestCase):
-    """Test identifier normalization functions."""
-
-    def test_normalize_doi_lowercase(self):
-        """DOIs should be normalized to lowercase."""
-        self.assertEqual(_normalize_doi("10.1234/Example"), "10.1234/example")
-
-    def test_normalize_doi_remove_prefix(self):
-        """DOI prefixes should be removed."""
-        self.assertEqual(_normalize_doi("doi:10.1234/test"), "10.1234/test")
-        self.assertEqual(_normalize_doi("DOI:10.1234/test"), "10.1234/test")
-        self.assertEqual(_normalize_doi("https://doi.org/10.1234/test"), "10.1234/test")
-        self.assertEqual(_normalize_doi("http://dx.doi.org/10.1234/test"), "10.1234/test")
-
-    def test_normalize_doi_trim(self):
-        """DOIs should be trimmed."""
-        self.assertEqual(_normalize_doi("  10.1234/test  "), "10.1234/test")
-
-    def test_normalize_arxiv_remove_version(self):
-        """arXiv versions should be removed to get base ID."""
-        self.assertEqual(_normalize_arxiv("1803.12345v1"), "1803.12345")
-        self.assertEqual(_normalize_arxiv("1803.12345v2"), "1803.12345")
-        self.assertEqual(_normalize_arxiv("1803.12345V3"), "1803.12345")
-
-    def test_normalize_arxiv_old_format(self):
-        """Old arXiv format should be preserved (without version)."""
-        self.assertEqual(_normalize_arxiv("cs/0703001v1"), "cs/0703001")
-        self.assertEqual(_normalize_arxiv("math/0309136v2"), "math/0309136")
-
-    def test_normalize_arxiv_remove_prefix(self):
-        """arXiv prefixes should be removed."""
-        self.assertEqual(_normalize_arxiv("arxiv:1803.12345v1"), "1803.12345")
-        self.assertEqual(_normalize_arxiv("arXiv:1803.12345"), "1803.12345")
-        self.assertEqual(_normalize_arxiv("https://arxiv.org/abs/1803.12345v2"), "1803.12345")
-
-    def test_normalize_url_scheme_host_lowercase(self):
-        """URL scheme and host should be lowercase."""
-        normalized = _normalize_url("HTTP://Example.COM/Path")
-        self.assertTrue(normalized.startswith("http://example.com"))
-
-    def test_normalize_url_remove_fragment(self):
-        """URL fragments should be removed."""
-        normalized = _normalize_url("https://example.com/page#section")
-        self.assertNotIn("#", normalized)
-
-    def test_normalize_url_remove_utm(self):
-        """UTM tracking parameters should be removed."""
-        normalized = _normalize_url("https://example.com/page?id=123&utm_source=test&utm_campaign=abc")
-        self.assertIn("id=123", normalized)
-        self.assertNotIn("utm_source", normalized)
-        self.assertNotIn("utm_campaign", normalized)
-
-    def test_normalize_url_reject_credentials(self):
-        """URLs with credentials should be rejected."""
-        self.assertEqual(_normalize_url("https://user:pass@example.com/"), "")
-
-    def test_normalize_url_reject_non_http(self):
-        """Non-HTTP(S) URLs should be rejected."""
-        self.assertEqual(_normalize_url("ftp://example.com/"), "")
-        self.assertEqual(_normalize_url("file:///local/path"), "")
+def _writer(home, pid, count, queue):
+    try:
+        for i in range(5):
+            literature_collect(pid, f"10.4321/{count}-{i}", f"{count * 10 + i:032x}", home=home)
+        queue.put(True)
+    except Exception:
+        import traceback
+        queue.put(traceback.format_exc())
 
 
-class TestValidation(unittest.TestCase):
-    """Test item validation functions."""
+class CatalogTests(Fixture):
+    def test_normalization(self):
+        for value in ("doi:10.1234/Test", "DOI:10.1234/TEST", "https://DOI.org/10.1234/Test", "http://dx.doi.org/10.1234/test"):
+            self.assertEqual(_normalize_doi(value), "10.1234/test")
+        for value in ("arXiv:1803.12345v2", "https://arxiv.org/pdf/1803.12345v3.pdf", "http://arxiv.org/abs/1803.12345"):
+            self.assertEqual(_normalize_arxiv(value), "1803.12345")
+        self.assertEqual(_normalize_arxiv("arxiv:cs/0703001v4"), "cs/0703001")
+        self.assertEqual(_normalize_url("HTTPS://Example.COM:443/Path/?x=a%20b&x=2&utm_source=abc#f"), "https://example.com/Path/?x=a%20b&x=2")
+        self.assertNotEqual(_normalize_url("http://example.com/Path"), _normalize_url("https://example.com/path/"))
+        for url in ("javascript:alert(1)", "https://x:bad", "https:///", "https://user:pass@x/", "https://x/a\nb", "file:///tmp/x", "https://x:99999/", "https://x\\evil"):
+            self.assertEqual(_normalize_url(url), "", url)
+            with self.assertRaises(LiteratureCatalogError):
+                parse_locator(url)
 
-    def test_validate_item_minimal(self):
-        """Minimal valid item should pass validation."""
-        item = {
-            "id": "test123",
-            "title": "Test Paper",
-            "authors": [],
-            "year": None,
-            "venue": "",
-            "publication_type": "unknown",
-            "identifiers": {"doi": None, "arxiv": None},
-            "urls": [],
-            "attachments": [],
-            "identity_status": "unverified",
-            "reading_status": "unread",
-            "collection_source": "manual",
-            "source_refs": [],
-            "tags": [],
-            "reading_note_paths": [],
-            "archived": False,
-            "created_at": "2026-09-19T00:00:00Z",
-            "updated_at": "2026-09-19T00:00:00Z"
-        }
-        valid, msg = _validate_item(item)
-        self.assertTrue(valid, msg)
+    def test_get_is_read_only_unknown_fields_preserved(self):
+        self.assertEqual(self.catalog.list_items()["count"], 0)
+        self.assertFalse(self.catalog.literature_dir.exists())
+        result = self.collect(title="old title")
+        data = self.catalog._load_catalog()
+        data["future_field"] = {"keep": 7}
+        del data["items"][0]["manual_fields"]
+        del data["items"][0]["title_is_placeholder"]
+        self.catalog.catalog_path.write_text(json.dumps(data), encoding="utf-8")
+        before = self.catalog.catalog_path.read_bytes()
+        self.catalog.list_items()
+        self.catalog.get_item(result["item_id"])
+        self.assertEqual(before, self.catalog.catalog_path.read_bytes())
+        self.collect("10.1234/other")
+        self.assertEqual(self.catalog._load_catalog()["future_field"], {"keep": 7})
+        self.assertEqual(self.item(result)["title"], "old title")
 
-    def test_validate_item_missing_field(self):
-        """Missing required field should fail validation."""
-        item = {
-            "id": "test123",
-            "title": "Test Paper"
-            # Missing other required fields
-        }
-        valid, msg = _validate_item(item)
-        self.assertFalse(valid)
-        self.assertIn("Missing required field", msg)
+    def test_project_independence_and_overlap_rejected(self):
+        a = self.collect(title="Alpha")
+        b = self.collect(project_id=self.other["id"], title="Beta")
+        self.catalog.remove_item(a["item_id"], expected_item_revision=a["item_revision"])
+        self.assertEqual(LiteratureCatalog(self.other["wiki_root"]).get_item(b["item_id"])["title"], "Beta")
+        from llmwiki_registry import register_project
+        src = self.root / "overlap"
+        src.mkdir()
+        register_project(str(src), name="overlap", wiki_root=str(Path(self.project["wiki_root"]) / "nested"), state_root=str(self.root / "separate"), home=self.home)
+        with self.assertRaisesRegex(LiteratureCatalogError, "重叠"):
+            project_for(self.pid, self.home)
 
-    def test_validate_item_title_too_long(self):
-        """Title exceeding max length should fail."""
-        item = {
-            "id": "test123",
-            "title": "A" * (MAX_TITLE_LENGTH + 1),
-            "authors": [],
-            "year": None,
-            "venue": "",
-            "publication_type": "unknown",
-            "identifiers": {"doi": None, "arxiv": None},
-            "urls": [],
-            "attachments": [],
-            "identity_status": "unverified",
-            "reading_status": "unread",
-            "collection_source": "manual",
-            "source_refs": [],
-            "tags": [],
-            "reading_note_paths": [],
-            "archived": False,
-            "created_at": "2026-09-19T00:00:00Z",
-            "updated_at": "2026-09-19T00:00:00Z"
-        }
-        valid, msg = _validate_item(item)
-        self.assertFalse(valid)
-        self.assertIn("exceeds", msg.lower())
+    def test_duplicate_upsert_placeholder_and_request_dedup(self):
+        a = self.collect("arXiv:1803.12345v1")
+        self.assertTrue(self.item(a)["title_is_placeholder"])
+        b = self.collect("https://arxiv.org/pdf/1803.12345v2.pdf", title="Actual title")
+        self.assertEqual(a["item_id"], b["item_id"])
+        self.assertEqual(self.item(b)["title"], "Actual title")
+        same = literature_collect(self.pid, "https://arxiv.org/pdf/1803.12345v2.pdf", f"{self.request:032x}", title="Actual title", home=self.home)
+        self.assertEqual(same["action"], "unchanged")
+        self.assertEqual(same["item_revision"], b["item_revision"])
+        self.assertEqual(len(self.item(b)["source_refs"]), 2)
+        self.assertTrue(self.item(b)["urls"][0]["url"].endswith("v1"))
 
-    def test_validate_item_invalid_year(self):
-        """Year outside valid range should fail."""
-        item = {
-            "id": "test123",
-            "title": "Test Paper",
-            "authors": [],
-            "year": 1200,  # Too old
-            "venue": "",
-            "publication_type": "unknown",
-            "identifiers": {"doi": None, "arxiv": None},
-            "urls": [],
-            "attachments": [],
-            "identity_status": "unverified",
-            "reading_status": "unread",
-            "collection_source": "manual",
-            "source_refs": [],
-            "tags": [],
-            "reading_note_paths": [],
-            "archived": False,
-            "created_at": "2026-09-19T00:00:00Z",
-            "updated_at": "2026-09-19T00:00:00Z"
-        }
-        valid, msg = _validate_item(item)
-        self.assertFalse(valid)
-        self.assertIn("Year", msg)
+    def test_all_identities_checked_active_and_dismissed(self):
+        a = self.collect("10.1234/a")
+        b = self.collect("1803.12345")
+        before = self.catalog.catalog_path.read_bytes()
+        with self.assertRaises(LiteratureCatalogError) as ctx:
+            self.collect("10.1234/a", arxiv="1803.12345")
+        self.assertEqual(ctx.exception.code, "IDENTITY_CONFLICT")
+        self.assertEqual(before, self.catalog.catalog_path.read_bytes())
+        self.catalog.remove_item(b["item_id"], expected_item_revision=b["item_revision"])
+        with self.assertRaises(LiteratureCatalogError):
+            self.collect("10.1234/a", arxiv="1803.12345")
+        self.assertEqual(self.catalog.list_items()["count"], 1)
+        self.assertIsNotNone(self.item(a))
 
-    def test_validate_item_invalid_publication_type(self):
-        """Invalid publication_type should fail."""
-        item = {
-            "id": "test123",
-            "title": "Test Paper",
-            "authors": [],
-            "year": None,
-            "venue": "",
-            "publication_type": "invalid_type",
-            "identifiers": {"doi": None, "arxiv": None},
-            "urls": [],
-            "attachments": [],
-            "identity_status": "unverified",
-            "reading_status": "unread",
-            "collection_source": "manual",
-            "source_refs": [],
-            "tags": [],
-            "reading_note_paths": [],
-            "archived": False,
-            "created_at": "2026-09-19T00:00:00Z",
-            "updated_at": "2026-09-19T00:00:00Z"
-        }
-        valid, msg = _validate_item(item)
-        self.assertFalse(valid)
-        self.assertIn("publication_type", msg)
+    def test_conflicting_strong_identity_and_same_title(self):
+        self.collect("10.1234/a", arxiv="1803.12345", title="Same")
+        with self.assertRaises(LiteratureCatalogError):
+            self.collect("1803.12345v3", doi="10.1234/b")
+        self.collect("10.1234/c", title="Same")
+        self.assertEqual(self.catalog.list_items()["count"], 2)
 
-
-class TestIdentityConflict(unittest.TestCase):
-    """Test identity conflict detection per F-11."""
-
-    def test_same_doi_conflict(self):
-        """Same normalized DOI should be detected as conflict."""
-        new_item = {
-            "id": "new123",
-            "title": "New Paper",
-            "identifiers": {"doi": "10.1234/test", "arxiv": None},
-            "urls": []
-        }
-        existing = [
-            {
-                "id": "existing456",
-                "title": "Existing Paper",
-                "identifiers": {"doi": "10.1234/TEST", "arxiv": None},  # Different case
-                "urls": []
-            }
-        ]
-
-        has_conflict, conflicting_id, warnings = _check_identity_conflict(new_item, existing)
-        self.assertTrue(has_conflict)
-        self.assertEqual(conflicting_id, "existing456")
-
-    def test_same_arxiv_base_id_conflict(self):
-        """Same arXiv base ID (different versions) should be detected as conflict."""
-        new_item = {
-            "id": "new123",
-            "title": "New Paper",
-            "identifiers": {"doi": None, "arxiv": "1803.12345v2"},
-            "urls": []
-        }
-        existing = [
-            {
-                "id": "existing456",
-                "title": "Existing Paper",
-                "identifiers": {"doi": None, "arxiv": "1803.12345v1"},
-                "urls": []
-            }
-        ]
-
-        has_conflict, conflicting_id, warnings = _check_identity_conflict(new_item, existing)
-        self.assertTrue(has_conflict)
-        self.assertEqual(conflicting_id, "existing456")
-
-    def test_conflicting_doi_for_same_arxiv(self):
-        """Same arXiv ID but different DOI should be detected as conflict."""
-        new_item = {
-            "id": "new123",
-            "title": "New Paper",
-            "identifiers": {"doi": "10.1234/aaa", "arxiv": "1803.12345"},
-            "urls": []
-        }
-        existing = [
-            {
-                "id": "existing456",
-                "title": "Existing Paper",
-                "identifiers": {"doi": "10.1234/bbb", "arxiv": "1803.12345"},
-                "urls": []
-            }
-        ]
-
-        has_conflict, conflicting_id, warnings = _check_identity_conflict(new_item, existing)
-        self.assertTrue(has_conflict)
-
-    def test_same_title_warning_only(self):
-        """Same title (normalized) should produce warning, not conflict."""
-        new_item = {
-            "id": "new123",
-            "title": "Deep  Learning  Paper",  # Extra spaces
-            "identifiers": {"doi": None, "arxiv": None},
-            "urls": []
-        }
-        existing = [
-            {
-                "id": "existing456",
-                "title": "Deep Learning Paper",
-                "identifiers": {"doi": None, "arxiv": None},
-                "urls": []
-            }
-        ]
-
-        has_conflict, conflicting_id, warnings = _check_identity_conflict(new_item, existing)
-        self.assertFalse(has_conflict)
-        self.assertIsNone(conflicting_id)
-        self.assertTrue(len(warnings) > 0)
-        self.assertIn("existing456", warnings[0])
-
-    def test_different_items_no_conflict(self):
-        """Completely different items should have no conflict."""
-        new_item = {
-            "id": "new123",
-            "title": "New Paper A",
-            "identifiers": {"doi": "10.1234/aaa", "arxiv": "1803.11111"},
-            "urls": []
-        }
-        existing = [
-            {
-                "id": "existing456",
-                "title": "Existing Paper B",
-                "identifiers": {"doi": "10.1234/bbb", "arxiv": "1803.22222"},
-                "urls": []
-            }
-        ]
-
-        has_conflict, conflicting_id, warnings = _check_identity_conflict(new_item, existing)
-        self.assertFalse(has_conflict)
-        self.assertIsNone(conflicting_id)
-
-
-class TestCatalogOperations(unittest.TestCase):
-    """Test catalog CRUD operations."""
-
-    def setUp(self):
-        """Create temporary wiki root for each test."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.wiki_root = Path(self.temp_dir.name)
-        self.catalog = LiteratureCatalog(str(self.wiki_root))
-
-    def tearDown(self):
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
-
-    def test_create_catalog_directories(self):
-        """Catalog initialization should create directories."""
-        self.assertTrue(self.catalog.literature_dir.exists())
-        self.assertTrue(self.catalog.history_dir.exists())
-
-    def test_empty_catalog_revision(self):
-        """Empty catalog (no file) should have empty revision."""
-        revision = self.catalog.get_revision()
-        self.assertEqual(revision, "")
-
-    def test_create_item_minimal(self):
-        """AT-10: Should create item with just link, no download."""
-        result = self.catalog.create_item(
-            title="Attention Is All You Need",
-            doi="10.48550/arXiv.1706.03762",
-            arxiv="1706.03762",
-            urls=[
-                {
-                    "id": "url1",
-                    "url": "https://arxiv.org/abs/1706.03762",
-                    "kind": "preprint",
-                    "label": "arXiv"
-                }
-            ]
-        )
-
-        self.assertTrue(result["ok"])
-        self.assertIn("item", result)
-        self.assertEqual(result["item"]["title"], "Attention Is All You Need")
-        self.assertIsNotNone(result["item"]["id"])
-        self.assertEqual(len(result["item"]["attachments"]), 0)  # No file attached
-        self.assertIn("revision", result)
-
-    def test_create_item_doi_deduplication(self):
-        """AT-11: Same DOI (different case) should be rejected."""
-        # Create first item
-        result1 = self.catalog.create_item(
-            title="Paper A",
-            doi="10.1234/test"
-        )
-        self.assertTrue(result1["ok"])
-
-        # Try to create with same DOI (different case)
-        result2 = self.catalog.create_item(
-            title="Paper B",
-            doi="10.1234/TEST"  # Different case
-        )
-        self.assertFalse(result2["ok"])
-        self.assertEqual(result2["error"]["code"], "IDENTITY_CONFLICT")
-
-    def test_arxiv_version_handling(self):
-        """AT-12: arXiv v1 and v2 should be same entry."""
-        # Create with v1
-        result1 = self.catalog.create_item(
-            title="Paper with arXiv",
-            arxiv="1803.12345v1"
-        )
-        self.assertTrue(result1["ok"])
-
-        # Try to create with v2 (same base ID)
-        result2 = self.catalog.create_item(
-            title="Same Paper v2",
-            arxiv="1803.12345v2"
-        )
-        self.assertFalse(result2["ok"])
-        self.assertEqual(result2["error"]["code"], "IDENTITY_CONFLICT")
-
-    def test_same_title_different_doi_warning(self):
-        """AT-13: Same title, different DOI should warn but not merge."""
-        # Create first item
-        result1 = self.catalog.create_item(
-            title="Deep Learning Survey",
-            doi="10.1234/aaa"
-        )
-        self.assertTrue(result1["ok"])
-
-        # Create with same title but different DOI
-        result2 = self.catalog.create_item(
-            title="Deep Learning Survey",  # Same title
-            doi="10.1234/bbb"  # Different DOI
-        )
-        self.assertTrue(result2["ok"])  # Should succeed
-        self.assertIn("warnings", result2)
-        self.assertTrue(len(result2["warnings"]) > 0)  # But with warning
-
-    def test_create_unverified_no_metadata(self):
-        """AT-14: Failed metadata fetch should still save with unverified status."""
-        result = self.catalog.create_item(
-            title="Paper with Unknown Details",
-            # No DOI, no arXiv, minimal info
-        )
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["item"]["identity_status"], "unverified")
-        self.assertIsNone(result["item"]["year"])
-        self.assertEqual(result["item"]["venue"], "")
-
-    def test_update_item_preserves_id(self):
-        """AT-15: Updating item should preserve ID and metadata."""
-        # Create item
-        result = self.catalog.create_item(
-            title="Original Title",
-            tags=["machine-learning"]
-        )
-        self.assertTrue(result["ok"])
-        original_id = result["item"]["id"]
-        original_created = result["item"]["created_at"]
-
-        # Update item
-        update_result = self.catalog.update_item(
-            original_id,
-            {"reading_status": "read", "tags": ["machine-learning", "nlp"]}
-        )
-        self.assertTrue(update_result["ok"])
-        self.assertEqual(update_result["item"]["id"], original_id)
-        self.assertEqual(update_result["item"]["created_at"], original_created)
-        self.assertEqual(update_result["item"]["reading_status"], "read")
-        self.assertEqual(len(update_result["item"]["tags"]), 2)
-
-    def test_revision_conflict_detection(self):
-        """AT-01: Concurrent modification should trigger revision conflict."""
-        # Create initial item
-        result = self.catalog.create_item(title="Test Paper")
-        self.assertTrue(result["ok"])
-        revision1 = result["revision"]
-
-        # Modify catalog
-        result2 = self.catalog.create_item(title="Another Paper")
-        self.assertTrue(result2["ok"])
-        revision2 = result2["revision"]
-        self.assertNotEqual(revision1, revision2)
-
-        # Try to create with old revision
+    def test_manual_clear_protection_and_per_item_conflict(self):
+        a = self.collect(title="Human", authors=["Human"], year=2026)
+        self.collect("10.1234/other")
+        a = self.catalog.update_item(a["item_id"], {"title": "Edited", "authors": [], "year": None}, expected_item_revision=a["item_revision"])
+        before = a["item_revision"]
+        ref = source_ref("record", "records/day.md", "v1", summary="evidence")
+        self.catalog.upsert("10.1234/test", title="Model", authors=["Robot"], year=2025, source_refs=[ref])
+        item = self.item(a)
+        self.assertEqual((item["title"], item["authors"], item["year"]), ("Edited", [], None))
         with self.assertRaises(RevisionConflictError):
-            self.catalog.create_item(
-                title="Third Paper",
-                expected_revision=revision1  # Old revision
-            )
+            self.catalog.update_item(a["item_id"], {"title": "stale"}, expected_item_revision=before)
+        with self.assertRaises(RevisionConflictError):
+            self.catalog.remove_item(a["item_id"], expected_item_revision=before)
+        for key, value in (("id", "hack"), ("source_refs", []), ("archived", True), ("reading_status", "read")):
+            with self.assertRaises(LiteratureCatalogError):
+                self.catalog.update_item(a["item_id"], {key: value}, expected_item_revision=item_revision(item))
 
-    def test_list_items_filtering(self):
-        """List should support filtering by status and archived."""
-        # Create multiple items
-        self.catalog.create_item(title="Paper 1", tags=["a"])
-        result2 = self.catalog.create_item(title="Paper 2", tags=["b"])
-        self.catalog.update_item(result2["item"]["id"], {"reading_status": "read"})
+    def test_edit_address_preserves_auxiliary_and_rejects_identity_change(self):
+        a = self.collect("https://example.com/one", doi="10.1234/test")
+        self.collect("https://example.com/two", doi="10.1234/test")
+        item = self.item(a)
+        changed = self.catalog.update_item(a["item_id"], {"locator": "https://example.com/new"}, expected_item_revision=item_revision(item))
+        self.assertEqual([u["url"] for u in changed["item"]["urls"]], ["https://example.com/new", "https://example.com/two"])
+        with self.assertRaises(LiteratureCatalogError):
+            self.catalog.update_item(a["item_id"], {"locator": "10.1234/another"}, expected_item_revision=changed["item_revision"])
 
-        # List all
-        all_items = self.catalog.list_items()
-        self.assertEqual(all_items["count"], 2)
+    def test_remove_restore_and_late_automatic_result(self):
+        source = Path(self.project["source_root"]) / "paper.pdf"
+        source.write_bytes(b"%PDF-test")
+        note = Path(self.project["wiki_root"]) / "note.md"
+        note.write_text('---\npaper_file: paper.pdf\n---\nHuman note', encoding="utf-8")
+        a = self.collect(paper_file="paper.pdf", reading_note_paths=["note.md"])
+        hashes = (source.read_bytes(), note.read_bytes())
+        self.catalog.remove_item(a["item_id"], expected_item_revision=a["item_revision"])
+        self.assertEqual(self.catalog._load_catalog()["dismissed_candidates"][0]["item"]["id"], a["item_id"])
+        self.assertEqual(self.catalog.remove_item(a["item_id"], expected_item_revision=a["item_revision"])["action"], "unchanged")
+        self.assertEqual(self.catalog.upsert("10.1234/test")["reason"], "dismissed")
+        b = self.collect()
+        self.assertEqual((b["action"], b["item_id"]), ("restored", a["item_id"]))
+        self.assertEqual(len(self.item(b)["attachments"]), 1)
+        self.assertEqual((source.read_bytes(), note.read_bytes()), hashes)
 
-        # List only read
-        read_items = self.catalog.list_items(status="read")
-        self.assertEqual(read_items["count"], 1)
-        self.assertEqual(read_items["items"][0]["title"], "Paper 2")
+    def test_paths_bindings_and_request_boundary(self):
+        for path in ("../secret.pdf", "C:/other/paper.pdf", "/outside.pdf", "x:stream"):
+            with self.assertRaises(LiteratureCatalogError):
+                self.collect(paper_file=path)
+        source = Path(self.project["source_root"]) / "p.pdf"
+        source.write_bytes(b"pdf")
+        wiki = Path(self.project["wiki_root"])
+        (wiki / "note.md").write_text('---\npaper_file: other/p.pdf\n---\nNote', encoding="utf-8")
+        with self.assertRaises(LiteratureCatalogError):
+            self.collect(paper_file="p.pdf", reading_note_paths=["note.md"])
+        for project in ("", "alpha", self.project["source_root"]):
+            with self.assertRaises(LiteratureCatalogError):
+                literature_collect(project, "10.1234/a", "a" * 32, home=self.home)
+        for request in ("../x", "A" * 32, "1"):
+            with self.assertRaises(LiteratureCatalogError):
+                literature_collect(self.pid, "10.1234/a", request, home=self.home)
+        for fields in ({"authors": "Alice"}, {"year": True}, {"year": 99}, {"title": ""}, {"title": "a" * 1001}, {"source": {"summary": "x" * 1001}}):
+            with self.assertRaises(LiteratureCatalogError):
+                self.collect(**fields)
 
-        # List unread
-        unread_items = self.catalog.list_items(status="unread")
-        self.assertEqual(unread_items["count"], 1)
+    def test_limit_preserves_existing_sources_and_reports_unsaved(self):
+        a = self.collect()
+        data = self.catalog._load_catalog()
+        data["items"][0]["source_refs"] = [source_ref("manual", f"manual:{i}", str(i)) for i in range(100)]
+        self.catalog._save_catalog(data)
+        original = copy.deepcopy(data["items"][0]["source_refs"])
+        result = self.collect()
+        self.assertEqual(result["warnings"][0]["code"], "limit_reached")
+        self.assertEqual(self.item(a)["source_refs"], original)
+        self.assertEqual(result["action"], "unchanged")
 
-    def test_remove_and_restore(self):
-        """AT-18: Remove should allow restore, dismissed items not auto-readded."""
-        # Create item
-        result = self.catalog.create_item(title="Paper to Remove")
-        item_id = result["item"]["id"]
+    def test_all_material_caps_preserve_existing_and_reject_oversized_file(self):
+        a = self.collect()
+        data = self.catalog._load_catalog()
+        item = data["items"][0]
+        item["urls"] = [{"url": f"https://example.com/{i}"} for i in range(20)]
+        item["attachments"] = [{"path": f"old-{i}.pdf"} for i in range(20)]
+        item["reading_note_paths"] = [f"old-{i}.md" for i in range(20)]
+        self.catalog._save_catalog(data)
+        before = copy.deepcopy(item)
+        result = self.catalog.upsert("https://example.com/new", doi="10.1234/test", attachments=[{"path": "new.pdf"}], reading_note_paths=["new.md"])
+        self.assertEqual({w["field"] for w in result["warnings"]}, {"urls", "attachments", "reading_note_paths"})
+        current = self.item(a)
+        for key in ("urls", "attachments", "reading_note_paths"):
+            self.assertEqual(current[key], before[key])
+        oversized = Path(self.project["source_root"]) / "large.pdf"
+        with oversized.open("wb") as stream:
+            stream.truncate(50 * 1024 * 1024 + 1)
+        with self.assertRaises(LiteratureCatalogError):
+            self.collect(paper_file="large.pdf")
+        with patch.object(Path, "is_symlink", return_value=True):
+            with self.assertRaises(LiteratureCatalogError):
+                safe_path(self.project["source_root"], "linked.pdf")
 
-        # Remove item
-        remove_result = self.catalog.remove_item(item_id)
-        self.assertTrue(remove_result["ok"])
+    def test_two_processes_do_not_lose_items(self):
+        context = multiprocessing.get_context("spawn")
+        queue = context.Queue()
+        workers = [context.Process(target=_writer, args=(self.home, self.pid, i, queue)) for i in (1, 2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(20)
+            self.assertEqual(worker.exitcode, 0)
+        for _ in workers:
+            result = queue.get(timeout=2)
+            self.assertIs(result, True, result)
+        self.assertEqual(self.catalog.list_items()["count"], 10)
+        self.assertFalse(list(self.catalog.literature_dir.glob("*.tmp")))
 
-        # Should not be in main list
-        items = self.catalog.list_items()
-        self.assertEqual(items["count"], 0)
+    def test_lock_initialization_never_writes_into_locked_byte(self):
+        lock = self.catalog.literature_dir / ".empty-lock"
+        with short_lock(lock):
+            self.assertEqual(lock.stat().st_size, 0)
+            with self.assertRaises(LiteratureCatalogError) as ctx:
+                with short_lock(lock, timeout=.025):
+                    pass
+            self.assertEqual(ctx.exception.code, "LOCK_TIMEOUT")
+        self.assertEqual(lock.stat().st_size, 0)
 
-        # Restore item
-        restore_result = self.catalog.restore_item(item_id)
-        self.assertTrue(restore_result["ok"])
+    @unittest.skipUnless(__import__("os").name == "nt", "Windows path spelling regression")
+    def test_windows_extended_prefix_not_false_escape(self):
+        original = Path.resolve
+        target = Path(self.project["wiki_root"]) / ".literature" / "catalog.json"
+        def extended(path, *args, **kwargs):
+            value = original(path, *args, **kwargs)
+            return Path("\\\\?\\" + str(value)) if path == target else value
+        with patch.object(Path, "resolve", extended):
+            self.assertEqual(safe_path(self.project["wiki_root"], ".literature/catalog.json"), target)
+        for value in ("\nhttps://example.com", "https://example.com\t", "\x00doi:10.1234/a"):
+            with self.assertRaises(LiteratureCatalogError):
+                parse_locator(value)
 
-        # Should be back in list
-        items = self.catalog.list_items()
-        self.assertEqual(items["count"], 1)
+    def test_lock_timeout_bounded(self):
+        lock = self.catalog.literature_dir / ".lock"
+        with short_lock(lock):
+            start = time.monotonic()
+            with self.assertRaises(LiteratureCatalogError) as ctx:
+                with short_lock(lock, timeout=.05):
+                    pass
+            self.assertEqual(ctx.exception.code, "LOCK_TIMEOUT")
+            self.assertLess(time.monotonic() - start, .5)
 
-    def test_save_history(self):
-        """Catalog updates should save history."""
-        # Create first item (no history yet, as file didn't exist)
-        self.catalog.create_item(title="Paper 1")
-
-        # Create second item (now history should be saved)
-        self.catalog.create_item(title="Paper 2")
-
-        # History should be saved
-        history_files = list(self.catalog.history_dir.glob("catalog_*.json"))
-        self.assertTrue(len(history_files) > 0)
-
-
-class TestLITF1Fixture(unittest.TestCase):
-    """Test LIT-F1 fixture scenarios from spec 13.1."""
-
-    def setUp(self):
-        """Set up catalog with LIT-F1 scenarios."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.wiki_root = Path(self.temp_dir.name)
-        self.catalog = LiteratureCatalog(str(self.wiki_root))
-
-    def tearDown(self):
-        """Clean up."""
-        self.temp_dir.cleanup()
-
-    def test_same_doi_different_case(self):
-        """Same DOI with different case should merge."""
-        r1 = self.catalog.create_item(
-            title="Paper A",
-            doi="10.1234/test",
-            urls=[{"id": "u1", "url": "https://example.com/a", "kind": "publisher", "label": "A"}]
-        )
-        self.assertTrue(r1["ok"])
-
-        r2 = self.catalog.create_item(
-            title="Paper A",
-            doi="10.1234/TEST",  # Different case
-            urls=[{"id": "u2", "url": "https://example.com/b", "kind": "publisher", "label": "B"}]
-        )
-        self.assertFalse(r2["ok"])
-        self.assertEqual(r2["error"]["code"], "IDENTITY_CONFLICT")
-
-    def test_same_arxiv_different_versions(self):
-        """Same arXiv base ID with v1/v2 should merge."""
-        r1 = self.catalog.create_item(
-            title="arXiv Paper",
-            arxiv="1803.12345v1"
-        )
-        self.assertTrue(r1["ok"])
-
-        r2 = self.catalog.create_item(
-            title="arXiv Paper Updated",
-            arxiv="1803.12345v2"
-        )
-        self.assertFalse(r2["ok"])
-        self.assertEqual(r2["error"]["code"], "IDENTITY_CONFLICT")
-
-    def test_same_title_different_doi(self):
-        """Same title, different DOI should NOT auto-merge (warning only)."""
-        r1 = self.catalog.create_item(
-            title="Survey of Deep Learning",
-            doi="10.1234/aaa"
-        )
-        self.assertTrue(r1["ok"])
-
-        r2 = self.catalog.create_item(
-            title="Survey of Deep Learning",
-            doi="10.1234/bbb"
-        )
-        self.assertTrue(r2["ok"])  # Should succeed
-        self.assertTrue(len(r2.get("warnings", [])) > 0)  # But warn
-
-
-def run_tests():
-    """Run all tests."""
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-
-    suite.addTests(loader.loadTestsFromTestCase(TestNormalization))
-    suite.addTests(loader.loadTestsFromTestCase(TestValidation))
-    suite.addTests(loader.loadTestsFromTestCase(TestIdentityConflict))
-    suite.addTests(loader.loadTestsFromTestCase(TestCatalogOperations))
-    suite.addTests(loader.loadTestsFromTestCase(TestLITF1Fixture))
-
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-
-    return 0 if result.wasSuccessful() else 1
+    def test_no_network_discovery_or_subprocess(self):
+        with patch("socket.create_connection", side_effect=AssertionError("network")), patch("subprocess.Popen", side_effect=AssertionError("process")), patch.object(Path, "rglob", side_effect=AssertionError("scan")):
+            self.collect()
+            self.catalog.list_items(limit=50)
 
 
 if __name__ == "__main__":
-    sys.exit(run_tests())
+    unittest.main()

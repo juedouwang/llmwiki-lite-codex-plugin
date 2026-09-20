@@ -87,8 +87,8 @@
         // Add click handler
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const clickY = e.clientY - rect.top;
+            const clickX = (e.clientX - rect.left) * canvas.width / rect.width;
+            const clickY = (e.clientY - rect.top) * canvas.height / rect.height;
 
             commits.forEach((commit, idx) => {
                 const y = idx * ROW_HEIGHT + 20;

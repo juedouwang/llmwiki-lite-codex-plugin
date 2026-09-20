@@ -1,0 +1,252 @@
+<div id="research-git-workbench" aria-label="科研工作台：可视化代码管理">
+<style>
+#research-git-workbench{--rg-paper:light-dark(#fff,#212121);--rg-side:light-dark(#f8f8f7,#191919);--rg-ink:light-dark(#242424,#ededeb);--rg-sub:light-dark(#747471,#a7a7a2);--rg-line:light-dark(#e9e9e6,#383836);--rg-hover:light-dark(#f4f4f2,#2d2d2a);--rg-select:light-dark(#ededea,#353531);--rg-solid:light-dark(#282827,#e5e5df);--rg-on-solid:light-dark(#fff,#222220);--rg-purple:light-dark(#8974ac,#b49ad8);--rg-purple-soft:light-dark(#f1edf6,#332d3f);--rg-green:light-dark(#377857,#87bca0);--rg-red:light-dark(#a25050,#d99b9b);--rg-add:light-dark(#edf5ef,#283b2e);--rg-del:light-dark(#faeeee,#402d2d);color:var(--rg-ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;width:100%;text-align:left}
+#research-git-workbench *{box-sizing:border-box}
+#research-git-workbench button,#research-git-workbench input,#research-git-workbench textarea,#research-git-workbench select{font:inherit;color:inherit}
+#research-git-workbench button{border:0;background:none;text-align:left}
+#research-git-workbench button:disabled{opacity:.45}
+#research-git-workbench svg.lucide{width:16px;height:16px;flex-shrink:0;stroke-width:1.65}
+#research-git-workbench .rg-app{display:grid;grid-template-columns:158px minmax(0,1fr);min-height:654px;border:1px solid var(--rg-line);border-radius:12px;overflow:clip;background:var(--rg-paper);position:relative}
+#research-git-workbench .rg-side{background:var(--rg-side);border-right:1px solid var(--rg-line);padding:23px 12px 15px;display:flex;flex-direction:column;gap:26px}
+#research-git-workbench .rg-brand{display:flex;align-items:center;gap:9px;padding:0 8px;font-size:14px;font-weight:600;letter-spacing:.3px}
+#research-git-workbench .rg-project{padding:0 8px;color:var(--rg-sub);font-size:12px}
+#research-git-workbench .rg-project b{display:block;color:var(--rg-ink);font-size:13px;font-weight:500;margin-top:5px}
+#research-git-workbench .rg-nav{display:grid;gap:5px;margin-top:15px}
+#research-git-workbench .rg-nav-item{display:flex;align-items:center;gap:10px;padding:9px 11px;color:var(--rg-sub);font-size:13px;border-radius:7px}
+#research-git-workbench .rg-nav-item.rg-active{background:var(--rg-select);color:var(--rg-ink);font-weight:500}
+#research-git-workbench .rg-profile{margin-top:auto;padding:6px 8px 0;display:flex;gap:9px;align-items:center;font-size:12px;color:var(--rg-sub)}
+#research-git-workbench .rg-avatar{width:26px;height:26px;border-radius:50%;background:var(--rg-select);display:grid;place-items:center;color:var(--rg-ink);font-size:11px}
+#research-git-workbench .rg-main{min-width:0;display:flex;flex-direction:column}
+#research-git-workbench .rg-header{padding:22px 25px 0}
+#research-git-workbench .rg-breadcrumb{display:flex;align-items:center;gap:8px;color:var(--rg-sub);font-size:12px;flex-wrap:wrap}
+#research-git-workbench .rg-breadcrumb strong{color:var(--rg-ink);font-weight:500}
+#research-git-workbench .rg-demo{margin-left:auto;font-size:11px;letter-spacing:.3px}
+#research-git-workbench .rg-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:20px 0 18px}
+#research-git-workbench .rg-button{display:inline-flex;gap:7px;align-items:center;justify-content:center;padding:7px 10px;border-radius:7px;min-height:34px;font-size:12px;line-height:1.5;white-space:normal}
+#research-git-workbench .rg-button:hover{background:var(--rg-hover)}
+#research-git-workbench .rg-button.rg-outline{border:1px solid var(--rg-line);background:var(--rg-paper)}
+#research-git-workbench .rg-button.rg-primary{background:var(--rg-solid);color:var(--rg-on-solid)}
+#research-git-workbench .rg-button.rg-primary:hover{filter:brightness(.9)}
+#research-git-workbench .rg-spacer{flex:1}
+#research-git-workbench .rg-counter{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 4px;border-radius:4px;background:var(--rg-select);font-size:11px}
+#research-git-workbench .rg-changes{margin:0 25px;display:flex;gap:12px;align-items:center;padding:15px 0;border-top:1px solid var(--rg-line);border-bottom:1px solid var(--rg-line)}
+#research-git-workbench .rg-change-icon{color:var(--rg-sub);display:flex}
+#research-git-workbench .rg-change-text{flex:1;min-width:0;font-size:13px}
+#research-git-workbench .rg-change-text small{display:block;color:var(--rg-sub);font-size:11px;margin-top:2px}
+#research-git-workbench .rg-workspace{display:grid;grid-template-columns:minmax(0,1fr) 286px;flex:1;margin-top:22px;min-width:0}
+#research-git-workbench .rg-workspace.rg-no-detail{grid-template-columns:minmax(0,1fr)}
+#research-git-workbench .rg-history{min-width:0;padding:0 14px 12px 19px}
+#research-git-workbench .rg-section-header{display:flex;align-items:center;gap:10px;padding:0 7px 17px;font-size:13px;font-weight:500}
+#research-git-workbench .rg-section-header span:last-child{margin-left:auto;font-size:11px;color:var(--rg-sub);font-weight:400}
+#research-git-workbench .rg-list{position:relative;min-width:0}
+#research-git-workbench .rg-graph{position:absolute;top:0;left:4px;width:66px;pointer-events:none;z-index:2;overflow:visible}
+#research-git-workbench .rg-commit{display:flex;align-items:center;width:100%;height:68px;padding:7px 9px 7px 77px;border-radius:7px;position:relative;gap:9px}
+#research-git-workbench .rg-commit:hover{background:var(--rg-hover)}
+#research-git-workbench .rg-commit[aria-pressed="true"]{background:var(--rg-select)}
+#research-git-workbench .rg-commit-copy{min-width:0;flex:1}
+#research-git-workbench .rg-commit-title{font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#research-git-workbench .rg-commit-meta{margin-top:5px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--rg-sub)}
+#research-git-workbench .rg-hash{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;letter-spacing:.2px}
+#research-git-workbench .rg-tag{font-size:10px;line-height:17px;padding:0 5px;border-radius:4px;color:var(--rg-ink);background:var(--rg-paper);display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow-wrap:anywhere}
+#research-git-workbench .rg-tag.rg-experiment{color:var(--rg-purple);background:var(--rg-purple-soft)}
+#research-git-workbench .rg-tag.rg-remote{color:var(--rg-sub);background:none;padding-left:0}
+#research-git-workbench .rg-commit-time{font-size:11px;color:var(--rg-sub);white-space:nowrap;align-self:flex-start;margin-top:5px}
+#research-git-workbench .rg-details{border-left:1px solid var(--rg-line);padding:0 19px 18px;min-width:0;display:flex;flex-direction:column}
+#research-git-workbench .rg-detail-heading{display:flex;align-items:center;justify-content:space-between;color:var(--rg-sub);font-size:11px;margin-bottom:15px}
+#research-git-workbench .rg-icon-button{display:grid;place-items:center;min-width:27px;min-height:27px;border-radius:5px;padding:4px}
+#research-git-workbench .rg-icon-button:hover{background:var(--rg-hover)}
+#research-git-workbench .rg-version-title{font-size:15px;font-weight:500;line-height:1.6;margin:0 0 5px;overflow-wrap:anywhere}
+#research-git-workbench .rg-version-meta{font-size:11px;color:var(--rg-sub);display:flex;gap:7px;flex-wrap:wrap}
+#research-git-workbench .rg-files-label{font-size:11px;color:var(--rg-sub);margin:24px 0 7px;display:flex;justify-content:space-between}
+#research-git-workbench .rg-file-button{width:100%;display:flex;align-items:center;gap:7px;border-radius:5px;padding:7px 6px;font-size:11px;margin-bottom:2px}
+#research-git-workbench .rg-file-button span:first-of-type{min-width:0;overflow-wrap:anywhere;flex:1}
+#research-git-workbench .rg-file-button[aria-pressed="true"]{background:var(--rg-hover)}
+#research-git-workbench .rg-added{color:var(--rg-green);font-size:11px;white-space:nowrap}
+#research-git-workbench .rg-removed{color:var(--rg-red);font-size:11px;white-space:nowrap}
+#research-git-workbench .rg-diff{margin:10px 0 20px;padding:10px 0;background:var(--rg-side);border-radius:6px;font:11px/1.9 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere;white-space:pre-wrap}
+#research-git-workbench .rg-code-line{display:block;padding:0 8px}
+#research-git-workbench .rg-code-add{background:var(--rg-add);color:var(--rg-green)}
+#research-git-workbench .rg-code-del{background:var(--rg-del);color:var(--rg-red)}
+#research-git-workbench .rg-detail-actions{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:6px;align-items:stretch}
+#research-git-workbench .rg-detail-actions .rg-button{justify-content:flex-start;font-size:12px}
+#research-git-workbench .rg-footer{padding:13px 25px;border-top:1px solid var(--rg-line);display:flex;gap:10px;align-items:center;min-height:44px;font-size:11px;color:var(--rg-sub)}
+#research-git-workbench .rg-footer .rg-footer-demo{margin-left:auto;white-space:nowrap}
+#research-git-workbench .rg-status{min-width:0;overflow-wrap:anywhere}
+#research-git-workbench .rg-overlay{position:absolute;inset:0;z-index:20;background:light-dark(#22222238,#00000070);padding:80px 18px 28px;display:flex;align-items:flex-start;justify-content:center}
+#research-git-workbench .rg-dialog{background:var(--rg-paper);width:440px;max-width:100%;border:1px solid var(--rg-line);border-radius:12px;padding:23px;box-shadow:0 16px 50px light-dark(#0000001a,#00000050)}
+#research-git-workbench .rg-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+#research-git-workbench .rg-dialog h2{font:500 17px/1.5 inherit;font-size:17px;font-weight:500;margin:0}
+#research-git-workbench .rg-dialog p{font-size:12px;color:var(--rg-sub);line-height:1.75;margin:8px 0 16px}
+#research-git-workbench .rg-dialog label{font-size:12px;display:block;margin:16px 0 6px}
+#research-git-workbench .rg-input{width:100%;background:var(--rg-paper);border:1px solid var(--rg-line);padding:9px 10px;border-radius:6px;min-height:38px;font-size:13px;resize:vertical}
+#research-git-workbench .rg-check-row{display:flex!important;align-items:center;gap:9px;padding:11px 0;margin:0!important;border-bottom:1px solid var(--rg-line);font-size:12px!important}
+#research-git-workbench .rg-check-row input{accent-color:var(--rg-solid);width:15px;height:15px;flex-shrink:0}
+#research-git-workbench .rg-check-row span{flex:1;min-width:0;overflow-wrap:anywhere}
+#research-git-workbench .rg-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:23px;flex-wrap:wrap}
+#research-git-workbench .rg-summary{border-top:1px solid var(--rg-line);border-bottom:1px solid var(--rg-line);padding:13px 0;font-size:12px;display:grid;gap:8px}
+#research-git-workbench .rg-summary div{display:flex;justify-content:space-between;gap:12px;overflow-wrap:anywhere}
+#research-git-workbench .rg-summary span{color:var(--rg-sub)}
+#research-git-workbench .rg-summary b{font-weight:500;text-align:right;min-width:0}
+#research-git-workbench .rg-error{color:var(--rg-red);font-size:12px;margin-top:10px}
+#research-git-workbench .rg-branch-option{width:100%;display:flex;gap:10px;padding:12px 9px;border-radius:6px;align-items:center;font-size:13px;overflow-wrap:anywhere}
+#research-git-workbench .rg-branch-option:hover{background:var(--rg-hover)}
+#research-git-workbench .rg-branch-option small{margin-left:auto;color:var(--rg-sub);font-size:11px;white-space:nowrap}
+#research-git-workbench [hidden]{display:none!important}
+#research-git-workbench[data-detail="bottom"] .rg-workspace{grid-template-columns:minmax(0,1fr)}
+#research-git-workbench[data-detail="bottom"] .rg-details{border-left:0;border-top:1px solid var(--rg-line);margin:0 25px;padding:18px 0}
+#research-git-workbench[data-density="compact"] .rg-commit{height:58px}
+@media(max-width:900px){#research-git-workbench .rg-app{grid-template-columns:136px minmax(0,1fr)}#research-git-workbench .rg-side{padding-left:8px;padding-right:8px}#research-git-workbench .rg-workspace{grid-template-columns:minmax(0,1fr) 244px}#research-git-workbench .rg-header{padding-left:20px;padding-right:20px}#research-git-workbench .rg-changes{margin-left:20px;margin-right:20px}#research-git-workbench .rg-commit-time{display:none}#research-git-workbench .rg-history{padding-left:10px;padding-right:10px}#research-git-workbench .rg-details{padding-left:14px;padding-right:14px}}
+@media(max-width:735px){#research-git-workbench .rg-app{grid-template-columns:minmax(0,1fr)}#research-git-workbench .rg-side{display:none}#research-git-workbench .rg-workspace{grid-template-columns:minmax(0,1fr) 256px}#research-git-workbench .rg-commit-time{display:block}}
+@media(max-width:580px){#research-git-workbench .rg-workspace{grid-template-columns:minmax(0,1fr)}#research-git-workbench .rg-details{border-left:0;border-top:1px solid var(--rg-line);margin:0 18px;padding:18px 0}#research-git-workbench .rg-detail-actions{flex-direction:row;flex-wrap:wrap}#research-git-workbench .rg-changes{gap:8px}#research-git-workbench .rg-change-icon{display:none}#research-git-workbench .rg-header{padding:18px 16px 0}#research-git-workbench .rg-toolbar{gap:3px}#research-git-workbench .rg-toolbar .rg-spacer{flex:1;min-width:3px}#research-git-workbench .rg-button{padding:7px 8px}#research-git-workbench .rg-changes{margin-left:16px;margin-right:16px}#research-git-workbench .rg-history{padding:0 13px 18px 9px}#research-git-workbench .rg-footer{padding:12px 16px;flex-wrap:wrap}#research-git-workbench .rg-footer-demo{display:none}#research-git-workbench .rg-overlay{padding:60px 9px 20px}#research-git-workbench .rg-dialog{padding:18px}#research-git-workbench .rg-commit-title{font-size:12px}}
+@media(pointer:coarse){#research-git-workbench .rg-button,#research-git-workbench .rg-icon-button,#research-git-workbench .rg-file-button{min-height:44px}#research-git-workbench .rg-icon-button{min-width:44px}#research-git-workbench .rg-input{font-size:16px}}
+@media(prefers-reduced-motion:no-preference){#research-git-workbench .rg-button,#research-git-workbench .rg-commit,#research-git-workbench .rg-file-button{transition:background-color .15s ease}}
+</style>
+<div class="rg-app">
+  <aside class="rg-side">
+    <div class="rg-brand"><i data-lucide="panels-top-left" aria-hidden="true"></i>科研工作台</div>
+    <div>
+      <div class="rg-project">当前项目<b>电缆表面检测</b></div>
+      <nav class="rg-nav" aria-label="项目导航（布局示意）">
+        <div class="rg-nav-item"><i data-lucide="chart-no-axes-gantt" aria-hidden="true"></i>科研进度</div>
+        <div class="rg-nav-item"><i data-lucide="notebook-pen" aria-hidden="true"></i>科研记录</div>
+        <div class="rg-nav-item"><i data-lucide="file-text" aria-hidden="true"></i>日报与周报</div>
+        <div class="rg-nav-item"><i data-lucide="book-open" aria-hidden="true"></i>知识库</div>
+        <div class="rg-nav-item"><i data-lucide="library" aria-hidden="true"></i>文献</div>
+        <div class="rg-nav-item rg-active" aria-current="page"><i data-lucide="git-branch" aria-hidden="true"></i>代码</div>
+      </nav>
+    </div>
+    <div class="rg-profile"><span class="rg-avatar">刘</span>刘亚宁</div>
+  </aside>
+  <main class="rg-main">
+    <header class="rg-header">
+      <div class="rg-breadcrumb">电缆表面检测<span>/</span><strong>代码</strong><span class="rg-demo">交互示意</span></div>
+      <div class="rg-toolbar">
+        <button type="button" class="rg-button rg-outline cursor-interaction" data-action="branches" aria-label="切换或新建分支"><i data-lucide="git-branch" aria-hidden="true"></i><span id="rg-branch-label">main</span><i data-lucide="chevron-down" aria-hidden="true"></i></button>
+        <button type="button" class="rg-button cursor-interaction" data-action="merge"><i data-lucide="git-merge" aria-hidden="true"></i>合并</button>
+        <span class="rg-spacer"></span>
+        <button type="button" class="rg-button cursor-interaction" data-action="pull"><i data-lucide="arrow-down" aria-hidden="true"></i>拉取</button>
+        <button type="button" class="rg-button cursor-interaction" data-action="push"><i data-lucide="arrow-up" aria-hidden="true"></i>上传<span class="rg-counter" id="rg-push-count">2</span></button>
+      </div>
+    </header>
+    <section class="rg-changes" aria-label="工作区修改">
+      <span class="rg-change-icon"><i data-lucide="files" aria-hidden="true"></i></span>
+      <div class="rg-change-text" id="rg-change-text">3 个文件有改动<small>尚未保存为版本</small></div>
+      <button type="button" class="rg-button rg-primary cursor-interaction" data-action="save" id="rg-save-button">查看并保存</button>
+    </section>
+    <div class="rg-workspace" id="rg-workspace">
+      <section class="rg-history" aria-label="分支与版本记录">
+        <div class="rg-section-header">版本记录<span>全部分支</span></div>
+        <div class="rg-list" id="rg-list"></div>
+      </section>
+      <aside class="rg-details" id="rg-details" aria-label="所选版本详情"></aside>
+    </div>
+    <footer class="rg-footer"><span class="rg-status" id="rg-status" role="status" aria-live="polite">main · 2 个本地版本待上传</span><span class="rg-footer-demo">演示数据 · 未连接仓库</span></footer>
+  </main>
+  <div id="rg-overlay" class="rg-overlay" hidden></div>
+</div>
+<script>
+(function(){
+'use strict';
+const root=document.getElementById('research-git-workbench');
+const $=s=>root.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon=n=>'<i data-lucide="'+n+'" aria-hidden="true"></i>';
+const file=(path,add,del,lines)=>({path,add,del,lines});
+const camera=file('configs/camera.yaml',2,2,['  camera:','-   exposure_ms: 6.0','+   exposure_ms: 8.0','-   auto_exposure: true','+   auto_exposure: false','    fps: 30']);
+const capture=file('src/capture.py',8,3,['  def open_camera(config):','-   camera.set_auto(True)','+   camera.set_auto(False)','+   camera.set_exposure(','+       config.exposure_ms','+   )','    return camera']);
+const roi=file('src/tracking/roi_tracker.py',18,6,['  def track(frame, roi):','-   points = detect(frame)','+   crop = frame[roi]','+   points = detect(crop)','+   points = stabilize(points)','    return points']);
+const note=file('notes/experiment.md',12,0,['+ ## 低纹理区域跟踪','+ 调整 ROI 与曝光参数。','+ 记录弱纹理区域的跟踪结果。','+ 下一步：对比反光区域表现。']);
+let commits=[
+{id:'b73a19d',lane:0,title:'完善缺陷结果导出',parents:['92af684'],time:'18:20',files:[file('src/export.py',24,5,['  def export(results):','-   save(results)','+   save_csv(results)','+   save_preview(results)'])]},
+{id:'c42e801',lane:1,title:'验证低纹理区域跟踪',parents:['63cb1a2'],time:'17:35',files:[roi,note]},
+{id:'92af684',lane:0,title:'修正标定参数读取',parents:['a8f21c9'],time:'16:42',files:[camera,capture]},
+{id:'63cb1a2',lane:1,title:'加入 ROI 稳定性实验',parents:['a8f21c9'],time:'15:10',files:[roi]},
+{id:'a8f21c9',lane:0,title:'完成相机采集与标定',parents:['f17c403'],time:'昨天',files:[camera,capture]},
+{id:'f17c403',lane:0,title:'建立缺陷检测基线',parents:[],time:'周四',files:[file('README.md',16,0,['+ # 电缆表面缺陷检测','+ 相机采集 → 标定 → 缺陷检测'])]}
+];
+const branches={main:'b73a19d','roi-experiment':'c42e801'};
+const remotes={main:'a8f21c9','roi-experiment':'c42e801'};
+let branch='main',selected='92af684',fileIndex=0,dirty=[roi,camera,note],serial=1,modalKind='',previousFocus=null,statusMessage='';
+const design={detailPlacement:'side',density:'comfortable'};
+const initial=window.openai&&window.openai.widgetState;
+function acceptState(s){const p=s&&s.privateContent;if(!p)return;if(p.detailPlacement==='side'||p.detailPlacement==='bottom')design.detailPlacement=p.detailPlacement;if(p.density==='compact'||p.density==='comfortable')design.density=p.density;if(commits.some(c=>c.id===p.selected))selected=p.selected;}
+acceptState(initial);
+function remember(action){if(window.openai&&typeof window.openai.setWidgetState==='function'){window.openai.setWidgetState({modelContent:{view:'科研工作台可视化 Git 管理示意',lastAction:action,selectedVersion:commits.find(c=>c.id===selected)?.title||null,detailPlacement:design.detailPlacement,density:design.density},privateContent:{selected,detailPlacement:design.detailPlacement,density:design.density}}).catch(()=>{});}}
+window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState;if(s){acceptState(s);render();}});
+function idsFrom(head){const seen=new Set();const visit=id=>{if(!id||seen.has(id))return;seen.add(id);const c=commits.find(x=>x.id===id);if(c)c.parents.forEach(visit);};visit(head);return seen;}
+function ahead(){const local=idsFrom(branches[branch]),remote=idsFrom(remotes[branch]);return [...local].filter(id=>!remote.has(id)).length;}
+function defaultStatus(){const n=ahead();return branch+' · '+(n?n+' 个本地版本待上传':'已与远程同步');}
+function setStatus(message){statusMessage=message;$('#rg-status').textContent=message;}
+function icons(){if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:16,height:16}});}
+function render(){
+root.dataset.detail=design.detailPlacement;root.dataset.density=design.density;
+$('#rg-branch-label').textContent=branch;$('#rg-push-count').textContent=ahead();$('#rg-push-count').hidden=!ahead();
+$('#rg-change-text').innerHTML=dirty.length?dirty.length+' 个文件有改动<small>尚未保存为版本</small>':'所有修改已保存<small>工作区干净，可以切换分支或合并</small>';
+$('#rg-save-button').hidden=!dirty.length;
+$('#rg-status').textContent=statusMessage||defaultStatus();
+const rowHeight=design.density==='compact'?58:68;
+const position=new Map(commits.map((c,i)=>[c.id,{x:c.lane?49:20,y:i*rowHeight+rowHeight/2}]));
+let paths='';
+commits.forEach(c=>{const a=position.get(c.id);c.parents.forEach(pid=>{const b=position.get(pid);if(!b)return;const color=c.lane?'var(--rg-purple)':'var(--rg-sub)';const d=a.x===b.x?'M '+a.x+' '+a.y+' L '+b.x+' '+b.y:'M '+a.x+' '+a.y+' C '+a.x+' '+(a.y+(b.y-a.y)*.66)+', '+b.x+' '+(a.y+(b.y-a.y)*.34)+', '+b.x+' '+b.y;paths+='<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="2"/>';});});
+let circles='';commits.forEach(c=>{const p=position.get(c.id),color=c.lane?'var(--rg-purple)':'var(--rg-ink)';if(c.id===selected)circles+='<circle cx="'+p.x+'" cy="'+p.y+'" r="9" fill="var(--rg-paper)" stroke="'+color+'" stroke-width="1"/>';circles+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4.5" fill="'+color+'" stroke="var(--rg-paper)" stroke-width="1.5"/>';});
+const rows=commits.map(c=>{let tags=Object.entries(branches).filter(([,head])=>head===c.id).map(([name])=>'<span class="rg-tag '+(name==='main'?'':'rg-experiment')+'">'+esc(name)+(name===branch?' · 当前':'')+'</span>').join('');if(remotes.main===c.id)tags+='<span class="rg-tag rg-remote">origin/main</span>';return '<button type="button" class="rg-commit cursor-interaction" data-commit="'+c.id+'" aria-pressed="'+(c.id===selected)+'" aria-label="查看版本：'+esc(c.title)+'"><span class="rg-commit-copy"><span class="rg-commit-title">'+esc(c.title)+'</span><span class="rg-commit-meta">'+tags+'<span class="rg-hash">'+c.id+'</span></span></span><span class="rg-commit-time">'+esc(c.time)+'</span></button>';}).join('');
+$('#rg-list').innerHTML='<svg class="rg-graph" width="66" height="'+commits.length*rowHeight+'" viewBox="0 0 66 '+commits.length*rowHeight+'" role="img" aria-label="提交关系：主线与 ROI 实验分支，共用相机采集与标定版本">'+paths+circles+'</svg>'+rows;
+const c=commits.find(x=>x.id===selected);$('#rg-details').hidden=!c;$('#rg-workspace').classList.toggle('rg-no-detail',!c);
+if(c){fileIndex=Math.min(fileIndex,c.files.length-1);const f=c.files[fileIndex];$('#rg-details').innerHTML='<div class="rg-detail-heading">版本详情<button type="button" class="rg-icon-button cursor-interaction" data-action="close-detail" aria-label="关闭版本详情">'+icon('x')+'</button></div><h2 class="rg-version-title">'+esc(c.title)+'</h2><div class="rg-version-meta"><span class="rg-hash">'+c.id+'</span><span>刘亚宁 · '+esc(c.time)+'</span></div><div class="rg-files-label"><span>改动文件</span><span>'+c.files.length+' 个</span></div>'+c.files.map((x,i)=>'<button type="button" class="rg-file-button cursor-interaction" data-file="'+i+'" aria-pressed="'+(i===fileIndex)+'">'+icon('file-code-2')+'<span>'+esc(x.path)+'</span><b class="rg-added">+'+x.add+'</b><b class="rg-removed">−'+x.del+'</b></button>').join('')+'<pre class="rg-diff" aria-label="'+esc(f.path)+' 的差异"><code>'+f.lines.map(line=>'<span class="rg-code-line '+(line.startsWith('+')?'rg-code-add':line.startsWith('-')?'rg-code-del':'')+'">'+esc(line)+'</span>').join('')+'</code></pre><div class="rg-detail-actions"><button type="button" class="rg-button cursor-interaction" data-action="create">'+icon('git-branch-plus')+'从此创建分支</button><button type="button" class="rg-button rg-outline cursor-interaction" data-action="restore">'+icon('rotate-ccw')+'恢复到此版本</button></div>';}
+icons();
+}
+function closeModal(){const overlay=$('#rg-overlay');overlay.hidden=true;overlay.innerHTML='';$('.rg-side').inert=false;$('.rg-main').inert=false;modalKind='';if(previousFocus?.isConnected)previousFocus.focus();}
+function modal(title,body,actionText,action){
+if($('#rg-overlay').hidden)previousFocus=document.activeElement;
+$('.rg-side').inert=true;$('.rg-main').inert=true;
+$('#rg-overlay').innerHTML='<section class="rg-dialog" role="dialog" aria-modal="true" aria-labelledby="rg-dialog-title"><div class="rg-dialog-head"><h2 id="rg-dialog-title">'+esc(title)+'</h2><button type="button" class="rg-icon-button cursor-interaction" data-action="cancel" aria-label="关闭">'+icon('x')+'</button></div>'+body+'<div id="rg-error" class="rg-error" role="alert"></div><div class="rg-dialog-actions"><button type="button" class="rg-button cursor-interaction" data-action="cancel">取消</button>'+(actionText?'<button type="button" class="rg-button rg-primary cursor-interaction" data-action="'+action+'">'+esc(actionText)+'</button>':'')+'</div></section>';
+$('#rg-overlay').hidden=false;icons();const focus=$('#rg-overlay input:not([type="checkbox"]),#rg-overlay textarea,#rg-overlay select')||$('#rg-overlay button');focus?.focus();
+}
+function guardClean(action){if(!dirty.length)return true;modalKind='blocked';modal('先保存当前修改','<p>还有 '+dirty.length+' 个文件未保存。'+esc(action)+'前先保存，避免把未完成的修改带到其他版本。</p><div class="rg-summary"><div><span>当前分支</span><b>'+esc(branch)+'</b></div><div><span>你的修改</span><b>保留，不会自动丢弃</b></div></div>','查看并保存','save');return false;}
+function openSave(){modalKind='save';modal('保存一个版本','<p>把这次修改留在本地。保存后可继续编辑，需要时再上传到 GitHub。</p>'+dirty.map((f,i)=>'<label class="rg-check-row"><input type="checkbox" value="'+i+'" checked data-save-file><span>'+esc(f.path)+'</span><b class="rg-added">+'+f.add+'</b><b class="rg-removed">−'+f.del+'</b></label>').join('')+'<label for="rg-commit-message">这次做了什么</label><textarea id="rg-commit-message" class="rg-input" rows="2" placeholder="例如：调整 ROI 跟踪参数并记录实验结果"></textarea>','保存到本地','confirm-save');}
+function newCommit(title,files,parents){const id='d'+(0x650000+serial++).toString(16);const head=commits.find(c=>c.id===branches[branch]);const c={id,lane:head?.lane||0,title,parents:parents||[branches[branch]],time:'刚刚',files:files.length?files:[note]};commits.unshift(c);branches[branch]=id;selected=id;fileIndex=0;return c;}
+function openRestore(){if(!guardClean('恢复代码'))return;const c=commits.find(x=>x.id===selected);if(!c)return;modalKind='restore';modal('恢复到这个版本','<p>让当前分支的代码恢复到所选版本，并生成一个新的恢复版本。原来的提交、分支和历史全部保留。</p><div class="rg-summary"><div><span>当前分支</span><b>'+esc(branch)+'</b></div><div><span>恢复目标</span><b>'+esc(c.title)+'</b></div><div><span>目标版本</span><b class="rg-hash">'+c.id+'</b></div><div><span>修改范围</span><b>当前分支的受跟踪文件</b></div><div><span>GitHub</span><b>不会自动上传</b></div></div>','生成恢复版本','confirm-restore');}
+function openBranches(){modalKind='branches';modal('分支','<p>主线保留稳定结果，实验放在独立分支。</p>'+Object.keys(branches).map(name=>'<button type="button" class="rg-branch-option cursor-interaction" data-switch="'+esc(name)+'">'+icon('git-branch')+'<span>'+esc(name)+'</span>'+(name===branch?'<small>当前分支</small>':'')+'</button>').join('')+'<button type="button" class="rg-branch-option cursor-interaction" data-action="create-head">'+icon('plus')+'从当前版本新建分支</button>','','');}
+function openCreate(){modalKind='create';const c=commits.find(x=>x.id===selected);modal('从此创建分支','<p>从「'+esc(c.title)+'」开始一条实验分支。创建后仍留在 '+esc(branch)+'，不会改动工作区。</p><label for="rg-branch-name">分支名称</label><input id="rg-branch-name" class="rg-input" placeholder="例如：lighting-experiment" autocomplete="off">','创建分支','confirm-create');}
+function openMerge(){if(!guardClean('合并分支'))return;const names=Object.keys(branches).filter(n=>n!==branch);modalKind='merge';modal('合并到 '+branch,'<p>把实验分支的成果合入当前分支。原分支会保留，本示意演示无冲突的合并。</p><label for="rg-merge-source">选择要合入的分支</label><select id="rg-merge-source" class="rg-input">'+names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('')+'</select><div class="rg-summary" style="margin-top:18px"><div><span>目标分支</span><b>'+esc(branch)+'</b></div><div><span>工作区</span><b>无未保存修改</b></div></div>','合并分支','confirm-merge');}
+function openPush(){if(!ahead()){setStatus('演示：没有待上传版本');return;}modalKind='push';modal('上传到 GitHub','<p>把当前分支的 '+ahead()+' 个本地版本同步到远程仓库。</p><div class="rg-summary"><div><span>本地分支</span><b>'+esc(branch)+'</b></div><div><span>上传目标</span><b>origin / '+esc(branch)+'</b></div><div><span>未保存的文件</span><b>不会上传</b></div></div>','确认上传（演示）','confirm-push');}
+root.addEventListener('click',e=>{
+const commitButton=e.target.closest('[data-commit]');if(commitButton){selected=commitButton.dataset.commit;fileIndex=0;render();remember('查看版本详情');return;}
+const fileButton=e.target.closest('[data-file]');if(fileButton){fileIndex=Number(fileButton.dataset.file);render();return;}
+const switchButton=e.target.closest('[data-switch]');if(switchButton){const name=switchButton.dataset.switch;if(name===branch){closeModal();return;}if(!guardClean('切换分支'))return;branch=name;selected=branches[name];fileIndex=0;closeModal();statusMessage='演示：已切换到 '+branch;render();remember('切换分支');return;}
+const b=e.target.closest('[data-action]');if(!b)return;const action=b.dataset.action;
+if(action==='cancel'){closeModal();return;}
+if(action==='close-detail'){selected=null;render();remember('收起版本详情');return;}
+if(action==='save'){openSave();return;}
+if(action==='restore'){openRestore();return;}
+if(action==='branches'){openBranches();return;}
+if(action==='create-head'){selected=branches[branch];fileIndex=0;render();openCreate();return;}
+if(action==='create'){openCreate();return;}
+if(action==='merge'){openMerge();return;}
+if(action==='push'){openPush();return;}
+if(action==='pull'){if(!guardClean('拉取更新'))return;setStatus('演示：已检查远程，没有新的版本需要拉取');remember('查看拉取反馈');return;}
+if(action==='confirm-save'){
+const title=$('#rg-commit-message').value.trim();const checks=[...root.querySelectorAll('[data-save-file]:checked')].map(x=>Number(x.value));
+if(!checks.length){$('#rg-error').textContent='至少选择一个需要保存的文件。';return;}if(!title){$('#rg-error').textContent='写一句版本说明，之后更容易找回来。';$('#rg-commit-message').focus();return;}
+const saved=dirty.filter((f,i)=>checks.includes(i));newCommit(title,saved);dirty=dirty.filter((f,i)=>!checks.includes(i));closeModal();statusMessage='演示：已保存到本地 · 尚未上传 GitHub';render();remember('保存本地版本');return;
+}
+if(action==='confirm-restore'){
+const target=commits.find(c=>c.id===selected);newCommit('恢复到：'+target.title,target.files);closeModal();statusMessage='演示：已生成恢复版本，原有历史全部保留';render();remember('恢复旧代码，保留历史');return;
+}
+if(action==='confirm-create'){
+const name=$('#rg-branch-name').value.trim();if(!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$/.test(name)){$('#rg-error').textContent='示意中请使用 1–40 位字母、数字、短横线或下划线。';return;}if(branches[name]){$('#rg-error').textContent='分支名称已存在。';return;}
+branches[name]=selected;closeModal();statusMessage='演示：已创建 '+name+'，仍在 '+branch;render();remember('创建实验分支');return;
+}
+if(action==='confirm-merge'){
+const source=$('#rg-merge-source').value;if(!source)return;const sourceHead=branches[source];if(idsFrom(branches[branch]).has(sourceHead)){$('#rg-error').textContent='当前分支已包含这些版本，无需再次合并。';return;}
+newCommit('合并 '+source+' 的实验结果',[roi,note],[branches[branch],sourceHead]);closeModal();statusMessage='演示：合并完成，实验分支与历史均保留';render();remember('合并实验分支');return;
+}
+if(action==='confirm-push'){remotes[branch]=branches[branch];closeModal();statusMessage='演示：上传完成 · 没有进行真实网络操作';render();remember('上传本地版本');}
+});
+$('#rg-overlay').addEventListener('click',e=>{if(e.target===$('#rg-overlay'))closeModal();});
+root.addEventListener('keydown',e=>{if($('#rg-overlay').hidden)return;if(e.key==='Escape'){e.preventDefault();closeModal();return;}if(e.key==='Tab'){const focusable=[...$('#rg-overlay').querySelectorAll('button,input,textarea,select')].filter(el=>!el.disabled&&!el.hidden);const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+render();
+if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:render});tweak.addSelect(design,'detailPlacement',{label:'版本详情位置',options:[{label:'右侧',value:'side'},{label:'下方',value:'bottom'}]});tweak.addSelect(design,'density',{label:'版本行间距',options:[{label:'舒展',value:'comfortable'},{label:'紧凑',value:'compact'}]});}
+})();
+</script>
+</div>

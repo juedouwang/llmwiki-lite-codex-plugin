@@ -52,7 +52,7 @@ tests/smoke_test.py
 1. Use Python standard library only unless the user explicitly approves a dependency.
 2. Keep MCP results bounded and JSON serializable.
 3. Normalize roots and reject path traversal for reads, writes, and website assets.
-4. Never perform independent network sends; the website binds only to loopback.
+4. Never perform independent network sends; the website binds only to loopback. The narrow exception is an explicit user click in the project-bound code page: checking a selected existing Git remote, or confirming a single-branch ordinary push after preview. Never auto-fetch/push, force-push, send chats/records, add a Git scheduler, or expose arbitrary commands through MCP.
 5. Never infer semantic importance or scientific truth in Python code.
 6. Preserve user-authored Wiki content outside explicitly generated regions.
 7. Hook failure must never fail the host tool call on any host.
@@ -73,3 +73,7 @@ python plugins/llmwiki-lite/opencode/install.py --dry-run
 python C:/Users/lyn/.codex/skills/.system/skill-creator/scripts/quick_validate.py <each-skill-directory>
 python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py next/llmwiki-lite-codex-plugin/plugins/llmwiki-lite
 ```
+
+## Explicit visual Git boundary
+
+The project code page may perform user-confirmed local save, branch creation/switch, normal merge, limited text-conflict resolution, and restore-as-new-commit. Resolve only the registered repository root; previews are project-bound, short-lived and single-use, and execution rechecks HEAD/refs/index/config/file content under the repository lock. Preserve unselected staged files. Never reset/rebase/clean/stash automatically or launch terminals, editors, signing or credential windows. Unsupported repositories/policies remain browse-only or reject the relevant action. Real project repositories are never test fixtures; use temporary registry/state/repositories and loopback/bare remotes. This page does not mark tasks done or trigger research reasoning.

@@ -1,321 +1,178 @@
-"""
-Tests for literature catalog web UI (T-04).
-
-Covers:
-- AT-16: Migration with LIT-F1 fixture
-- AT-17: Idempotent migration and rollback
-- AT-18: User removal and AI re-mention handling
-"""
-
-import os
-import sys
+"""Real loopback HTTP tests through the production create_server routes."""
+import http.client
 import json
-import tempfile
-import unittest
 from pathlib import Path
+import threading
+import unittest
+from unittest.mock import patch
 
-# Add scripts to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
-
-from literature_catalog import LiteratureCatalog
+from test_literature_support import Fixture
+from literature_catalog import LiteratureCatalogError
 from literature_catalog_web import (
-    _classify_migration_file,
-    _scan_migration_candidates,
-    apply_migration,
-    rollback_migration,
+    literature_catalog_list_page, literature_detail_page,
+    apply_migration, rollback_migration,
 )
 
 
-class TestMigrationClassification(unittest.TestCase):
-    """Test file classification for migration."""
-
-    def test_classify_valid_paper_pdf(self):
-        """Large PDF should be classified as candidate."""
-        result = _classify_migration_file("paper.pdf", 500_000)
-        self.assertEqual(result["category"], "candidate")
-
-    def test_classify_matplotlib_icon(self):
-        """Matplotlib icon should be excluded."""
-        result = _classify_migration_file("matplotlib_icon.pdf", 10_000)
-        self.assertEqual(result["category"], "excluded")
-        self.assertIn("图标", result["reason"])
-
-    def test_classify_experiment_report(self):
-        """Experiment report should be excluded."""
-        result = _classify_migration_file("experiment_report.pdf", 200_000)
-        self.assertEqual(result["category"], "excluded")
-        self.assertIn("实验报告", result["reason"])
-
-    def test_classify_dependency_html(self):
-        """Dependency HTML should be excluded."""
-        result = _classify_migration_file("requirements.html", 5_000)
-        self.assertEqual(result["category"], "excluded")
-
-    def test_classify_small_pdf(self):
-        """Small PDF should need confirmation."""
-        result = _classify_migration_file("small.pdf", 50_000)
-        self.assertEqual(result["category"], "needs_confirmation")
-
-    def test_classify_html_paper(self):
-        """HTML file should need confirmation."""
-        result = _classify_migration_file("paper.html", 100_000)
-        self.assertEqual(result["category"], "needs_confirmation")
+def isolated_server(home):
+    from web_server import create_server
+    server = create_server(home, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
 
 
-class TestLitF1Migration(unittest.TestCase):
-    """Test AT-16: Migration with LIT-F1 fixture."""
-
+class WebTests(Fixture):
     def setUp(self):
-        """Create LIT-F1 fixture scenario."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.source_root = Path(self.temp_dir) / "project"
-        self.wiki_root = self.source_root / "wiki"
-        self.papers_dir = self.source_root / "references" / "papers"
+        super().setUp()
+        self.server, self.thread = isolated_server(self.home)
+        self.origin = f"http://127.0.0.1:{self.server.server_port}"
+        self.api = f"/api/project/{self.pid}/literature/"
+        self.base = f"/project/{self.pid}/literature"
+        self.addCleanup(self.stop)
 
-        self.source_root.mkdir()
-        self.wiki_root.mkdir()
-        self.papers_dir.mkdir(parents=True)
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
 
-        # Create LIT-F1 files
-        # 2 valid paper PDFs
-        (self.papers_dir / "attention_is_all_you_need.pdf").write_bytes(b"%PDF-1.4\n" + b"x" * 500_000)
-        (self.papers_dir / "bert_pretraining.pdf").write_bytes(b"%PDF-1.4\n" + b"x" * 600_000)
+    def request_http(self, path, data=None, *, headers=None, raw=None):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        self.addCleanup(conn.close)
+        payload = raw if raw is not None else (json.dumps(data) if data is not None else None)
+        hdr = {"Origin": self.origin, "Content-Type": "application/json", "X-Literature-Request": "1"}
+        hdr.update(headers or {})
+        conn.request("POST" if payload is not None else "GET", path, body=payload, headers=hdr)
+        response = conn.getresponse()
+        content = response.read().decode()
+        return response.status, (json.loads(content) if "application/json" in response.getheader("Content-Type", "") else content), dict(response.headers)
 
-        # 1 matplotlib icon PDF
-        (self.papers_dir / "matplotlib_logo.pdf").write_bytes(b"%PDF-1.4\n" + b"x" * 5_000)
+    def test_http_manual_roundtrip_restore_restart(self):
+        status, a, _ = self.request_http(self.api + "add", {"locator": "10.1234/Paper", "request_id": "a" * 32})
+        self.assertEqual(status, 200)
+        self.assertEqual(a["action"], "created")
+        self.assertIn(a["item_id"], self.request_http(self.base)[1])
+        status, detail, _ = self.request_http(a["url"])
+        self.assertEqual(status, 200)
+        self.assertIn("10.1234/Paper", detail)
+        status, b, _ = self.request_http(self.api + f"item/{a['item_id']}/update", {"title": "Human", "locator": "https://doi.org/10.1234/paper", "authors": [], "year": None, "expected_item_revision": a["item_revision"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.item(a)["title"], "Human")
+        status, _, _ = self.request_http(self.api + f"item/{a['item_id']}/delete", {"expected_item_revision": b["item_revision"]})
+        self.assertEqual(status, 200)
+        status, c, _ = self.request_http(self.api + "add", {"locator": "10.1234/paper", "request_id": "b" * 32})
+        self.assertEqual((status, c["action"], c["item_id"]), (200, "restored", a["item_id"]))
+        # A fresh catalog instance reads persisted data (no process cache).
+        from literature_catalog import LiteratureCatalog
+        self.assertEqual(LiteratureCatalog(self.project["wiki_root"]).get_item(a["item_id"])["title"], "Human")
 
-        # 1 dependency HTML
-        (self.papers_dir / "dependencies.html").write_bytes(b"<html></html>")
+    def test_http_security_error_envelope_and_size(self):
+        data = {"locator": "10.1234/test", "request_id": "a" * 32}
+        for headers in ({"Origin": "http://evil.test"}, {"Host": "evil.test"}, {"X-Literature-Request": "0"}):
+            status, value, _ = self.request_http(self.api + "add", data, headers=headers)
+            self.assertEqual(status, 403)
+            self.assertEqual(value["error"]["code"], "FORBIDDEN")
+        for bad in ({**data, "locator": "javascript:alert(1)"}, {**data, "wiki_root": "C:/elsewhere"}):
+            self.assertEqual(self.request_http(self.api + "add", bad)[0], 400)
+        self.assertEqual(self.request_http(self.api + "add", raw="not json")[0], 400)
+        self.assertEqual(self.request_http(self.api + "add", raw='[1,2]')[0], 400)
+        self.assertEqual(self.request_http(self.api + "add", raw="", headers={"Content-Length": str(2 * 1024 * 1024 + 1)})[0], 413)
+        self.assertEqual(self.catalog.list_items()["count"], 0)
+        for action, data in (("item/" + "1" * 32 + "/update", {}), ("item/" + "1" * 32 + "/delete", {}), ("migrate/apply", {}), ("migrate/rollback", {}), ("collection/retry", {})):
+            self.assertEqual(self.request_http(self.api + action, data, headers={"Origin": "http://evil.test"})[0], 403)
 
-        # 1 experiment report
-        (self.papers_dir / "experiment_qa_render.pdf").write_bytes(b"%PDF-1.4\n" + b"x" * 100_000)
+    def test_conflict_not_other_item_and_legacy_edit_redirect(self):
+        a = self.collect()
+        self.collect("10.1234/unrelated")
+        payload = {"title": "One", "locator": "10.1234/test", "authors": [], "year": 2026, "expected_item_revision": a["item_revision"]}
+        path = self.api + f"item/{a['item_id']}/update"
+        self.assertEqual(self.request_http(path, payload)[0], 200)
+        self.assertEqual(self.request_http(path, payload)[0], 409)
+        status, _, headers = self.request_http(a["url"] + "/edit")
+        self.assertEqual(status, 303)
+        self.assertTrue(headers["Location"].endswith("?edit=1"))
+        self.assertEqual(self.request_http(self.base + "/item/" + "0" * 32)[0], 404)
 
-        # 1 valid reading note (not in papers dir, in wiki)
-        note_path = self.wiki_root / "reading_notes"
-        note_path.mkdir()
-        (note_path / "attention_reading.md").write_text(
-            "---\ntitle: Attention精读\npaper_file: references/papers/attention_is_all_you_need.pdf\n---\n\n内容"
-        )
+    def test_list_no_scan_stat_network_and_paging(self):
+        # Seed only a temporary catalog; list must not stat any attachments.
+        a = self.collect(title="Matching", authors=["Somebody"])
+        data = self.catalog._load_catalog()
+        import copy
+        data["items"] = []
+        template = self.item(a)
+        for i in range(61):
+            item = copy.deepcopy(template)
+            item["id"] = f"{i:032x}"
+            item["attachments"] = [{"path": f"missing-{i}.pdf"}]
+            data["items"].append(item)
+        self.catalog._save_catalog(data)
+        with patch.object(Path, "rglob", side_effect=AssertionError("scan")), patch("socket.create_connection", side_effect=AssertionError("network")), patch("subprocess.Popen", side_effect=AssertionError("process")):
+            body = literature_catalog_list_page(self.home, self.pid, {"q": ["Somebody"]})
+        self.assertEqual(body.count('data-item href='), 50)
+        self.assertIn("下一页", body)
+        self.assertEqual(literature_catalog_list_page(self.home, self.pid, {"page": ["2"]}).count('data-item href='), 11)
+        self.assertNotIn(data["items"][0]["created_at"], body)
+        self.assertNotIn("migration scan", body)
 
-    def tearDown(self):
-        """Clean up temp directory."""
-        import shutil
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    def test_missing_and_explicit_reading_links_html_escaping(self):
+        source, wiki = Path(self.project["source_root"]), Path(self.project["wiki_root"])
+        (source / "p.pdf").write_bytes(b"%PDF-1.0 test")
+        (wiki / "n.md").write_text('---\npaper_file: p.pdf\n---\n# Notes', encoding="utf-8")
+        a = self.collect(title='<script>alert("x")</script>', paper_file="p.pdf", reading_note_paths=["n.md"], source={"summary": '<img src=x onerror="alert(1)">'})
+        body = literature_detail_page(self.home, self.pid, a["item_id"])
+        self.assertIn("/literature/read/p.pdf", body)
+        self.assertIn("/page/n.md", body)
+        self.assertIn("/literature/compare/p.pdf?note=wiki%3An.md", body)
+        self.assertNotIn('<script>alert("x")</script>', body)
+        self.assertIn("&lt;script&gt;", body)
+        (source / "p.pdf").unlink()
+        body = literature_detail_page(self.home, self.pid, a["item_id"])
+        self.assertIn("原文不可用", body)
+        self.assertNotIn("/literature/read/p.pdf", body)
+        self.assertIn("/page/n.md", body)
 
-    def test_scan_identifies_candidates(self):
-        """Scanning should identify valid papers and exclude others."""
-        result = _scan_migration_candidates(self.source_root)
+    def test_empty_list_never_imports_files(self):
+        source = Path(self.project["source_root"])
+        (source / "manual.pdf").write_bytes(b"not a paper")
+        body = literature_catalog_list_page(self.home, self.pid)
+        self.assertIn("还没有收藏文献", body)
+        self.assertNotIn("manual.pdf", body)
+        self.assertFalse(self.catalog.catalog_path.exists())
 
-        self.assertEqual(len(result["candidates"]), 2)
-        self.assertGreaterEqual(len(result["excluded"]), 3)  # icon, html, report
+    def test_explicit_import_http_one_read_idempotent_rollback(self):
+        source = Path(self.project["source_root"])
+        for name in ("paper.pdf", "manual.pdf"):
+            (source / name).write_bytes(name.encode())
+        before = (source / "paper.pdf").read_bytes()
+        status, imported, _ = self.request_http(self.api + "migrate/apply", {"selected_paths": ["paper.pdf"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(imported["imported"]), 1)
+        result = apply_migration(self.catalog, source, ["paper.pdf"])
+        self.assertEqual(len(result["skipped"]), 1)
+        self.assertEqual(self.catalog.list_items()["count"], 1)
+        self.assertTrue(rollback_migration(self.catalog, imported["migration_id"])["ok"])
+        self.assertEqual(self.catalog.list_items()["count"], 0)
+        self.assertEqual((source / "paper.pdf").read_bytes(), before)
+        self.assertTrue((source / "manual.pdf").exists())
+        self.assertFalse(apply_migration(self.catalog, source, ["../outside.pdf"])["ok"])
+        with self.assertRaises(LiteratureCatalogError):
+            rollback_migration(self.catalog, "../outside")
 
-        candidate_names = [c["path"] for c in result["candidates"]]
-        self.assertIn("references/papers/attention_is_all_you_need.pdf", candidate_names)
-        self.assertIn("references/papers/bert_pretraining.pdf", candidate_names)
-
-        excluded_names = [e["path"] for e in result["excluded"]]
-        self.assertIn("references/papers/matplotlib_logo.pdf", excluded_names)
-        self.assertIn("references/papers/experiment_qa_render.pdf", excluded_names)
-
-    def test_migration_does_not_add_excluded_to_catalog(self):
-        """AT-16: Dependencies/icons/reports should not enter formal catalog."""
-        catalog = LiteratureCatalog(self.wiki_root)
-
-        # Apply migration with only valid papers
-        selected_paths = [
-            "references/papers/attention_is_all_you_need.pdf",
-            "references/papers/bert_pretraining.pdf",
-        ]
-
-        result = apply_migration(
-            catalog=catalog,
-            source_root=self.source_root,
-            selected_paths=selected_paths,
-            collection_source="migration"
-        )
-
-        self.assertTrue(result["ok"])
-        self.assertEqual(len(result["imported"]), 2)
-
-        # Check catalog only has 2 items
-        items = catalog.list_items()["items"]
-        self.assertEqual(len(items), 2)
-
-        # Excluded files should not be in catalog
-        all_paths = [item.get("attachments", [{}])[0].get("path", "") for item in items]
-        self.assertNotIn("references/papers/matplotlib_logo.pdf", all_paths)
-        self.assertNotIn("references/papers/experiment_qa_render.pdf", all_paths)
-
-
-class TestMigrationIdempotence(unittest.TestCase):
-    """Test AT-17: Migration is idempotent and rollback works."""
-
-    def setUp(self):
-        """Create test environment."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.source_root = Path(self.temp_dir) / "project"
-        self.wiki_root = self.source_root / "wiki"
-        self.papers_dir = self.source_root / "references" / "papers"
-
-        self.source_root.mkdir()
-        self.wiki_root.mkdir()
-        self.papers_dir.mkdir(parents=True)
-
-        (self.papers_dir / "paper1.pdf").write_bytes(b"%PDF-1.4\n" + b"x" * 500_000)
-
-    def tearDown(self):
-        """Clean up."""
-        import shutil
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    def test_migration_is_idempotent(self):
-        """AT-17: Running migration twice should be idempotent."""
-        catalog = LiteratureCatalog(self.wiki_root)
-        selected_paths = ["references/papers/paper1.pdf"]
-
-        # First migration
-        result1 = apply_migration(catalog, self.source_root, selected_paths, "migration")
-        self.assertTrue(result1["ok"])
-        self.assertEqual(len(result1["imported"]), 1)
-
-        revision1 = catalog.load()["revision"]
-
-        # Second migration (should be idempotent)
-        result2 = apply_migration(catalog, self.source_root, selected_paths, "migration")
-        self.assertTrue(result2["ok"])
-        self.assertEqual(len(result2["imported"]), 0)  # Already imported
-        self.assertEqual(len(result2["skipped"]), 1)
-
-        revision2 = catalog.load()["revision"]
-
-        # Revision should change (metadata update) but items should remain same
-        items = catalog.list_items()["items"]
-        self.assertEqual(len(items), 1)
-
-    def test_rollback_restores_catalog_only(self):
-        """AT-17: Rollback should restore catalog/mapping, not delete original files."""
-        catalog = LiteratureCatalog(self.wiki_root)
-        selected_paths = ["references/papers/paper1.pdf"]
-
-        # Perform migration
-        result = apply_migration(catalog, self.source_root, selected_paths, "migration")
-        self.assertTrue(result["ok"])
-        migration_id = result["migration_id"]
-
-        # Check file still exists
-        original_file = self.papers_dir / "paper1.pdf"
-        self.assertTrue(original_file.exists())
-
-        # Rollback
-        rollback_result = rollback_migration(catalog, migration_id)
-        self.assertTrue(rollback_result["ok"])
-
-        # Catalog should be empty
-        items = catalog.list_items()["items"]
-        self.assertEqual(len(items), 0)
-
-        # Original file should still exist (not deleted)
-        self.assertTrue(original_file.exists())
-
-        # Migration manifest should exist
-        migrations_dir = self.wiki_root / ".literature" / "migrations"
-        self.assertTrue(migrations_dir.exists())
-
-
-class TestUserRemovalAndRestore(unittest.TestCase):
-    """Test AT-18: User removal and AI re-mention handling."""
-
-    def setUp(self):
-        """Create test environment."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.wiki_root = Path(self.temp_dir) / "wiki"
-        self.wiki_root.mkdir()
-
-    def tearDown(self):
-        """Clean up."""
-        import shutil
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    def test_removed_item_goes_to_dismissed(self):
-        """AT-18: Removed item should go to dismissed_candidates."""
-        catalog = LiteratureCatalog(self.wiki_root)
-
-        # Create item
-        result = catalog.create_item(
-            title="Test Paper",
-            doi="10.1234/test"
-        )
-        item_id = result["item"]["id"]
-
-        # Remove item
-        remove_result = catalog.remove_item(item_id)
-        self.assertTrue(remove_result["ok"])
-
-        # Item should not be in main list
-        items = catalog.list_items()["items"]
-        self.assertEqual(len(items), 0)
-
-        # Item should be in dismissed
-        data = catalog.load()
-        dismissed = data["dismissed_candidates"]
-        self.assertEqual(len(dismissed), 1)
-        self.assertEqual(dismissed[0]["id"], item_id)
-
-    def test_cannot_auto_readd_dismissed_item(self):
-        """AT-18: Same strong identifier should not auto re-add after removal."""
-        catalog = LiteratureCatalog(self.wiki_root)
-
-        # Create and remove item
-        result = catalog.create_item(title="Test Paper", doi="10.1234/test")
-        item_id = result["item"]["id"]
-        catalog.remove_item(item_id)
-
-        # Try to create again with same DOI (simulating AI re-mention)
-        result2 = catalog.create_item(title="Test Paper Again", doi="10.1234/test")
-
-        # Should detect as dismissed
-        self.assertIn("dismissed", result2.get("warnings", [{}])[0].get("type", ""))
-
-    def test_can_explicitly_restore_dismissed_item(self):
-        """AT-18: User can explicitly restore a dismissed item."""
-        catalog = LiteratureCatalog(self.wiki_root)
-
-        # Create, remove, then restore
-        result = catalog.create_item(title="Test Paper", doi="10.1234/test")
-        item_id = result["item"]["id"]
-        catalog.remove_item(item_id)
-
-        restore_result = catalog.restore_item(item_id)
-        self.assertTrue(restore_result["ok"])
-
-        # Item should be back in main list
-        items = catalog.list_items()["items"]
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["id"], item_id)
-
-    def test_reading_notes_remain_after_removal(self):
-        """AT-18: Old reading notes should remain accessible after item removal."""
-        catalog = LiteratureCatalog(self.wiki_root)
-
-        # Create item with reading note path
-        result = catalog.create_item(
-            title="Test Paper",
-            doi="10.1234/test",
-            reading_note_paths=["wiki/notes/test_reading.md"]
-        )
-        item_id = result["item"]["id"]
-
-        # Create the actual note file
-        note_path = self.wiki_root / "notes" / "test_reading.md"
-        note_path.parent.mkdir(parents=True)
-        note_path.write_text("# Test Reading\n\nContent here")
-
-        # Remove item
-        catalog.remove_item(item_id)
-
-        # Note file should still exist
-        self.assertTrue(note_path.exists())
-        self.assertEqual(note_path.read_text(), "# Test Reading\n\nContent here")
+    def test_strict_compare_no_fuzzy_scan(self):
+        from literature_web import _catalog_reading_notes, literature_compare_page
+        source, wiki = Path(self.project["source_root"]), Path(self.project["wiki_root"])
+        (source / "p.pdf").write_bytes(b"%PDF-test")
+        (wiki / "n.md").write_text('---\npaper_file: p.pdf\n---\n# Note', encoding="utf-8")
+        self.collect(paper_file="p.pdf", reading_note_paths=["n.md"])
+        with patch.object(Path, "rglob", side_effect=AssertionError("scan")):
+            self.assertEqual(len(_catalog_reading_notes(self.project, {"path": "p.pdf"})), 1)
+        with self.assertRaises(LiteratureCatalogError):
+            from literature_catalog import safe_path
+            safe_path(source, "C:/elsewhere")
+        (wiki / "n.md").write_text('---\npaper_file: other/p.pdf\n---\n# Note', encoding="utf-8")
+        from llmwiki_core import LLMWikiError
+        with self.assertRaises(LLMWikiError):
+            literature_compare_page(self.home, self.pid, "p.pdf", "wiki:n.md")
 
 
 if __name__ == "__main__":

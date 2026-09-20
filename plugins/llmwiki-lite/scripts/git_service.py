@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Minimum required Git version
 MIN_GIT_VERSION = (2, 43, 0)
@@ -247,57 +247,64 @@ def _run_git_command(
     git_exe: str,
     args: List[str],
     cwd: Optional[Path] = None,
-    timeout: float = 10.0,
+    timeout: float = 30.0,
     check: bool = True,
-    env_override: Optional[Dict[str, str]] = None
+    env_override: Optional[Dict[str, str]] = None,
+    input_data: Optional[Union[str, bytes]] = None,
+    text: bool = True
 ) -> subprocess.CompletedProcess:
-    """Run a Git command safely.
+    """Run Git without a shell, terminal, interactive prompts or optional writes.
 
-    Args:
-        git_exe: Path to git executable
-        args: Git command arguments
-        cwd: Working directory
-        timeout: Command timeout in seconds
-        check: Whether to raise on non-zero exit
-        env_override: Environment variable overrides
+    Existing positional arguments remain compatible. ``input_data`` is a str in
+    text mode (including NUL separators), or bytes with ``text=False``. Text I/O
+    uses UTF-8 with surrogateescape so unusual filename bytes round-trip; binary
+    mode does not decode or translate newlines. Network callers may pass 90s.
 
-    Returns:
-        CompletedProcess result
-
-    Raises:
-        subprocess.SubprocessError: On command failure
+    Hooks, signing, filters and custom SSH commands are not bypassed. Callers
+    must reject write/network operations whose custom executors cannot safely
+    run non-interactively; CREATE_NO_WINDOW cannot constrain their descendants.
     """
-    # Prepare environment
     env = os.environ.copy()
+    if env_override:
+        env.update(env_override)
+    # These are safety invariants, including for callers supplying author dates.
     env.update({
+        'GIT_OPTIONAL_LOCKS': '0',
         'GIT_TERMINAL_PROMPT': '0',
         'GCM_INTERACTIVE': 'never',
+        'GCM_GUI_PROMPT': '0',
+        'GIT_ASKPASS': 'false',
+        'SSH_ASKPASS': 'false',
+        'SSH_ASKPASS_REQUIRE': 'never',
         'GIT_PAGER': 'cat',
+        'PAGER': 'cat',
         'GIT_EDITOR': 'true',
+        'GIT_SEQUENCE_EDITOR': 'true',
+        'GIT_MERGE_AUTOEDIT': 'no',
         'LANG': 'C',
         'LC_ALL': 'C'
     })
-    if env_override:
-        env.update(env_override)
-
-    # Prepare subprocess kwargs
     kwargs: Dict[str, Any] = {
         'check': check,
         'capture_output': True,
-        'text': True,
+        'text': text,
         'timeout': timeout,
-        'env': env
+        'env': env,
+        'shell': False
     }
-
-    if cwd:
+    if text:
+        kwargs.update(encoding='utf-8', errors='surrogateescape')
+    if input_data is None:
+        kwargs['stdin'] = subprocess.DEVNULL
+    else:
+        kwargs['input'] = input_data
+    if cwd is not None:
         kwargs['cwd'] = str(cwd)
-
-    # Windows-specific: CREATE_NO_WINDOW
     if platform.system() == 'Windows':
-        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW  # type: ignore
-
-    # Run command
-    return subprocess.run([git_exe] + args, **kwargs)
+        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+    # git diff refreshes the index even with GIT_OPTIONAL_LOCKS=0 on some
+    # versions. Disable that optimization, not hooks, signatures or filters.
+    return subprocess.run([git_exe, '-c', 'diff.autoRefreshIndex=false'] + args, **kwargs)
 
 
 def is_git_repository(path: Path, git_exe: str) -> bool:

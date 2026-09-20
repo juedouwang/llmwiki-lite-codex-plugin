@@ -1,0 +1,47 @@
+const {chromium}=require(process.env.LLMWIKI_PLAYWRIGHT || 'playwright');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+(async()=>{
+ const cfg=JSON.parse(process.argv[2]);fs.mkdirSync(cfg.evidence,{recursive:true});
+ const browser=await chromium.launch({headless:true,channel:process.env.LLMWIKI_BROWSER_CHANNEL || 'chrome'});
+ const page=await browser.newPage({viewport:{width:1360,height:920}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ try{
+  await page.goto(cfg.origin+'/project/'+cfg.pid);
+  await page.locator('#km-pending').waitFor({state:'visible'});
+  assert.match(await page.locator('#km-pending').innerText(),/3/);
+  assert.equal(await page.locator('#km-dialog').isVisible(),false);
+  await page.screenshot({path:path.join(cfg.evidence,'01-pending.png'),fullPage:true});
+  await page.locator('#km-pending').click();
+  await page.getByRole('button',{name:/^architecture.md/}).click();
+  await page.locator('#km-dialog').waitFor({state:'visible'});
+  assert.match(await page.locator('#km-base').innerText(),/同步调用/);
+  assert.match(await page.locator('#km-proposed strong').innerText(),/异步调用/);
+  assert.equal(await page.evaluate(()=>window.unsafe),undefined);
+  await page.screenshot({path:path.join(cfg.evidence,'02-compare.png'),fullPage:true});
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#km-dialog').isVisible(),false);
+  assert.match(await page.locator('#km-pending').innerText(),/3/);
+  assert.match(await page.evaluate(()=>document.activeElement.textContent),/^architecture.md/);
+  await page.getByRole('button',{name:/^stale.md/}).click();
+  await page.locator('#km-dialog').waitFor({state:'visible'});
+  assert.equal(await page.locator('#km-accept').isDisabled(),true);
+  assert.match(await page.locator('#km-conflict').innerText(),/等待重新检查/);
+  await page.screenshot({path:path.join(cfg.evidence,'03-stale.png'),fullPage:true});
+  await page.locator('#km-close').click();
+  await page.getByRole('button',{name:/^keep.md/}).click();await page.locator('#km-keep').click();
+  await page.waitForFunction(()=>document.querySelector('#km-pending').textContent.includes('2'));
+  await page.reload();await page.locator('#km-pending').waitFor({state:'visible'});
+  assert.match(await page.locator('#km-pending').innerText(),/2/);
+  await page.locator('#km-pending').click();await page.getByRole('button',{name:/^architecture.md/}).click();
+  await page.locator('#km-accept').click();await page.waitForFunction(()=>document.querySelector('#km-pending').textContent.includes('1'));
+  await page.goto(cfg.origin+'/project/'+cfg.pid+'/page/architecture.md');
+  await page.locator('#km-status').waitFor({state:'attached'});
+  await page.waitForFunction(()=>document.querySelector('#km-status').textContent.length>0);
+  assert.equal(await page.locator('#km-pending').isVisible(),false);
+  await page.locator('#km-details summary').click();await page.locator('#km-history').click();
+  await page.waitForFunction(()=>document.querySelector('#km-list').textContent.includes('已采用'));
+  assert.match(await page.locator('#km-list').innerText(),/已采用/);
+  assert.equal(errors.length,0,errors.join('\n'));
+  console.log(JSON.stringify({ok:true,scenarios:['badge','safe-side-by-side','escape-focus-no-write','stale-disabled','keep-refresh','accept','page-scope-history'],evidence:cfg.evidence}));
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1)});
+

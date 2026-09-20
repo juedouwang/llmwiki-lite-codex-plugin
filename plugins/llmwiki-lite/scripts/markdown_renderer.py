@@ -8,6 +8,8 @@ from urllib.parse import quote, urlparse
 
 
 def _route(project_id: str, kind: str, path: str) -> str:
+    if project_id == "__workspace__":
+        return f"/reports/{kind}/{quote(path.replace(chr(92), chr(47)).lstrip(chr(47)), safe=chr(47))}"
     return f"/project/{quote(project_id, safe='')}/{kind}/{quote(path.replace(chr(92), '/').lstrip('/'), safe='/')}"
 
 

@@ -24,6 +24,8 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import research_notebook as notebook  # noqa: E402
 import research_progress as progress  # noqa: E402
+import research_reports as reports  # noqa: E402
+import knowledge_maintenance as knowledge  # noqa: E402
 from llmwiki_core import LLMWikiError, plugin_version  # noqa: E402
 from literature_web import (  # noqa: E402
     literature_compare_page,
@@ -31,15 +33,7 @@ from literature_web import (  # noqa: E402
     literature_read_page,
     source_document_path,
 )
-from literature_catalog_web import (  # noqa: E402
-    literature_catalog_list_page,
-    literature_detail_page,
-    literature_migration_preview_page,
-    _scan_migration_candidates,
-    apply_migration,
-    rollback_migration,
-)
-from literature_catalog import LiteratureCatalog  # noqa: E402
+from literature_catalog_web import dispatch_literature_http  # noqa: E402
 from llmwiki_registry import (  # noqa: E402
     get_project,
     llmwiki_home,
@@ -65,248 +59,14 @@ from research_web_ui import (  # noqa: E402
     settings_page,
     todos_page,
 )
-from git_service import (  # noqa: E402
-    detect_git_executable,
-    is_git_repository,
-)
-from git_graph import build_graph  # noqa: E402
+import git_web  # noqa: E402
 
 MAX_FORM_BYTES = 65_536
 
 
 def code_graph_page(home: str, project_id: str, params: dict) -> str:
-    """Render git commit graph page.
-
-    Args:
-        home: LLM Wiki home directory
-        project_id: Project ID
-        params: Query parameters
-
-    Returns:
-        HTML page
-    """
-    from research_web_ui import layout, esc, purl, ui_icon
-
-    project = get_project(project_id, home=home)["project"]
-    source_root = Path(str(project["source_root"]))
-
-    # Check if git repository
-    try:
-        git_exe = detect_git_executable()
-        is_git_repo = is_git_repository(source_root, git_exe)
-    except Exception:
-        is_git_repo = False
-
-    if not is_git_repo:
-        content = f'''
-        <div class="panel">
-            <h1>代码提交图谱</h1>
-            <div class="notice error">
-                <p>源项目不是 Git 仓库，无法显示提交图谱。</p>
-                <p>路径：{esc(source_root)}</p>
-            </div>
-            <a class="button" href="{purl(project_id)}">返回项目</a>
-        </div>
-        '''
-        return layout(f"{project['name']} - 代码图谱", content)
-
-    # Render page
-    content = f'''
-    <div class="page-header">
-        <div class="breadcrumb">
-            <a href="/">研究项目</a>
-            <span>/</span>
-            <a href="{purl(project_id)}">{esc(project['name'])}</a>
-            <span>/</span>
-            <span>代码提交图谱</span>
-        </div>
-    </div>
-
-    <div class="panel">
-        <div class="panel-header">
-            <h1>代码提交图谱</h1>
-        </div>
-
-        <div id="graph-controls" class="graph-controls">
-            <label>
-                分支：
-                <select id="branch-select">
-                    <option value="HEAD">HEAD</option>
-                </select>
-            </label>
-            <button id="load-more" class="button secondary" style="display: none;">加载更多</button>
-            <span id="commit-count"></span>
-        </div>
-
-        <div id="graph-container" class="graph-container">
-            <svg id="commit-graph" width="100%" height="600"></svg>
-        </div>
-
-        <div id="commit-detail" class="commit-detail" style="display: none;">
-            <h3>提交详情</h3>
-            <div id="detail-content"></div>
-        </div>
-    </div>
-
-    <script src="/static/graph.js"></script>
-    <script>
-        const projectId = {json.dumps(project_id)};
-        const apiUrl = `/api/project/${{encodeURIComponent(projectId)}}/code/graph`;
-
-        let currentPage = 0;
-        let currentRef = "HEAD";
-        let hasMore = true;
-        let allNodes = [];
-
-        async function loadGraph(ref, page) {{
-            const url = `${{apiUrl}}?ref=${{encodeURIComponent(ref)}}&page=${{page}}&page_size=100`;
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (!data.ok) {{
-                alert(data.error || "加载失败");
-                return;
-            }}
-
-            // Update branches dropdown
-            if (page === 0 && data.branches) {{
-                const select = document.getElementById("branch-select");
-                select.innerHTML = data.branches.map(b =>
-                    `<option value="${{b.name}}" ${{b.current ? 'selected' : ''}}>${{b.name}}${{b.current ? ' (当前)' : ''}}</option>`
-                ).join('');
-            }}
-
-            // Append nodes
-            if (page === 0) {{
-                allNodes = data.nodes;
-            }} else {{
-                allNodes = allNodes.concat(data.nodes);
-            }}
-
-            hasMore = data.has_more;
-            document.getElementById("load-more").style.display = hasMore ? "inline-block" : "none";
-            document.getElementById("commit-count").textContent = `已加载 ${{allNodes.length}} 个提交`;
-
-            renderGraph(allNodes);
-        }}
-
-        function renderGraph(nodes) {{
-            const svg = document.getElementById("commit-graph");
-            const width = svg.clientWidth;
-            const rowHeight = 40;
-            const laneWidth = 30;
-            const height = Math.max(600, nodes.length * rowHeight + 50);
-
-            svg.setAttribute("height", height);
-            svg.innerHTML = "";
-
-            // Draw lanes and connections
-            const maxLane = Math.max(...nodes.map(n => n.lane), 0);
-
-            // Draw edges (parent-child connections)
-            nodes.forEach(node => {{
-                const x1 = 50 + node.lane * laneWidth;
-                const y1 = 30 + node.row * rowHeight;
-
-                node.parents.forEach(parentOid => {{
-                    const parent = nodes.find(n => n.oid === parentOid);
-                    if (parent) {{
-                        const x2 = 50 + parent.lane * laneWidth;
-                        const y2 = 30 + parent.row * rowHeight;
-
-                        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                        const d = `M ${{x1}} ${{y1}} L ${{x2}} ${{y2}}`;
-                        path.setAttribute("d", d);
-                        path.setAttribute("stroke", getLaneColor(parent.lane));
-                        path.setAttribute("stroke-width", "2");
-                        path.setAttribute("fill", "none");
-                        svg.appendChild(path);
-                    }}
-                }});
-            }});
-
-            // Draw commit nodes
-            nodes.forEach(node => {{
-                const x = 50 + node.lane * laneWidth;
-                const y = 30 + node.row * rowHeight;
-
-                // Node circle
-                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                circle.setAttribute("cx", x);
-                circle.setAttribute("cy", y);
-                circle.setAttribute("r", "6");
-                circle.setAttribute("fill", getLaneColor(node.lane));
-                circle.setAttribute("stroke", "#fff");
-                circle.setAttribute("stroke-width", "2");
-                circle.style.cursor = "pointer";
-                circle.addEventListener("click", () => showCommitDetail(node));
-                svg.appendChild(circle);
-
-                // Commit message
-                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                text.setAttribute("x", x + 15);
-                text.setAttribute("y", y + 4);
-                text.setAttribute("font-size", "13");
-                text.setAttribute("fill", "#1a1a1a");
-                text.textContent = `${{node.short_oid}} ${{node.subject.substring(0, 60)}}`;
-                text.style.cursor = "pointer";
-                text.addEventListener("click", () => showCommitDetail(node));
-                svg.appendChild(text);
-
-                // Branch labels
-                if (node.branches.length > 0) {{
-                    node.branches.forEach((branch, i) => {{
-                        const branchLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                        branchLabel.setAttribute("x", width - 100);
-                        branchLabel.setAttribute("y", y + 4);
-                        branchLabel.setAttribute("font-size", "11");
-                        branchLabel.setAttribute("fill", "#0066cc");
-                        branchLabel.setAttribute("font-weight", "bold");
-                        branchLabel.textContent = branch;
-                        svg.appendChild(branchLabel);
-                    }});
-                }}
-            }});
-        }}
-
-        function getLaneColor(lane) {{
-            const colors = ["#0066cc", "#00aa66", "#cc6600", "#cc0066", "#6600cc", "#00ccaa"];
-            return colors[lane % colors.length];
-        }}
-
-        function showCommitDetail(node) {{
-            const detail = document.getElementById("commit-detail");
-            const content = document.getElementById("detail-content");
-
-            content.innerHTML = `
-                <p><strong>提交：</strong> ${{node.oid}}</p>
-                <p><strong>消息：</strong> ${{node.subject}}</p>
-                <p><strong>作者：</strong> ${{node.author_name}} &lt;${{node.author_email}}&gt;</p>
-                <p><strong>时间：</strong> ${{new Date(node.committed_at).toLocaleString('zh-CN')}}</p>
-                <p><strong>分支：</strong> ${{node.branches.join(", ") || "无"}}</p>
-                <p><strong>父提交：</strong> ${{node.parents.length || "无"}}</p>
-            `;
-
-            detail.style.display = "block";
-        }}
-
-        document.getElementById("branch-select").addEventListener("change", (e) => {{
-            currentRef = e.target.value;
-            currentPage = 0;
-            loadGraph(currentRef, currentPage);
-        }});
-
-        document.getElementById("load-more").addEventListener("click", () => {{
-            currentPage++;
-            loadGraph(currentRef, currentPage);
-        }});
-
-        // Initial load
-        loadGraph("HEAD", 0);
-    </script>
-    '''
-
-    return layout(f"{project['name']} - 代码图谱", content)
+    from git_web_page import page
+    return page(home, project_id, params)
 
 
 def redirect(handler: BaseHTTPRequestHandler, location: str) -> None:
@@ -468,22 +228,98 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 return
             parsed = urlparse(self.path)
             params = parse_qs(parsed.query)
+            # Empty context means no selected project, not the registry default.
+            context = parse_qs(parsed.query, keep_blank_values=True).get("context")
+            if context is not None:
+                params["context"] = context
+            if dispatch_literature_http(self, home):
+                return
             try:
                 if parsed.path == "/health":
                     self.json({"ok": True, "service": "llmwiki-web", "version": plugin_version()})
                     return
-                if parsed.path in {"/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/progress.js", "/static/progress.css"}:
+                if parsed.path in {"/static/code.js", "/static/code.css", "/static/document-editor.css", "/static/document-editor.js", "/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/progress.js", "/static/progress.css", "/static/reports.js", "/static/reports.css", "/static/knowledge-maintenance.js", "/static/knowledge-maintenance.css"}:
                     target = SCRIPT_DIR / "static" / parsed.path.rsplit("/", 1)[-1]
                     raw = target.read_bytes()
                     content_type = "text/css" if target.suffix == ".css" else "text/javascript"
                     self.headers_out(200, content_type + "; charset=utf-8", len(raw))
                     self.wfile.write(raw)
                     return
+                knowledge_match = re.fullmatch(r"/api/project/([^/]+)/knowledge-maintenance(?:/(proposals)(?:/([a-f0-9]{32}))?)?", parsed.path)
+                if knowledge_match:
+                    try:
+                        project = reports.project_for(unquote(knowledge_match[1]), home)
+                        if knowledge_match[3]:
+                            result = knowledge.proposal_detail(project, knowledge_match[3])
+                        elif knowledge_match[2]:
+                            result = knowledge.proposal_list(project, scope=(params.get("scope") or ["pending"])[0], offset=int((params.get("offset") or [0])[0]), limit=int((params.get("limit") or [20])[0]), page_path=(params.get("page_path") or [None])[0])
+                        else:
+                            result = knowledge.maintenance_status(project, home)
+                        self.json(result)
+                    except (knowledge.KnowledgeError, reports.ReportError) as exc:
+                        self.json({"ok":False,"error":{"code":exc.code,"message":str(exc)}}, exc.status)
+                    except (LLMWikiError, OSError, ValueError, TypeError):
+                        self.json({"ok":False,"error":{"code":"INVALID_INPUT","message":"知识更新不可用或请求无效。"}}, 400)
+                    return
+                if parsed.path == "/api/reports/settings":
+                    self.json(reports.report_settings(home))
+                    return
+                workspace_match = re.fullmatch(r"/(api/)?reports(?:/(daily|weekly)/(\d{4}-\d{2}-\d{2}))?", parsed.path)
+                if workspace_match:
+                    try:
+                        owner = reports.workspace(home)
+                        kind = workspace_match[2] or (params.get("kind") or params.get("view") or ["daily"])[0]
+                        if workspace_match[2]:
+                            if workspace_match[1]:
+                                version = (params.get("version") or [None])[0]
+                                self.json(reports.load(owner, kind, workspace_match[3], view=(params.get("view") or [""])[0], version=int(version) if version is not None else None))
+                            else:
+                                self.html(reports.editor_page(home, owner["id"], kind, workspace_match[3], params))
+                        elif workspace_match[1]:
+                            self.json(reports.listing(owner, kind, home=home, offset=int((params.get("offset") or [0])[0]), limit=int((params.get("limit") or [30])[0]), query=(params.get("q") or [""])[0], project_filter=(params.get("project") or [""])[0], status_filter=(params.get("status") or [""])[0]))
+                        else:
+                            self.html(reports.list_page(home, owner, kind, params))
+                    except reports.ReportError as exc:
+                        self.json({"ok": False, "error": {"code": exc.code, "message": str(exc)}}, exc.status)
+                    except (LLMWikiError, OSError, ValueError, TypeError):
+                        self.json({"ok": False, "error": {"code": "INVALID_INPUT", "message": "报告不可用或请求无效。"}}, 400)
+                    return
+                if parsed.path.startswith("/reports/asset/"):
+                    relative = unquote(parsed.path[len("/reports/asset/"):])
+                    if not relative.startswith("records/assets/"):
+                        raise LLMWikiError("只能访问工作台报告附件。")
+                    target = notebook.image_path(reports.workspace(home), relative[len("records/assets/"):])
+                    raw = target.read_bytes()
+                    self.headers_out(200, mimetypes.guess_type(target.name)[0] or "application/octet-stream", len(raw))
+                    self.wfile.write(raw)
+                    return
+                match = re.fullmatch(r"/(api/)?project/([^/]+)/reports(?:/(daily|weekly)/(\d{4}-\d{2}-\d{2}))?", parsed.path)
+                if match:
+                    try:
+                        project = reports.project_for(unquote(match[2]), home)
+                        if not match[1] and match[3]:
+                            self.html(reports.editor_page(home, project["id"], match[3], match[4], params))
+                        elif match[1] and match[3]:
+                            version = (params.get("version") or [None])[0]
+                            self.json(reports.load(project, match[3], match[4], view=(params.get("view") or [""])[0], version=int(version) if version is not None else None))
+                        elif match[1]:
+                            self.json(reports.listing(project, (params.get("kind") or ["daily"])[0], home=home, offset=int((params.get("offset") or [0])[0]), limit=int((params.get("limit") or [30])[0]), query=(params.get("q") or [""])[0]))
+                        else:
+                            self.json({"ok": False, "error": {"code": "NOT_FOUND", "message": "报告地址不存在。"}}, 404)
+                    except reports.ReportError as exc:
+                        self.json({"ok": False, "error": {"code": exc.code, "message": str(exc)}}, exc.status)
+                    except (LLMWikiError, OSError, ValueError, TypeError):
+                        self.json({"ok": False, "error": {"code": "INVALID_INPUT", "message": "报告不可用或请求无效。"}}, 400)
+                    return
                 match = re.fullmatch(r"/api/project/([^/]+)/progress", parsed.path)
                 if match:
                     try:
                         project = get_project(unquote(match[1]), home=home)["project"]
-                        self.json(progress.load(project))
+                        view = (params.get("view") or [None])[0]
+                        if view not in {None, "summary", "records"}:
+                            self.json({"ok": False, "error": "未知的进度视图。"}, 400)
+                        else:
+                            self.json(progress.load(project, view=view))
                     except (LLMWikiError, ValueError, OSError) as exc:
                         self.json({"ok": False, "error": str(exc)}, 400)
                     return
@@ -495,8 +331,8 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 if match:
                     try:
                         project = get_project(unquote(match[1]), home=home)["project"]
-                        result = (notebook.history(project, match[2], (params.get("revision") or [None])[0])
-                                  if match[3] else notebook.load(project, match[2]))
+                        result = (notebook.history(project, match[2], (params.get("revision") or [None])[0], continuous_view=(params.get("format") or [""])[0] == "markdown")
+                                  if match[3] else notebook.load(project, match[2], continuous_view=(params.get("format") or [""])[0] == "markdown"))
                         self.json(result)
                     except notebook.NotebookConflict as exc:
                         self.json({"ok": False, "error": str(exc)}, 409)
@@ -517,25 +353,19 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 if parsed.path == "/search":
                     self.html(search_page(home, params))
                     return
-                match = re.fullmatch(r"/project/([^/]+)/literature", parsed.path)
-                if match:
-                    self.html(literature_catalog_list_page(home, unquote(match.group(1)), params))
-                    return
-                match = re.fullmatch(r"/project/([^/]+)/literature/catalog", parsed.path)
-                if match:
-                    self.html(literature_catalog_list_page(home, unquote(match.group(1)), params))
-                    return
-                match = re.fullmatch(r"/project/([^/]+)/literature/item/([a-f0-9]{32})", parsed.path)
-                if match:
-                    self.html(literature_detail_page(home, unquote(match.group(1)), match.group(2)))
-                    return
-                match = re.fullmatch(r"/project/([^/]+)/literature/migrate", parsed.path)
-                if match:
-                    self.html(literature_migration_preview_page(home, unquote(match.group(1))))
-                    return
                 match = re.fullmatch(r"/project/([^/]+)/literature/old", parsed.path)
                 if match:
                     self.html(literature_library_page(home, unquote(match.group(1))))
+                    return
+                legacy_list = re.fullmatch(r"/project/([^/]+)/records", parsed.path)
+                if legacy_list and (params.get("view") or [""])[0] in {"daily", "weekly"}:
+                    get_project(unquote(legacy_list[1]), home=home)
+                    self.send_response(HTTPStatus.FOUND)
+                    navigation = {key: values[0] for key, values in params.items()}
+                    navigation.setdefault('context', unquote(legacy_list[1]))
+                    self.send_header('Location', '/reports?' + urlencode(navigation))
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
                     return
                 match = re.fullmatch(r"/project/([^/]+)/records", parsed.path)
                 if match:
@@ -549,28 +379,11 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 if match:
                     self.html(code_graph_page(home, unquote(match.group(1)), params))
                     return
-                match = re.fullmatch(r"/api/project/([^/]+)/code/graph", parsed.path)
+                match = re.fullmatch(r"/api/project/([^/]+)/code/(.+)", parsed.path)
                 if match:
-                    try:
-                        project = get_project(unquote(match[1]), home=home)["project"]
-                        source_root = Path(str(project["source_root"]))
-
-                        # Check if it's a git repository
-                        git_exe = detect_git_executable()
-                        if not is_git_repository(source_root, git_exe):
-                            self.json({"ok": False, "error": "Not a git repository"}, 400)
-                            return
-
-                        # Get parameters
-                        ref = (params.get("ref") or ["HEAD"])[-1]
-                        page = int((params.get("page") or ["0"])[-1])
-                        page_size = int((params.get("page_size") or ["100"])[-1])
-
-                        # Build graph
-                        result = build_graph(source_root, git_exe, ref=ref, page=page, page_size=page_size)
-                        self.json(result)
-                    except (LLMWikiError, ValueError, OSError) as exc:
-                        self.json({"ok": False, "error": str(exc)}, 400)
+                    result, code = git_web.dispatch(home, unquote(match[1]), "GET", match[2],
+                                                    {k: v[-1] for k, v in params.items()})
+                    self.json(result, code)
                     return
                 match = re.fullmatch(r"/project/([^/]+)/records/(.+)", parsed.path)
                 if match:
@@ -660,131 +473,6 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     400,
                 )
 
-        def literature_add_post(self, project_id: str) -> None:
-            """Handle adding a literature item."""
-            try:
-                project = get_project(project_id, home=home)["project"]
-                wiki_root = Path(str(project["wiki_root"]))
-                catalog = LiteratureCatalog(wiki_root)
-
-                form = self.form()
-                input_text = form.get("input", "").strip()
-                expected_revision = form.get("revision")
-
-                if not input_text:
-                    redirect(self, msgurl(purl(project_id) + "/literature", error="请输入文献信息"))
-                    return
-
-                # Parse input: DOI, arXiv, URL, or title
-                doi = None
-                arxiv = None
-                url = None
-                title = input_text
-
-                if input_text.startswith("10.") and "/" in input_text:
-                    doi = input_text
-                    title = f"Paper with DOI {doi}"
-                elif "arxiv.org" in input_text.lower() or input_text.startswith("arXiv:"):
-                    arxiv = input_text
-                    title = f"Paper on arXiv {arxiv}"
-                elif input_text.startswith("http://") or input_text.startswith("https://"):
-                    url = input_text
-                    title = f"Paper at {url[:50]}..."
-
-                result = catalog.create_item(
-                    title=title,
-                    doi=doi,
-                    arxiv=arxiv,
-                    urls=[{"url": url, "kind": "publisher"}] if url else [],
-                    identity_status="unverified",
-                    collection_source="manual",
-                    expected_revision=expected_revision
-                )
-
-                if result.get("warnings"):
-                    redirect(self, msgurl(purl(project_id) + "/literature", error=str(result["warnings"][0])))
-                else:
-                    item_id = result["item"]["id"]
-                    redirect(self, msgurl(purl(project_id) + f"/literature/item/{item_id}", message="文献已添加"))
-
-            except RevisionConflictError:
-                redirect(self, msgurl(purl(project_id) + "/literature", error="目录已被其他操作修改，请刷新后重试"))
-            except Exception as exc:
-                redirect(self, msgurl(purl(project_id) + "/literature", error=str(exc)))
-
-        def literature_delete_post(self, project_id: str, item_id: str) -> None:
-            """Handle removing a literature item."""
-            try:
-                project = get_project(project_id, home=home)["project"]
-                wiki_root = Path(str(project["wiki_root"]))
-                catalog = LiteratureCatalog(wiki_root)
-
-                result = catalog.remove_item(item_id)
-
-                if result["ok"]:
-                    redirect(self, msgurl(purl(project_id) + "/literature", message="文献已移除"))
-                else:
-                    redirect(self, msgurl(purl(project_id) + "/literature", error="移除失败"))
-
-            except Exception as exc:
-                redirect(self, msgurl(purl(project_id) + "/literature", error=str(exc)))
-
-        def literature_migrate_apply_post(self, project_id: str) -> None:
-            """Handle applying migration."""
-            try:
-                project = get_project(project_id, home=home)["project"]
-                wiki_root = Path(str(project["wiki_root"]))
-                source_root = Path(str(project["source_root"]))
-                catalog = LiteratureCatalog(wiki_root)
-
-                form = self.form()
-
-                # Get selected paths from form (multiple checkboxes)
-                length = int(self.headers.get("Content-Length", "0"))
-                body = self.rfile.read(length).decode("utf-8")
-                parsed = parse_qs(body, keep_blank_values=True)
-                selected_paths = parsed.get("import_path", [])
-
-                if not selected_paths:
-                    redirect(self, msgurl(purl(project_id) + "/literature/migrate", error="未选择任何文件"))
-                    return
-
-                result = apply_migration(catalog, source_root, selected_paths, "migration")
-
-                if result["ok"]:
-                    message = f"已导入 {len(result['imported'])} 篇文献"
-                    redirect(self, msgurl(purl(project_id) + "/literature", message=message))
-                else:
-                    errors = ", ".join(e["error"] for e in result["errors"][:3])
-                    redirect(self, msgurl(purl(project_id) + "/literature/migrate", error=errors))
-
-            except Exception as exc:
-                redirect(self, msgurl(purl(project_id) + "/literature/migrate", error=str(exc)))
-
-        def literature_migrate_rollback_post(self, project_id: str) -> None:
-            """Handle rolling back migration."""
-            try:
-                project = get_project(project_id, home=home)["project"]
-                wiki_root = Path(str(project["wiki_root"]))
-                catalog = LiteratureCatalog(wiki_root)
-
-                form = self.form()
-                migration_id = form.get("migration_id", "")
-
-                if not migration_id:
-                    redirect(self, msgurl(purl(project_id) + "/literature", error="未指定迁移ID"))
-                    return
-
-                result = rollback_migration(catalog, migration_id)
-
-                if result["ok"]:
-                    redirect(self, msgurl(purl(project_id) + "/literature", message="迁移已回滚"))
-                else:
-                    redirect(self, msgurl(purl(project_id) + "/literature", error=result.get("error", "回滚失败")))
-
-            except Exception as exc:
-                redirect(self, msgurl(purl(project_id) + "/literature", error=str(exc)))
-
         def notebook_post(self, path: str) -> None:
             # Browsers cannot forge this JSON/header combination cross-origin.
             # Reject rebinding Host values as well; never enable CORS for local files.
@@ -803,6 +491,62 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 if not isinstance(payload, dict):
                     raise LLMWikiError("请求必须是 JSON 对象。")
+                if path == "/api/reports/settings":
+                    try:
+                        self.json(reports.save_settings(payload, home))
+                    except reports.ReportError as exc:
+                        self.json({"ok": False, "error": {"code": exc.code, "message": str(exc)}}, exc.status)
+                    return
+                knowledge_match = re.fullmatch(r"/api/project/([^/]+)/knowledge-maintenance/proposals/([a-f0-9]{32})", path)
+                if knowledge_match:
+                    try:
+                        project = reports.project_for(unquote(knowledge_match[1]), home)
+                        self.json(knowledge.decide(project, knowledge_match[2], payload))
+                    except (knowledge.KnowledgeError, reports.ReportError) as exc:
+                        self.json({"ok":False,"error":{"code":exc.code,"message":str(exc)}}, exc.status)
+                    except (LLMWikiError, OSError, ValueError, TypeError):
+                        self.json({"ok":False,"error":{"code":"INVALID_INPUT","message":"建议不可用或请求无效。"}}, 400)
+                    return
+                workspace_match = re.fullmatch(r"/api/reports(?:/(preview|upload)|/(daily|weekly)/(\d{4}-\d{2}-\d{2}))?", path)
+                if workspace_match:
+                    try:
+                        owner = reports.workspace(home)
+                        if workspace_match[1] == "upload":
+                            result = notebook.upload(owner, payload)
+                        elif workspace_match[1] == "preview":
+                            from markdown_renderer import render_markdown
+                            key, _ = reports.identity(payload.get("kind"), payload.get("period_start"))
+                            result = {"ok": True, "html": render_markdown(reports.body_text(payload.get("body")), owner["id"], f"records/reports/{key}/draft.md")}
+                        elif workspace_match[2]:
+                            result = reports.update(owner, workspace_match[2], workspace_match[3], payload, home=home)
+                        elif payload.get("action") == "create":
+                            result = reports.create(owner, payload.get("kind"), payload.get("period_start"), payload.get("project_ids"), home)
+                        else:
+                            raise reports.ReportError("报告操作无效。")
+                        self.json(result)
+                    except reports.ReportError as exc:
+                        self.json({"ok": False, "error": {"code": exc.code, "message": str(exc)}}, exc.status)
+                    return
+                report_match = re.fullmatch(r"/api/project/([^/]+)/reports(?:/(preview)|/(daily|weekly)/(\d{4}-\d{2}-\d{2}))?", path)
+                if report_match:
+                    try:
+                        project = reports.project_for(unquote(report_match[1]), home)
+                        if report_match[2]:
+                            from markdown_renderer import render_markdown
+                            key, _ = reports.identity(payload.get("kind"), payload.get("period_start"))
+                            result = {"ok": True, "html": render_markdown(reports.body_text(payload.get("body")), project["id"], f"records/reports/{key}/draft.md")}
+                        elif report_match[3]:
+                            result = reports.update(project, report_match[3], report_match[4], payload, home=home)
+                        elif payload.get("action") == "create":
+                            result = reports.create(project, payload.get("kind"), payload.get("period_start"), payload.get("project_ids"), home)
+                        else:
+                            raise reports.ReportError("报告操作无效。")
+                        self.json(result, 202 if payload.get("action") == "regenerate" else 200)
+                    except reports.ReportError as exc:
+                        self.json({"ok": False, "error": {"code": exc.code, "message": str(exc)}}, exc.status)
+                    except (LLMWikiError, OSError, ValueError, TypeError):
+                        self.json({"ok": False, "error": {"code": "INVALID_INPUT", "message": "报告不可用或请求无效。"}}, 400)
+                    return
                 progress_match = re.fullmatch(r"/api/project/([^/]+)/progress", path)
                 if progress_match:
                     project = get_project(unquote(progress_match[1]), home=home)["project"]
@@ -819,7 +563,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 elif action == "preview":
                     from markdown_renderer import render_markdown
                     text = payload.get("text", "")
-                    if not isinstance(text, str) or len(text) > 100_000:
+                    if not isinstance(text, str) or len(text.encode("utf-8")) > notebook.MAX_DOCUMENT:
                         raise LLMWikiError("预览文字过长。")
                     result = {"ok": True, "html": render_markdown(text, project["id"], "records/manual/preview.md")}
                 else:
@@ -830,27 +574,39 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             except (LLMWikiError, OSError, ValueError, TypeError) as exc:
                 self.json({"ok": False, "error": str(exc)}, 400)
 
+        def code_post(self, project_id: str, endpoint: str) -> None:
+            host = self.headers.get("Host", "")
+            allowed = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
+            if (host not in allowed or self.headers.get("Origin") != "http://" + host
+                    or self.headers.get("X-Notebook-Request") != "1"
+                    or self.headers.get("Content-Type", "").split(";")[0] != "application/json"):
+                self.json({"ok": False, "code": "forbidden_origin", "message": "已阻止非同源写入。"}, 403)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 2 * 1024 * 1024:
+                    raise ValueError("size")
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(payload, dict):
+                    raise ValueError("object")
+            except (ValueError, UnicodeDecodeError):
+                self.json({"ok": False, "code": "invalid_request", "message": "请求必须是至多 2MiB 的 JSON 对象。"}, 400)
+                return
+            result, code = git_web.dispatch(home, project_id, "POST", endpoint, payload)
+            self.json(result, code)
+
         def do_POST(self) -> None:  # noqa: N802
+            if dispatch_literature_http(self, home):
+                return
             parsed = urlparse(self.path)
+            code_match = re.fullmatch(r"/api/project/([^/]+)/code/(.+)", parsed.path)
+            if code_match:
+                self.code_post(unquote(code_match[1]), code_match[2])
+                return
+            if parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
+                self.notebook_post(parsed.path)
+                return
             if parsed.path.startswith("/api/project/"):
-                # Check for literature API routes first
-                match = re.fullmatch(r"/api/project/([^/]+)/literature/add", parsed.path)
-                if match:
-                    self.literature_add_post(unquote(match.group(1)))
-                    return
-                match = re.fullmatch(r"/api/project/([^/]+)/literature/item/([a-f0-9]{32})/delete", parsed.path)
-                if match:
-                    self.literature_delete_post(unquote(match.group(1)), match.group(2))
-                    return
-                match = re.fullmatch(r"/api/project/([^/]+)/literature/migrate/apply", parsed.path)
-                if match:
-                    self.literature_migrate_apply_post(unquote(match.group(1)))
-                    return
-                match = re.fullmatch(r"/api/project/([^/]+)/literature/migrate/rollback", parsed.path)
-                if match:
-                    self.literature_migrate_rollback_post(unquote(match.group(1)))
-                    return
-                # Fallback to notebook routes
                 self.notebook_post(parsed.path)
                 return
             try:

@@ -1212,3 +1212,30 @@ def execute_with_recovery(
                 f"Recovery point available: {recovery_id}"
             )
         raise
+
+
+def commit_selected_files(worktree_root: Path, git_exe: str, paths: List[str], message: str) -> str:
+    """Commit complete literal paths, preserving unrelated staged entries.
+
+    The web adapter owns preview validation and the repository lock. A failure
+    deliberately leaves the selected staging intact; never reset the repository.
+    """
+    if not paths or not message.strip():
+        raise GitOperationError("请选择文件并填写版本说明。")
+    unique = list(dict.fromkeys(paths))
+    data = b"".join(path.encode("utf-8") + b"\0" for path in unique)
+    env = {"GIT_LITERAL_PATHSPECS": "1"}
+    options = ["--pathspec-from-file=-", "--pathspec-file-nul"]
+    tracked = set(_run_git_command(git_exe, ["ls-files", "-z"], cwd=worktree_root,
+                                   text=False).stdout.split(b"\0"))
+    # An already-staged deletion / rename source no longer exists in the index.
+    # add rejects that path, while commit --only must still include its deletion.
+    stage = [path for path in unique if path.encode("utf-8") in tracked
+             or (worktree_root / path).exists() or (worktree_root / path).is_symlink()]
+    if stage:
+        _run_git_command(git_exe, ["add", "-A", *options], cwd=worktree_root,
+                         input_data=b"".join(path.encode("utf-8") + b"\0" for path in stage),
+                         text=False, env_override=env)
+    _run_git_command(git_exe, ["commit", "--only", "-m", message, *options],
+                     cwd=worktree_root, input_data=data, text=False, env_override=env)
+    return _run_git_command(git_exe, ["rev-parse", "HEAD"], cwd=worktree_root).stdout.strip()
