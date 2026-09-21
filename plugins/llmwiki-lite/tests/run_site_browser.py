@@ -66,6 +66,8 @@ def main():
             git("add", ".")
             git("commit", "--date=2026-09-20T16:42:00+08:00", "-m", title)
         server = create_server(home, port=0)
+        # Join active request threads before deleting the disposable Git fixture.
+        server.daemon_threads = False
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         origin = f"http://127.0.0.1:{server.server_port}"

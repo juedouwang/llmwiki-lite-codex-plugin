@@ -12,7 +12,7 @@ import struct
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from llmwiki_registry import register_project  # noqa: E402
+from llmwiki_registry import register_project, select_project  # noqa: E402
 from web_server import create_server  # noqa: E402
 import research_reports as reports  # noqa: E402
 
@@ -49,6 +49,7 @@ def main():
         other_source = root / 'other-source'
         other_source.mkdir()
         other = register_project(str(other_source), name='第二项目', home=home)['project']
+        select_project(other['id'], home=home)
         owner = reports.workspace(home)
         for report_owner, ids in [(owner, [project['id'], other['id']]), (project, [project['id']])]:
             week = reports.create(report_owner, 'weekly', '2026-09-14', ids, home=home)

@@ -81,6 +81,8 @@ def git_failure(exc, network=False):
     if isinstance(raw, bytes):
         raw = raw.decode('utf-8', 'replace')
     raw = raw.lower()
+    if 'already checked out' in raw or 'already used by worktree' in raw:
+        fail('branch_in_use', '该分支正在其他工作树使用；请切换其他分支，或在原 Git 工具中释放后刷新。')
     if 'index.lock' in raw or 'cannot lock ref' in raw:
         fail('repo_busy', '仓库正由其他操作使用，请稍后重试。')
     if any(x in raw for x in ('authentication', 'permission denied', 'terminal prompts disabled', 'could not read username', 'host key verification')):
@@ -99,6 +101,12 @@ def checked_git():
 
 class Repo:
     def __init__(self, home, project_id):
+        # A server launched from a Git hook/tool must not inherit another
+        # worktree's index, object store, namespace or repository selection.
+        if any(os.environ.get(k) for k in ('GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE',
+                'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE')):
+            fail('unsupported_repo', '服务继承了自定义 Git 仓库环境，请从普通环境重启；不会操作其他工作树。')
+        self.home = home
         try:
             self.project = get_project(project_id, home=home)['project']
         except (LLMWikiError, ValueError):
@@ -117,7 +125,7 @@ class Repo:
         self.common = Path(values[1]).resolve()
         self.gitdir = Path(values[2]).resolve()
         self.key = digest(str(self.common).casefold() if os.name == 'nt' else str(self.common))
-        self.binding = digest([str(Path(home).resolve()), self.pid, str(self.root)])
+        self.binding = digest([str(Path(home).resolve()), self.pid, str(self.root), str(self.common), str(self.gitdir)])
         self.oid_length = 64 if values[3] == 'sha256' else 40
         self.superproject = values[4] if len(values) > 4 else ''
         self._config = None
@@ -152,13 +160,72 @@ class Repo:
         result = self.git('for-each-ref', '--format=%(refname)%00%(objectname)', 'refs/heads/', 'refs/remotes/', 'refs/tags/').stdout
         return dict(line.split('\0', 1) for line in result.splitlines() if '\0' in line)
 
-    def capabilities(self):
+    def worktrees(self):
+        # -z avoids quoted/escaped paths (spaces, Unicode and newlines included).
+        # Do not inspect another worktree's files/index or inherit its dirtiness.
+        records = []
+        for record in self.git('worktree', 'list', '--porcelain', '-z', binary=True).stdout.split(b'\0\0'):
+            fields = dict(part.partition(b' ')[::2] for part in record.split(b'\0') if part)
+            if b'worktree' not in fields:
+                continue
+            records.append({
+                'path': str(Path(os.fsdecode(fields[b'worktree'])).resolve()),
+                'branch': os.fsdecode(fields.get(b'branch', b'')),
+                'bare': b'bare' in fields, 'prunable': b'prunable' in fields,
+            })
+        return records
+
+    def worktree_reason(self, worktrees):
+        current = [w for w in worktrees if Path(w['path']) == self.root]
+        if len(current) != 1 or current[0]['bare'] or current[0]['prunable']:
+            return '当前目录不是有效的已登记工作树，请在原 Git 工具中修复后刷新。'
+        dotgit = self.root / '.git'
+        if dotgit.is_symlink() or getattr(dotgit, 'is_junction', lambda: False)():
+            return '工作树的 .git 路径被重定向，网页暂仅支持浏览。'
+        try:
+            if dotgit.is_file():
+                value = dotgit.read_text(encoding='utf-8').strip()
+                if not value.startswith('gitdir: ') or (self.root / value[8:]).resolve() != self.gitdir:
+                    return '工作树 Git 目录绑定已改变，请刷新后重试。'
+            elif not dotgit.is_dir() or dotgit.resolve() != self.gitdir:
+                return '工作树 Git 目录绑定无效，请在原 Git 工具中处理。'
+            if self.gitdir != self.common:
+                # A registered linked worktree needs both directions of Git's
+                # own binding, not merely a client-controlled .git pointer.
+                if self.gitdir.parent != self.common / 'worktrees':
+                    return '非标准工作树 Git 目录暂仅支持浏览。'
+                common = (self.gitdir / (self.gitdir / 'commondir').read_text(encoding='utf-8').strip()).resolve()
+                backlink = Path((self.gitdir / 'gitdir').read_text(encoding='utf-8').strip()).resolve()
+                if common != self.common or backlink != dotgit.resolve():
+                    return '工作树双向绑定不一致，请在原 Git 工具中修复后刷新。'
+        except (OSError, ValueError):
+            return '无法核对工作树绑定，请在原 Git 工具中修复后刷新。'
+        return ''
+
+    def switch_reason(self, branch, worktrees=None):
+        owners = [w['path'] for w in (self.worktrees() if worktrees is None else worktrees)
+                  if w['branch'] == 'refs/heads/' + branch and Path(w['path']) != self.root]
+        return ('该分支正在其他工作树使用：' + '、'.join(owners)
+                + '。请切换其他分支，或在原 Git 工具中释放后刷新。') if owners else ''
+
+    def check_switch(self, branch):
+        reason = self.switch_reason(branch)
+        if reason:
+            fail('branch_in_use', reason)
+
+    def revalidate(self):
+        # Repo was constructed before waiting for the common-dir lock. Resolve
+        # registration/location/config again *under* that lock, before writing.
+        fresh = Repo(self.home, self.pid)
+        if (fresh.root, fresh.common, fresh.gitdir, fresh.state) != (self.root, self.common, self.gitdir, self.state):
+            fail('state_changed', '注册目录或工作树绑定已改变，请刷新并重新确认。')
+        self._config = None
+
+    def capabilities(self, worktrees=None):
         reason = ''
         if self.config.get('core.sparsecheckout', '').lower() in {'true', '1'} or self.config.get('extensions.partialclone'):
             reason = '稀疏或部分克隆仓库暂仅支持浏览。'
-        worktrees = self.git('worktree', 'list', '--porcelain', '-z', binary=True).stdout
-        if worktrees.count(b'worktree ') != 1:
-            reason = '多工作树仓库暂仅支持浏览，请在原 Git 工具中操作。'
+        reason = self.worktree_reason(self.worktrees() if worktrees is None else worktrees) or reason
         if self.superproject:
             reason = '子模块仓库暂仅支持浏览。'
         tracked = self.git('ls-files', '--stage', '-z', binary=True).stdout
@@ -166,7 +233,7 @@ class Repo:
             reason = '包含子模块的仓库暂仅支持浏览。'
         attributes = self.git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(glob)**/.gitattributes', '.gitattributes', binary=True).stdout
         paths = [self.root / p.decode('utf-8') for p in attributes.split(b'\0') if p]
-        paths += [self.root / '.gitattributes', self.gitdir / 'info' / 'attributes']
+        paths += [self.root / '.gitattributes', self.common / 'info' / 'attributes']
         # An ignored attributes file still affects tracked files; do not execute
         # its filter merely because the attributes file itself is hidden.
         checked_parents = set()
@@ -198,6 +265,7 @@ class Repo:
         return {'write': not reason, 'reason': reason, 'read': True}
 
     def guard(self, action, allow_merge=False):
+        self.revalidate()
         cap = self.capabilities()
         if not cap['write']:
             fail('unsupported_repo', cap['reason'])
@@ -274,7 +342,7 @@ class Repo:
 
     def snapshot(self, files):
         index = self.gitdir / 'index'
-        return {'head': self.head(), 'refs': self.refs(), 'config': digest(self.read_config()), 'index': digest(index.read_bytes()) if index.exists() else None,
+        return {'head': self.head(), 'refs': self.refs(), 'worktrees': self.worktrees(), 'config': digest(self.read_config()), 'index': digest(index.read_bytes()) if index.exists() else None,
                 'files': {p: self.file_hash(p) for f in files for p in (f['path'], f.get('old_path')) if p}}
 
     def lock(self):
@@ -378,7 +446,8 @@ class Repo:
 
 
 def status(repo):
-    capabilities = repo.capabilities()
+    worktrees = repo.worktrees()
+    capabilities = repo.capabilities(worktrees)
     head, refs = repo.head(), repo.refs()
     remotes = []
     for name in repo.git('remote').stdout.splitlines():
@@ -396,8 +465,16 @@ def status(repo):
                 counts = repo.git('rev-list', '--left-right', '--count', f'{head["oid"]}...{refs[tracked]}').stdout.split()
                 upstream.update(ahead=int(counts[0]), behind=int(counts[1]))
     cached = repo.read_state('fetch') or {}
+    branches = []
+    for ref, oid in refs.items():
+        if ref.startswith('refs/heads/'):
+            name = ref[11:]
+            reason = repo.switch_reason(name, worktrees)
+            branches.append({'name': name, 'oid': oid, 'current': name == head['branch'],
+                             'switchable': not reason, 'switch_reason': reason})
     return {'ok': True, 'capabilities': capabilities, 'head': head,
-            'branches': [{'name': k[11:], 'oid': v, 'current': k[11:] == head['branch']} for k, v in refs.items() if k.startswith('refs/heads/')],
+            'worktree': {'path': str(repo.root), 'linked': repo.gitdir != repo.common, 'count': len(worktrees)},
+            'branches': branches,
             'remotes': remotes, 'upstream': upstream, 'files': repo.files() if capabilities['write'] else [], 'ongoing': repo.ongoing(),
             'last_fetch_at': cached.get('last_fetch_at')}
 
@@ -473,7 +550,7 @@ def get_preview(repo, preview_id, consume=False):
 def compare(repo, item, files):
     snap = repo.snapshot(files)
     old = item['snapshot']
-    if any(snap[k] != old[k] for k in ('head', 'refs', 'index', 'config')) or any(old['files'].get(k) != v for k, v in snap['files'].items()):
+    if any(snap[k] != old[k] for k in ('head', 'refs', 'index', 'config', 'worktrees')) or any(old['files'].get(k) != v for k, v in snap['files'].items()):
         fail('state_changed', '确认后仓库或所选文件已改变，请重新预览；输入不会被丢弃。')
 
 
@@ -487,7 +564,7 @@ def preview(repo, payload):
     head = repo.head()
     files = repo.files() if action == 'save' else []
     start = repo.snapshot(files)
-    initial = {k: start[k] for k in ('head', 'refs', 'index', 'config')}
+    initial = {k: start[k] for k in ('head', 'refs', 'index', 'config', 'worktrees')}
     summary, target = '', None
     if action == 'save':
         if not files:
@@ -500,6 +577,8 @@ def preview(repo, payload):
         repo.clean()
         if action in {'switch_branch', 'merge'}:
             name = repo.branch(params['branch' if action == 'switch_branch' else 'source_branch'], exists=True)
+            if action == 'switch_branch':
+                repo.check_switch(name)
             target = repo.refs()['refs/heads/' + name]
         elif action == 'restore':
             target = repo.oid(params['target_oid'])
@@ -614,6 +693,8 @@ def execute(repo, payload):
             if not isinstance(ids, list) or not ids or not all(isinstance(x, str) for x in ids) or set(ids) - {f['file_id'] for f in files}:
                 fail('invalid_request', '请勾选此预览中的文件。', 400)
             files = [f for f in files if f['file_id'] in ids]
+        if action == 'switch_branch':
+            repo.check_switch(params['branch'])
         compare(repo, item, files)
         before = item['snapshot']['head']['oid']
         if action == 'save':
@@ -632,6 +713,7 @@ def execute(repo, payload):
         if action == 'switch_branch':
             repo.clean()
             repo.target_safe(item['target'])
+            repo.check_switch(params['branch'])
             repo.git('switch', '--no-guess', params['branch'])
             if repo.head()['branch'] != params['branch']:
                 fail('state_changed', '分支结果已变化，请刷新。')

@@ -26,8 +26,8 @@ const crypto=require('node:crypto');
     await page.locator('#code-detail .code-diff').waitFor();
     assert.equal((await page.locator('#code-pull').innerText()).trim(),'pull');
     assert.equal((await page.locator('#code-push').innerText()).trim(),'push');
-    assert.equal(await page.locator('[data-workbench-nav="code"] svg circle').count(),3);
-    assert.equal(await page.locator('#code-branches > summary svg').first().locator('circle').count(),3);
+    assert.equal(await page.locator('[data-workbench-nav="code"] svg circle').count(),2);
+    assert.equal(await page.locator('#code-branches > summary svg').first().locator('circle').count(),2);
     assert.equal(await page.locator('.code-version-meta').innerText(),(await page.locator('#code-commit-oid').textContent()).slice(0,7)+'\n刘亚宁 · 16:42');
     assert.equal(await page.locator('#code-detail .code-commit-file').count(),2);
     assert.deepEqual(await page.locator('#code-detail .code-added').allTextContents(),['+2','+8']);
@@ -51,6 +51,35 @@ const crypto=require('node:crypto');
     await ref.addScriptTag({path:path.resolve(path.dirname(require.resolve('lucide')),'../umd/lucide.min.js')});
     await ref.locator('#rw-nav [data-view="code"]').click();
     await ref.locator('.rg-commit').first().waitFor();
+    // Compare the actual prototype SVG, not just its number of endpoints.
+    // The opposite quarter-circle has the same two circles but is a different icon.
+    async function glyph(tab,selector){
+      return tab.locator(selector).first().evaluate(svg=>{
+        const style=getComputedStyle(svg);
+        return {
+          viewBox:svg.getAttribute('viewBox'),
+          width:style.width,height:style.height,fill:style.fill,
+          strokeWidth:style.strokeWidth,linecap:style.strokeLinecap,linejoin:style.strokeLinejoin,
+          nodes:[...svg.children].map(node=>({tag:node.localName,
+            attrs:Object.fromEntries([...node.attributes].map(a=>[a.name,a.value]).sort())})),
+        };
+      });
+    }
+    const expectedGit=await glyph(ref,'#rw-nav [data-view="code"] svg');
+    assert.equal(expectedGit.nodes[0].attrs.d,'M15 6a9 9 0 0 0-9 9V3','approved Lucide git-branch source');
+    const gitIcons=[];
+    for(const selector of ['[data-workbench-nav="code"] svg','#code-branches > summary svg']){
+      const actual=await glyph(page,selector);
+      assert.deepEqual(actual,expectedGit,`${selector}: exact prototype geometry and stroke`);
+      gitIcons.push(selector);
+    }
+    await page.locator('#code-branches > summary').click();
+    await page.locator('#code-branch-menu [data-branch] svg').first().waitFor();
+    assert.deepEqual(await glyph(page,'#code-branch-menu [data-branch] svg'),expectedGit,'dynamic branch menu matches prototype');
+    gitIcons.push('#code-branch-menu [data-branch] svg');
+    await page.locator('#code-branches > summary').click();
+    await page.locator('[data-workbench-nav="code"]').screenshot({path:path.join(evidence,'actual-git-icon.png')});
+    await ref.locator('#rw-nav [data-view="code"]').screenshot({path:path.join(evidence,'prototype-git-icon.png')});
     const pairs=[
       ['.console-sidebar','.rw-side',['x','y','width','height','padding','gap','backgroundColor']],
       ['.console-project-switcher','.rw-project-switch',['x','y','width','height']],
@@ -113,11 +142,11 @@ const crypto=require('node:crypto');
     }
     assert.deepEqual(errors,[]);
     assert.equal(hash(fs.readFileSync(prototype,'utf8')),hash(prototypeHTML),'approved source was not modified');
-    const report={viewport:{width:1440,height:960},zoom:1.25,prototype,prototypeSha256:hash(prototypeHTML),results,responsive,documents,errors,
+    const report={viewport:{width:1440,height:960},zoom:1.25,prototype,prototypeSha256:hash(prototypeHTML),gitIcons,results,responsive,documents,errors,
       limitations:['User amendment: the diff now has an expand control and actions follow the diff instead of the panel bottom; those changed offsets are checked in workbench_refinements_browser_test.cjs, not against the old prototype.','Reference uses the bundled Lucide UMD runtime, restoring the same icons as the embedded prototype without changing its HTML.','Real commit/detail contents and history height legitimately differ from demo data.']};
     fs.writeFileSync(path.join(evidence,'comparison.json'),JSON.stringify(report,null,2));
     const differences=results.filter(result=>result.differences.length);
     assert.deepEqual(differences,[],`prototype geometry mismatch; evidence: ${evidence}`);
-    console.log(`PASS approved-prototype comparison: ${results.length} geometry/style groups, six live column swaps, five Git widths. Evidence: ${evidence}`);
+    console.log(`PASS approved-prototype comparison: ${gitIcons.length} exact Git SVGs, ${results.length} geometry/style groups, six live column swaps, five Git widths. Evidence: ${evidence}`);
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

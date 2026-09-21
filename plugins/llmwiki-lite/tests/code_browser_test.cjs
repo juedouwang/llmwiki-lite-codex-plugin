@@ -8,7 +8,7 @@ function git(project, ...args) { return execFileSync('git', args, {cwd:project.r
 function head(project) { return git(project,'rev-parse','HEAD'); }
 function edit(project,name,text) { fs.writeFileSync(path.join(project.root,name),text); }
 (async () => {
-  const browser = await chromium.launch({headless:true,channel:process.env.LLMWIKI_BROWSER_CHANNEL || 'chrome'});
+  const browser = await chromium.launch({headless:true,executablePath:process.env.LLMWIKI_BROWSER_EXECUTABLE,channel:process.env.LLMWIKI_BROWSER_CHANNEL || 'chrome'});
   const context = await browser.newContext({viewport:{width:1360,height:940}});
   const page = await context.newPage(), errors=[], passed=[], busySamples=[];
   page.on('pageerror',e=>errors.push(e.message));

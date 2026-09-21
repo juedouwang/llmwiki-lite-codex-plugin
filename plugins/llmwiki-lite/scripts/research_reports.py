@@ -151,11 +151,23 @@ def _read_body(project: dict, key: str, name: str) -> str:
     return body_text(path.read_text(encoding="utf-8"))
 
 
+def _title(meta: dict, entry: dict | None) -> str:
+    return (entry or {}).get("title") or ("日报 · " if meta["kind"] == "daily" else "周报 · ") + meta["period_start"]
+
+
+def _body_revision(project: dict, key: str, name: str, body: str, entry: dict) -> str:
+    # Older documents keep their revision until a user explicitly renames them.
+    fields = [project["id"], key, name, digest(body), entry.get("comments", [])]
+    if "title" in entry:
+        fields.append(entry["title"])
+    return digest(fields)
+
+
 def _current(project: dict, key: str, meta: dict) -> tuple[str, str, str]:
     name = "draft.md" if meta["draft"] is not None else (f'v{meta["versions"][-1]["number"]:04}.md' if meta["versions"] else "")
     body = _read_body(project, key, name) if name else ""
     entry = meta["draft"] if meta["draft"] is not None else (meta["versions"][-1] if meta["versions"] else {})
-    return body, digest([project["id"], key, name, digest(body), entry.get("comments", [])]), name
+    return body, _body_revision(project, key, name, body, entry), name
 
 
 def url(project_id: str, kind: str, start: str) -> str:
@@ -179,7 +191,7 @@ def _loaded(project: dict, key: str, meta: dict, view: str = "", version: int | 
         raise ReportError("所选版本不存在。", "NOT_FOUND", 404)
     if name:
         body = _read_body(project, key, name)
-    return {"ok": True, "revision": revision, "body": body, "comments": (selected or {}).get("comments", []),
+    return {"ok": True, "revision": revision, "body": body, "title": _title(meta, selected), "comments": (selected or {}).get("comments", []),
             "mode": "readonly" if view or version is not None else ("draft" if meta["draft"] is not None else "formal"),
             "metadata": meta, "selected_metadata": selected, "body_sha256": digest(body),
             "externally_changed": bool(selected and selected["sha256"] != digest(body)),
@@ -228,9 +240,13 @@ def update(project: dict, kind: str, start: str, payload: dict, *, home=None) ->
             comments = validate_comments(payload.get("comments", meta["draft"].get("comments", [])))
             if len(json.dumps(comments, ensure_ascii=False).encode("utf-8")) + len(body.encode("utf-8")) > MAX_DOCUMENT:
                 raise ReportError("正文与批注超过 2 MiB。")
-            if body == current and comments == meta["draft"].get("comments", []):
+            title = payload.get("title", _title(meta, meta["draft"]))
+            if not isinstance(title, str) or len(title) > 200 or "\x00" in title:
+                raise ReportError("标题必须是 200 字以内的文本。")
+            title = title.replace("\n", " ").replace("\r", " ").strip() or _title(meta, None)
+            if body == current and comments == meta["draft"].get("comments", []) and title == _title(meta, meta["draft"]):
                 return _loaded(project, key, meta)
-            meta["draft"] = {**meta["draft"], "sha256": digest(body), "human_edited": True, "updated_at": stamp(), "comments": comments}
+            meta["draft"] = {**meta["draft"], "sha256": digest(body), "human_edited": True, "updated_at": stamp(), "comments": comments, "title": title}
             bodies["draft.md"] = body
         elif action == "start_edit":
             if meta["draft"] is not None:
@@ -264,10 +280,12 @@ def update(project: dict, kind: str, start: str, payload: dict, *, home=None) ->
             if meta["draft"] is not None:
                 meta["previous_draft"] = {**meta["draft"], "sha256": digest(current)}
                 bodies["previous-draft.md"] = current
+            kept_title = _title(meta, meta["draft"] or (meta["versions"][-1] if meta["versions"] else None))
             kept_comments = (meta["draft"] or (meta["versions"][-1] if meta["versions"] else {})).get("comments", [])
             meta["draft"] = {**source, "sha256": digest(body), "human_edited": True, "updated_at": stamp()}
             if action == "adopt_candidate":
                 meta["draft"]["comments"] = kept_comments
+                meta["draft"]["title"] = kept_title
             bodies["draft.md"] = body
             meta["project_ids"] = source.get("project_ids", meta["project_ids"])
             if action == "adopt_candidate":
@@ -305,7 +323,7 @@ def publish(project: dict, kind: str, start: str, body: str, *, generation_id: s
         meta["last_input_fingerprint"] = fingerprint
         meta["generation"].update(requested=False, state="idle", last_error=None)
         meta["updated_at"] = stamp()
-        revision = digest([project["id"], key, "draft.md", digest(body), meta["draft"].get("comments", [])]) if target == "draft" else _current(project, key, meta)[1]
+        revision = _body_revision(project, key, "draft.md", body, meta["draft"]) if target == "draft" else _current(project, key, meta)[1]
         result = {"ok": True, "target": target, "revision": revision, "url": url(project["id"], kind, start), "changed": not bool(same)}
         if _finish_signature is not None:
             meta["finish_receipt"] = {"run_id": generation_id, "signature": _finish_signature, "result": result}
@@ -330,7 +348,7 @@ def listing(project: dict, kind: str, *, home=None, offset: int = 0, limit: int 
                 continue
             if is_workspace(project) and not (meta["draft"] or meta["versions"] or meta["candidate"]):
                 continue
-            title = ("日报 · " if kind == "daily" else "周报 · ") + meta["period_start"]
+            title = _title(meta, meta["draft"] or (meta["versions"][-1] if meta["versions"] else None))
             if is_workspace(project) and not is_workspace(owner):
                 title += " · 历史项目报告（" + owner["name"] + "）"
             if status_filter == "formal" and (not meta["versions"] or meta["draft"] is not None):
@@ -351,9 +369,10 @@ def listing(project: dict, kind: str, *, home=None, offset: int = 0, limit: int 
 def navigation_context(home: str, params: dict, fallback: str | None = None) -> str:
     """The browsing project is independent of report ownership/participation."""
     listed = list_projects(home=home)
+    from web_session import current_project
     selected = (params.get("context") or [fallback])[0]
     if selected is None:
-        selected = listed.get("current_project_id")
+        selected = current_project() if current_project() is not None else listed.get("landing_project_id")
     return selected if any(p["id"] == selected for p in listed["projects"]) else ""
 
 
@@ -856,8 +875,13 @@ def settings_section(home: str) -> str:
     projects = list_projects(home=home)['projects']
     checks = ''.join(f'<label class="check-label"><input name="report-project" type="checkbox" value="{esc(p["id"])}">{esc(p["name"])}</label>' for p in projects)
     return f'''<details class="settings-section" id="report-settings"><summary>报告自动整理</summary>
+<p class="meta">工作台负责保存和展示；实际总结由你使用的助手完成。“连接宿主计划”就是让助手在指定时间自动来整理，而不是让网站自己运行模型。</p>
+<details class="schedule-help"><summary>为什么要连接计划、关联会话？</summary>
+<p><strong>计划决定何时整理。</strong>先保存下面的项目和时间设置，再把“复制连接指令”交给助手，在当前对话中连接内置定时计划。只勾选开关、保存设置不会开始定时运行，也不会启动额外终端。</p>
+<p><strong>会话关联决定用哪些材料。</strong>助手需要知道哪段本机对话属于哪个项目，避免把不同科研任务混进报告。这不是让你给每条消息做标记；能按项目目录识别的会自动归属，无法确定时才需要指定。</p>
+<p>不接入对话也可使用科研记录、任务历史和只读 Git 材料；接入后仅使用授权范围内的本机会话，不读取网页聊天，也不回填授权前历史。定时执行依赖宿主运行和计划连接状态，不是离线云服务。</p></details>
 <p id="report-connection" class="muted">读取配置中…</p>
-<form id="report-settings-form"><label class="check-label"><input type="checkbox" id="report-capture">接入所选项目的本机对话（仅从授权后开始）</label><label class="check-label"><input type="checkbox" id="knowledge-enabled">同时维护知识库</label><label class="check-label"><input type="checkbox" id="literature-enabled">同时收录项目文献</label><label class="check-label"><input type="checkbox" id="report-enabled">允许自动整理所选项目（还需连接宿主计划）</label>
+<form id="report-settings-form"><label class="check-label"><input type="checkbox" id="report-capture">接入所选项目的本机对话（仅从授权后开始）</label><label class="check-label"><input type="checkbox" id="knowledge-enabled">同时维护知识库</label><label class="check-label"><input type="checkbox" id="literature-enabled">同时收录项目文献</label><label class="check-label"><input type="checkbox" id="report-enabled">启用定时整理（需连接助手的内置计划）</label>
 <fieldset><legend>参与项目</legend>{checks}</fieldset>
 <label>日报时间（北京时间）<input type="time" id="report-daily-time"></label>
 <label>周报日期<select id="report-weekday"><option value="">请选择</option>{''.join(f'<option value="{i}">周{label}</option>' for i, label in enumerate('一二三四五六日', 1))}</select></label>

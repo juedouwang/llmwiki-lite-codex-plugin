@@ -33,15 +33,15 @@ const assert = require('node:assert/strict');
   try {
     const notebook=await open(`/project/${cfg.pid}/records`);
     await notebook.locator('a[href$="/notebook"]').first().click();
-    await notebook.locator('#nb-source').waitFor({state:'visible'});
-    await notebook.waitForFunction(()=>!document.querySelector('#nb-source').readOnly);
+    await notebook.locator('#nb-live').waitFor({state:'visible'});
+    await notebook.waitForFunction(()=>document.querySelector('#nb-live').isContentEditable);
     let release, requested;
     const received=new Promise(resolve=>requested=resolve), held=new Promise(resolve=>release=resolve);
     await notebook.route('**/api/project/*/notebook/*',async route=>{
       if(route.request().method()!=='POST')return route.continue();
       requested();await held;await route.continue();
     });
-    await notebook.locator('#nb-source').fill('页面切换中的未保存正文');
+    await notebook.locator('#nb-live').fill('页面切换中的未保存正文');
     assert.equal(await allowed(notebook),false,'dirty notebook must synchronously veto navigation');
     await received;
     await detach(notebook);
@@ -56,18 +56,48 @@ const assert = require('node:assert/strict');
     }),false,'detached editor must not swallow another page drop');
     await enter(notebook);
     assert.equal(await notebook.locator('#nb-source').inputValue(),'页面切换中的未保存正文');
-    await notebook.locator('#nb-comment').click();
-    await notebook.getByLabel('批注内容').fill('尚未提交的批注');
-    assert.equal(await allowed(notebook),false,'comment dialog draft must veto navigation');
-    await notebook.locator('#nb-dialog-close').click();
+    assert.equal(await notebook.locator('#nb-live').innerText(),'页面切换中的未保存正文');
+    assert.equal(await notebook.locator('#nb-save,#nb-comment,#nb-code').count(),0,'autosave editor has no redundant actions');
+    await notebook.locator('#nb-title').fill('返回缓存页后改标题');
+    assert.equal(await notebook.title(),'返回缓存页后改标题');
+    assert.equal(await allowed(notebook),false,'unsaved title must synchronously veto navigation');
+    await notebook.waitForFunction(()=>document.querySelector('#nb-save-state').textContent==='已保存');
+    assert.equal(await allowed(notebook),true);
+    await notebook.locator('#nb-live').press('Control+End');
+    await notebook.locator('#nb-live').pressSequentially(' + cached');
+    assert.equal(await notebook.locator('#nb-source').inputValue(),'页面切换中的未保存正文 + cached');
+    await notebook.waitForFunction(()=>document.querySelector('#nb-save-state').textContent==='已保存');
     await dispose(notebook);await notebook.close();
+
+    const report=await open('/reports/daily/2026-09-19');
+    await report.locator('#report-live').waitFor({state:'visible'});
+    await report.locator('#report-live').fill('报告缓存正文\n\n```python\nx = 1\n```');
+    assert.equal(await allowed(report),false,'dirty live report vetoes navigation');
+    await report.waitForFunction(()=>document.querySelector('#report-save-state').textContent==='已保存');
+    const reportBody=await report.locator('#report-source').inputValue();
+    const reportDOM=await report.locator('#report-live').innerHTML();
+    assert.equal(await intervalCount(report),1);
+    await detach(report);assert.equal(await intervalCount(report),0);
+    await enter(report);assert.equal(await intervalCount(report),1);
+    assert.equal(await report.locator('#report-source').inputValue(),reportBody);
+    assert.equal(await report.locator('#report-live').innerHTML(),reportDOM,'reattach must preserve the browser editing tree');
+    await report.locator('#report-live').press('Control+End');
+    await report.locator('#report-live').pressSequentially(' + restored');
+    assert.equal(await report.locator('#report-source').inputValue(),reportBody+' + restored');
+    await report.waitForFunction(()=>document.querySelector('#report-save-state').textContent==='已保存');
+    await dispose(report);assert.equal(await intervalCount(report),0);await report.close();
+    if(cfg.editorsOnly){
+      assert.deepEqual(errors,[]);
+      console.log('PASS: notebook/report live editor lifecycle, scoped async save, leave protection, retained body/title, timer cleanup');
+      return;
+    }
 
     const progress=await open(`/project/${cfg.pid}/todos`);
     await progress.waitForFunction(()=>lifecycleIntervals.size>0);
     await progress.locator('#progress-new').click();
-    await progress.locator('#progress-add input').fill('尚未添加的任务');
+    await progress.locator('#progress-form [name=title]').fill('尚未添加的任务');
     assert.equal(await allowed(progress),false);
-    await progress.locator('#progress-add input').fill('');
+    await progress.locator('#progress-form [name=title]').fill('');
     assert.equal(await allowed(progress),true);
     await detach(progress);assert.equal(await intervalCount(progress),0,'leave stops progress polling');
     await progress.evaluate(()=>{window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));});
@@ -75,13 +105,6 @@ const assert = require('node:assert/strict');
     await enter(progress);assert.equal(await intervalCount(progress),1);
     await enter(progress);assert.equal(await intervalCount(progress),1,'enter must not duplicate intervals');
     await dispose(progress);assert.equal(await intervalCount(progress),0);await progress.close();
-
-    const report=await open('/reports/daily/2026-09-19');
-    await report.waitForFunction(()=>!document.querySelector('#report-edit').disabled);
-    assert.equal(await intervalCount(report),1);
-    await detach(report);assert.equal(await intervalCount(report),0);
-    await enter(report);assert.equal(await intervalCount(report),1);
-    await dispose(report);assert.equal(await intervalCount(report),0);await report.close();
 
     const list=await open(`/reports?context=${cfg.pid}`);
     await list.locator('#report-new').click();assert.equal(await allowed(list),false);

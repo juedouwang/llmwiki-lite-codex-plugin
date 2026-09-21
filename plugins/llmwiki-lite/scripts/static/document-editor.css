@@ -14,3 +14,14 @@
 
 /* A continuous writing surface, not another framed form inside the document. */
 .rw-editor-text:focus-visible,.rw-title-input:focus-visible{outline:none}.rw-document-more>summary::after{display:none}
+
+/* Live Markdown keeps a single caret/IME surface, with image atoms inline. */
+.document-surface [hidden],.rw-document-toolbar [hidden]{display:none!important}
+.rw-editor-live{min-height:300px;outline:none;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:4;font:14px/1.85 ui-monospace,Consolas,monospace;cursor:text}
+.rw-editor-live[data-empty=true]::before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;position:absolute}
+.rw-inline-image{display:inline-block;max-width:100%;vertical-align:middle;white-space:normal;line-height:0;margin:6px 0;user-select:all}
+.rw-inline-image img{display:block;max-width:100%;height:auto;max-height:65vh;object-fit:contain}
+.rw-inline-image.is-unavailable{min-width:80px;min-height:36px;border:1px dashed var(--line)}
+.rw-save-retry{font-size:12px;color:var(--muted)}
+.rw-preview figcaption:empty{display:none}
+@media(max-width:775px){.rw-editor-live{font-size:16px}}

@@ -62,7 +62,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),cryp
   // The XSS regression has already run; make the disposable task fixture readable for screenshots.
   let progress=await (await page.request.get(origin+`/api/project/${pid}/progress`)).json();
   for(const task of progress.tasks.filter(t=>t.title.includes('<img'))){
-    const clean=await post(`/api/project/${pid}/progress`,{revision:progress.revision,action:'update',id:task.id,task:{...task,title:'整理实验数据',status:'planned'}});
+    const clean=await post(`/api/project/${pid}/progress`,{revision:progress.revision,action:'update',id:task.id,task:{title:'整理实验数据'}});
     assert.equal(clean.status(),200);progress=await clean.json();
   }
   // Toggle appearance through the actual sidebar; navigation replaces the sidebar DOM.
@@ -80,27 +80,45 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),cryp
     if(name==='code')await page.locator('.code-version-title').waitFor();
     if(name==='progress'){
       await page.locator('.progress-day').first().waitFor();
-      const taskRow=page.locator('.progress-grid-row:not(.progress-grid-head) .progress-task-row').first();await taskRow.hover();
-      const taskBox=await taskRow.locator('.progress-task').boundingBox(),menuBox=await taskRow.locator('.progress-state-control').boundingBox();
-      assert.ok(menuBox.x>=taskBox.x+taskBox.width-1,'state menu must not intercept the task title');
-      assert.equal(await taskRow.locator('.progress-inline-status').evaluate(e=>getComputedStyle(e).color),'rgba(0, 0, 0, 0)','only the chevron shows; the native options remain readable');
-      await page.mouse.move(0,0);
-      if(prototype){
-        const ref=await context.newPage();await ref.setContent(fs.readFileSync(prototype,'utf8'));
-        await ref.addStyleTag({content:'html{zoom:1.25}body{margin:0}#research-workbench .rw-app{border:0!important;border-radius:0!important;min-height:calc(100dvh / 1.25)!important}'});
-        await ref.addScriptTag({path:path.resolve(path.dirname(require.resolve('lucide')),'../umd/lucide.min.js')});
-        await ref.locator('#rw-nav [data-view="progress"]').click();
-        const pairs=[['#progress-resume','.rw-resume'],['.progress-resume-label','.rw-resume-label'],['.progress-resume-item .resume-title','.rw-resume h2'],['.progress-resume-item p','.rw-resume p'],['.progress-resume-actions','.rw-resume .rw-row'],['.progress-range','.rw-section-title'],['.progress-grid-head','.rw-day'],['.progress-grid-row:not(.progress-grid-head) .progress-task-row','.rw-task-label']];
-        const comparisons=[];
-        for(const [live,approved] of pairs){
-          const measure=async(tab,selector)=>tab.locator(selector).first().evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,height:r.height};});
-          const actual=await measure(page,live),expected=await measure(ref,approved);
-          comparisons.push({live,approved,actual,expected,differences:Object.keys(actual).filter(k=>Math.abs(actual[k]-expected[k])>1)});
-        }
-        fs.writeFileSync(path.join(evidence,'progress-comparison.json'),JSON.stringify(comparisons,null,2));await ref.close();
-        assert.deepEqual(comparisons.filter(r=>r.differences.length),[],'resume and week timeline must follow approved spacing');
-        console.log('PASS progress prototype: '+comparisons.length+' geometry groups / unobstructed task and state controls');
+      // This iteration explicitly replaces the old dual-column/status prototype.
+      // Enforce the new geometry and semantic contract even without a prototype file.
+      assert.equal(await page.locator('.progress-day').count(),7);
+      assert.equal(await page.locator('#progress-todo-tab').getAttribute('aria-pressed'),'true');
+      assert.equal(await page.locator('#progress-done-tab').getAttribute('aria-pressed'),'false');
+      assert.equal(await page.locator('#progress-done').isHidden(),true);
+      assert.deepEqual(await page.locator('#progress-priority-filter option').evaluateAll(items=>items.map(el=>el.value)),['','high','medium','low']);
+      assert.equal(await page.locator('#progress-form [name=checkpoint], #progress-form [name=next_step], #progress-form [name=start], #progress-form [name=end], #progress-form [name=status], .progress-inline-status').count(),0);
+      assert.equal(await page.locator('#progress-description').count(),1);
+      assert.equal(await page.locator('#progress-form input[type=date]').count(),1);
+      assert.equal(await page.locator('#progress-form [name=ddl]').evaluate(el=>el.required),false);
+      const taskRow=page.locator('#progress-todo .progress-task-row').first();await taskRow.hover();
+      const taskBox=await taskRow.locator('.progress-task').boundingBox(),menuBox=await taskRow.locator('.progress-inline-priority').boundingBox(),toggleBox=await taskRow.locator('.progress-done-toggle').boundingBox();
+      assert.ok(menuBox.x>=taskBox.x+taskBox.width-1,'priority selector must not intercept the task title');
+      assert.ok(toggleBox.x+toggleBox.width<=taskBox.x+1,'explicit completion control must not intercept the task title');
+      assert.ok(Math.abs(toggleBox.width-toggleBox.height)<1,'completion control remains circular at 125% zoom');
+      const priorityStyle=await taskRow.locator('.progress-inline-priority').evaluate(el=>{const s=getComputedStyle(el);return{color:s.color,background:s.backgroundColor,opacity:s.opacity};});
+      assert.notEqual(priorityStyle.color,'rgba(0, 0, 0, 0)');assert.notEqual(priorityStyle.background,'rgba(0, 0, 0, 0)');
+      assert.notEqual(priorityStyle.color,priorityStyle.background);assert.equal(priorityStyle.opacity,'1','priority text remains visible');
+      const priorityValues=await page.locator('#progress-todo .progress-inline-priority').evaluateAll(items=>items.map(el=>el.value));
+      assert.deepEqual(priorityValues,[...priorityValues].sort((a,b)=>['high','medium','low'].indexOf(a)-['high','medium','low'].indexOf(b)),'Todo rows are priority ordered');
+      const resume=page.locator('#progress-resume .progress-resume-item');assert.ok(await resume.count()>0);
+      for(const item of await resume.all()){
+        assert.equal(await item.locator('.resume-title').count(),1);
+        assert.equal(await item.locator('p').count(),1,'one unified description, never checkpoint/next-step columns');
+        assert.equal(await item.locator('.progress-description-excerpt').count(),1);
       }
+      const days=await page.locator('.progress-day').evaluateAll(items=>items.map(el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width};}));
+      assert.ok(days.every(day=>Math.abs(day.y-days[0].y)<1&&Math.abs(day.width-days[0].width)<1),'seven equal-width deadline columns');
+      for(let i=1;i<days.length;i++)assert.ok(days[i].x>=days[i-1].x+days[i-1].width-1,'deadline columns do not overlap');
+      const contract={taskBox,menuBox,toggleBox,priorityStyle,priorityValues,days};
+      fs.writeFileSync(path.join(evidence,'progress-layout-contract.json'),JSON.stringify(contract,null,2));
+      await taskRow.locator('.progress-task').click();await page.locator('#progress-dialog').waitFor();
+      const descriptionBox=await page.locator('#progress-description').boundingBox(),ddlBox=await page.locator('#progress-form [name=ddl]').boundingBox(),priorityBox=await page.locator('#progress-form [name=priority]').boundingBox();
+      assert.ok(descriptionBox.y>=Math.max(ddlBox.y+ddlBox.height,priorityBox.y+priorityBox.height),'single description below DDL/priority options');
+      assert.ok(ddlBox.x>=priorityBox.x+priorityBox.width-1,'DDL and priority inputs do not overlap');
+      assert.equal(await page.locator('#progress-description').isEditable(),true);
+      await page.locator('#progress-close').click();await page.mouse.move(0,0);
+      console.log('PASS progress layout: unified description / Todo+Done / optional DDL / visible priority controls / seven deadline columns');
     }
     await page.screenshot({path:path.join(evidence,name+'-dark.png'),fullPage:true});
     await theme('light');await page.screenshot({path:path.join(evidence,name+'-light.png'),fullPage:true});await theme('dark');
@@ -110,7 +128,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),cryp
   await theme('light');await page.emulateMedia({colorScheme:'dark'});assert.equal(await page.locator('html').getAttribute('data-resolved-theme'),'light');
   await page.locator('[data-workbench-nav=records]').click();await page.locator('#research-records').waitFor();await theme('dark');
   await page.locator('[data-workbench-nav=code]').click();await page.locator('.code-version-title').waitFor();assert.equal(await page.locator('.theme-options [data-theme-choice=dark]').getAttribute('aria-pressed'),'true');
-  await page.goto(origin+base+'/todos');await page.locator('#progress-new').click();await page.locator('#progress-add input').fill('体验验证任务');await page.locator('#progress-add input').press('Enter');await page.locator('#progress-add').waitFor({state:'hidden'});await page.getByRole('button',{name:'体验验证任务',exact:true}).click();
+  await page.goto(origin+base+'/todos');await page.locator('#progress-new').click();await page.locator('#progress-form [name=title]').fill('体验验证任务');await page.locator('#progress-description').fill('统一描述体验验证');await page.locator('#progress-form [name=priority]').selectOption('medium');assert.equal(await page.locator('#progress-form [name=ddl]').inputValue(),'');await page.locator('#progress-form [type=submit]').click();await page.locator('#progress-dialog').waitFor({state:'hidden'});await page.locator('#progress-todo .progress-task').filter({hasText:'体验验证任务'}).click();
   await page.locator('#progress-dialog').waitFor();assert.equal(await page.locator('#progress-dialog').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(33, 33, 33)');await page.locator('#progress-close').click();
   await page.goto(origin+'/reports?context='+pid);const daily=await page.locator('#report-new').evaluate(el=>({height:el.getBoundingClientRect().height,padding:getComputedStyle(el).padding}));await page.locator('#report-new').click();await page.locator('#report-create').waitFor();await page.locator('#report-create [value=cancel]').click();
   await page.goto(origin+'/reports?context='+pid+'&view=weekly');assert.equal(await page.locator('#report-new').innerText(),'新建周报');

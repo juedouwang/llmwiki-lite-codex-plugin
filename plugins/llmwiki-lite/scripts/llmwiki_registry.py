@@ -490,6 +490,25 @@ def update_project_storage(
     }
 
 
+def rename_project(identifier: str, name: str, *, home: str | None = None) -> dict[str, Any]:
+    """Rename the display label only: identity, storage and project files stay unchanged."""
+    if not isinstance(name, str):
+        raise LLMWikiError("项目名称必须是文字。")
+    name = name.strip()
+    if not name or len(name) > 120 or any(ord(char) < 32 for char in name):
+        raise LLMWikiError("项目名称应为 1–120 个字符，不能包含换行或控制字符。")
+    root = llmwiki_home(home)
+    with _home_lock(root):
+        registry = load_registry(str(root))
+        record = _find_record(registry["projects"], identifier)
+        if record is None:
+            raise LLMWikiError("项目不存在，请刷新项目列表。")
+        record["name"] = name
+        record["updated_at"] = utc_now()
+        _write_json(root / "registry.json", registry)
+    return {"ok": True, "project": record}
+
+
 def unregister_project(identifier: str, *, home: str | None = None) -> dict[str, Any]:
     root = llmwiki_home(home)
     with _home_lock(root):

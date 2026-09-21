@@ -174,7 +174,7 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Escape'){
     const wasOpen=document.querySelector('.console-sidebar.is-open');
     toggleConsoleSidebar(false);if(wasOpen)document.querySelector('.console-menu-button')?.focus();
-    document.querySelectorAll('.action-menu[open]').forEach(menu=>menu.open=false);
+    document.querySelectorAll('.action-menu[open],.console-project-switcher[open]').forEach(menu=>menu.open=false);
   }
   if(event.key==='Tab'&&document.body.classList.contains('console-locked')){
     const items=Array.from(document.querySelectorAll('.console-sidebar a,.console-sidebar button,.console-sidebar summary')).filter(el=>el.getClientRects().length);
@@ -184,7 +184,7 @@ document.addEventListener('keydown',event=>{
   }
 });
 document.addEventListener('click',event=>{
-  document.querySelectorAll('.action-menu[open]').forEach(menu=>{if(!menu.contains(event.target)||event.target.closest('button'))menu.open=false;});
+  document.querySelectorAll('.action-menu[open],.console-project-switcher[open]').forEach(menu=>{if(!menu.contains(event.target)||event.target.closest('button,a'))menu.open=false;});
 });
 window.matchMedia('(min-width:776px)').addEventListener('change',()=>toggleConsoleSidebar(false));
 

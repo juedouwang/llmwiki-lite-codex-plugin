@@ -26,22 +26,35 @@ const path=require('node:path');
     page.on('request',r=>requests.push(r.url()));
     const origin=cfg.origin,base=`/project/${cfg.projectId}`,other=`/project/${cfg.otherProjectId}`;
     const api=(pid)=>`${origin}/api/project/${pid}/progress?view=summary`;
-    const summary=async(pid)=>await (await context.request.get(api(pid))).json();
-    // Mirrors progress.js resumeTasks(): last human edit first, ties by task id.
-    const resumeOrder=(tasks)=>tasks.filter(t=>['active','blocked'].includes(t.status))
-      .sort((a,b)=>b.updated_at.localeCompare(a.updated_at)||a.id.localeCompare(b.id));
-    const row=(title)=>page.locator('.progress-task-row').filter({hasText:title});
-    const doneRow=(title)=>page.locator('#progress-done .progress-task-row').filter({hasText:title});
-    const taskButtons=(title)=>page.locator('.progress-task').filter({hasText:title});
-    async function openDone(){
-      if(!(await page.locator('#progress-done').evaluate(el=>el.open)))await page.locator('#progress-done summary').click();
+    const summary=async(pid)=>{const response=await context.request.get(api(pid));assert.equal(response.status(),200);return response.json();};
+    const rank={high:0,medium:1,low:2};
+    // Old active/blocked tasks and explicitly edited new-model tasks, never Done.
+    const resumeOrder=tasks=>tasks.filter(t=>t.status!=='done'&&(t.resume_eligible||['active','blocked'].includes(t.status)))
+      .sort((a,b)=>(rank[a.priority]??1)-(rank[b.priority]??1)||b.updated_at.localeCompare(a.updated_at)||a.id.localeCompare(b.id));
+    const row=title=>page.locator('#progress-todo .progress-task-row').filter({has:page.getByRole('button',{name:title,exact:true})});
+    const doneRow=title=>page.locator('#progress-done .progress-task-row').filter({has:page.getByRole('button',{name:title,exact:true})});
+    const taskButtons=title=>page.locator('.progress-task').filter({hasText:title});
+    const description=page.locator('#progress-description');
+    const savedTask=async title=>(await summary(cfg.projectId)).tasks.find(t=>t.title===title);
+    const resumeTitles=()=>page.locator('#progress-resume .resume-title').allTextContents();
+    async function openDone(){await page.locator('#progress-done-tab').click();await page.locator('#progress-done').waitFor();}
+    async function expand(selector){if(!(await page.locator(selector).evaluate(el=>el.open)))await page.locator(`${selector} summary`).click();}
+    async function todos(){await page.goto(origin+base+'/todos');await page.locator('.progress-day').first().waitFor();}
+    async function save(){await page.locator('#progress-form [type=submit]').click();await page.locator('#progress-dialog').waitFor({state:'hidden'});}
+    async function close(){await page.locator('#progress-close').click();await page.locator('#progress-dialog').waitFor({state:'hidden'});}
+    async function open(title){await row(title).locator('.progress-task').click();await page.locator('#progress-dialog[open]').waitFor();}
+    async function assertHistory(task){
+      await expand('#progress-history');
+      const entries=page.locator('#progress-history .progress-history-entry');
+      const history=[...task.history].reverse();assert.equal(await entries.count(),history.length);
+      for(let i=0;i<history.length;i++){
+        assert.equal(await entries.nth(i).locator('p.meta').first().innerText(),history[i].at+' · '+(history[i].status==='done'?'Done':'Todo'));
+        assert.equal(await entries.nth(i).locator('strong').innerText(),history[i].title);
+      }
     }
-    // The dialog's <details> keep their state between openings, so clicking a
-    // summary twice would close what the assertion is about to read.
-    async function expand(selector){
-      if(!(await page.locator(selector).evaluate(el=>el.open)))await page.locator(`${selector} summary`).click();
-    }
-    async function todos(){await page.goto(origin+base+'/todos');await page.locator('#progress-resume').waitFor();}
+    // Both protected projects must remain byte-for-byte untouched, including contexts.
+    const snapshotFiles=root=>Object.fromEntries(['tasks.json','contexts.json'].map(name=>{const file=path.join(root,'.research-progress',name);return[name,fs.existsSync(file)?fs.readFileSync(file):null];}));
+    const otherBefore=snapshotFiles(cfg.otherWikiRoot),legacyBefore=snapshotFiles(cfg.legacyWikiRoot);
     // Every automatic-context submission — legal, duplicate or illegal — goes through
     // the harness, which answers it with a real MCP tools/call over stdio.
     let callSeq=0;
@@ -102,14 +115,22 @@ const path=require('node:path');
     await page.locator('#progress-resume .progress-resume-item').first().waitFor();
     assert.equal(await page.locator('#progress-resume .progress-resume-item').count(),3,'科研进度继续上次最多三个任务');
     assert.deepEqual(
-      (await page.locator('#progress-resume .progress-resume-item strong').allTextContents()).map(t=>t.trim()),
+      (await resumeTitles()).map(t=>t.trim()),
       expected.slice(0,3).map(t=>t.title),
-      '继续上次的排序应为最后修改时间降序'
+      '继续上次应按优先级、最近人工修改时间排序'
     );
     // Keep server-rendered continuation before the summary request, now on the
     // progress landing page. Knowledge stays dedicated to project understanding.
     const homeHtml=await (await context.request.get(origin+base+'/todos')).text();
-    assert.equal((homeHtml.match(/class="progress-resume-item"/g)||[]).length,3,'服务端继续上次也应为三个任务');
+    const ssr=await page.evaluate(html=>{
+      const root=new DOMParser().parseFromString(html,'text/html').querySelector('#progress-resume');
+      return [...root.querySelectorAll('li')].map(item=>({title:item.querySelector('a').textContent,descriptions:[...item.querySelectorAll('p')].map(p=>p.textContent)}));
+    },homeHtml);
+    assert.deepEqual(ssr,expected.slice(0,3).map(t=>({title:t.title,descriptions:[t.description]})),'首屏 SSR 已有单一统一描述，不依赖 JS 替换旧双栏');
+    assert.equal(await page.locator('#progress-form [name=checkpoint], #progress-form [name=next_step], #progress-form [name=status], #progress-form [name=start], #progress-form [name=end]').count(),0);
+    assert.equal(await page.locator('#progress-description').count(),1);
+    assert.equal(await page.locator('#progress-form input[type=date]').count(),1);
+    assert.equal(await page.locator('#progress-form [name=ddl]').evaluate(el=>el.required),false);
     await page.goto(origin+base);
     assert.equal(await page.locator('#progress-resume,.resume-block').count(),0,'知识库不重复显示任务进度');
     await page.goto(origin+other+'/todos');
@@ -125,113 +146,81 @@ const path=require('node:path');
     assert.ok(!bodyB.includes(expected[0].title),'B 不得显示 A 的任务标题');
 
     /* ---------------------------------------------------------------- A-04 ---
-     * Done / reopen / Done again: one task throughout, the two completion actions
-     * stay distinguishable, and a reopened task is not counted as finished. */
+     * Explicit complete / restore / complete: UI history and persisted completion
+     * timestamps agree. A deadline or priority edit must never imply completion. */
     const cycle='夜间数据验证';
     await todos();
-    assert.equal(await taskButtons(cycle).count(),1,'开始前应只有一个同名任务');
-    await row(cycle).locator('.progress-inline-status').selectOption('done');
-    await openDone();
-    await doneRow(cycle).waitFor();
-    assert.equal(await page.locator('#progress-done summary span').innerText(),String(initialDone+1),'完成一条后 Done 数量应加一');
-    assert.equal(await taskButtons(cycle).count(),1,'完成后不得复制出第二个任务');
-    // Anchor the negative on live content: an empty or dead resume block would
-    // otherwise make "the completed task is gone" true for the wrong reason.
-    const afterComplete=await summary(cfg.projectId);
-    const stillShown=resumeOrder(afterComplete.tasks).slice(0,3).map(t=>t.title);
-    assert.equal(stillShown.length,3,'继续上次仍应有内容');
-    assert.deepEqual(
-      (await page.locator('#progress-resume .progress-resume-item strong').allTextContents()).map(t=>t.trim()),
-      stillShown,
-      '完成后继续上次仍应列出其余进行中任务'
-    );
-    assert.ok(!(await page.locator('#progress-resume').innerText()).includes(cycle),'已完成任务必须离开继续上次');
-    assert.equal(await page.locator('#progress-timeline .progress-task-row, #progress-unscheduled .progress-task-row').filter({hasText:cycle}).count(),0,'完成的任务不应留在未完成时间轴');
-
-    await doneRow(cycle).locator('.progress-task').click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    await expand('#progress-info');
-    const firstInfo=await page.locator('#progress-info').innerText();
-    const firstTime=(/完成时间：(.+)/.exec(firstInfo)||[])[1];
-    assert.ok(firstTime,'已知完成时间必须显示具体时间');
-    assert.ok(!firstInfo.includes('完成时间未记录'),'有真实完成时间时不得显示未记录');
-    const firstHistory=await page.locator('#progress-history .progress-history-entry').allTextContents();
-    assert.match(firstHistory[0],/已完成/,'最新修改记录应是完成动作');
-    await page.locator('#progress-close').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
-    // Second-resolution rendering: keep the two completion times apart on purpose.
+    const cycleBefore=await savedTask(cycle);
+    await open(cycle);
+    assert.equal(await description.inputValue(),cycleBefore.checkpoint+'\n\n下一步：'+cycleBefore.next_step);
+    assert.equal(await page.locator('#progress-form [name=ddl]').inputValue(),cycleBefore.end,'旧 end 只读映射 DDL');
+    await page.locator('#progress-form [name=priority]').selectOption('high');
+    await page.locator('#progress-form [data-ddl="0"]').click();
+    const cycleDDL=await page.locator('#progress-form [name=ddl]').inputValue();assert.match(cycleDDL,/^\d{4}-\d{2}-\d{2}$/);
+    await save();
+    const beforeCycle=await savedTask(cycle);
+    assert.equal(beforeCycle.status,'active');assert.equal(beforeCycle.completed_at,null);
+    for(const key of ['checkpoint','next_step','start','end','context_mode'])assert.deepEqual(beforeCycle[key],cycleBefore[key],key+' must survive priority/DDL edits');
+    assert.equal(beforeCycle.ddl,cycleDDL);assert.equal(beforeCycle.priority,'high');assert.equal(beforeCycle.description_source,'legacy');
+    assert.equal(await page.locator('#progress-todo .progress-task').first().innerText(),cycle,'高优先级在前');
+    await page.locator('#progress-priority-filter').selectOption('high');assert.equal(await page.locator('#progress-todo .progress-task-row').count(),1);
+    await page.locator('#progress-priority-filter').selectOption('');
+    assert.equal(await page.locator('#progress-timeline .progress-marker[title="'+cycle+' · DDL '+cycleDDL+'"]').count(),1);
+    const firstBegin=Date.now();
+    await row(cycle).locator('.progress-done-toggle').click();await row(cycle).waitFor({state:'detached'});
+    await openDone();await doneRow(cycle).waitFor();
+    assert.equal(await page.locator('#progress-done-tab span').innerText(),String(initialDone+1));
+    assert.equal(await taskButtons(cycle).count(),1);
+    const first=await savedTask(cycle),firstTime=first.completed_at;
+    assert.equal(first.status,'done');assert.ok(Date.parse(firstTime)>=firstBegin-1000&&Date.parse(firstTime)<=Date.now());
+    assert.deepEqual(await resumeTitles(),resumeOrder((await summary(cfg.projectId)).tasks).slice(0,3).map(t=>t.title));
+    assert.ok(!(await page.locator('#progress-resume').innerText()).includes(cycle));
+    assert.equal(await row(cycle).count(),0);assert.equal(await page.locator('#progress-timeline .progress-marker[title^="'+cycle+' ·"]').count(),0);
+    await doneRow(cycle).locator('.progress-task').click();await assertHistory(first);
+    assert.equal(await page.locator('#progress-complete').innerText(),'恢复到 Todo');await close();
+    // The backend stamps seconds: separate the two deliberate completion actions.
     await page.waitForTimeout(1100);
-
-    await openDone();
-    await doneRow(cycle).locator('.progress-inline-status').selectOption('active');
-    await page.locator('#progress-resume .progress-resume-item').filter({hasText:cycle}).waitFor();
-    assert.equal(await page.locator('#progress-done summary span').innerText(),String(initialDone),'重开后 Done 数量应回落');
-    assert.equal(await doneRow(cycle).count(),0,'重开期间不得把它当作当前已完成事项');
-    assert.equal(await taskButtons(cycle).count(),1,'重开不得复制任务');
-    await row(cycle).locator('.progress-task').click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    await expand('#progress-info');
-    const reopened=await page.locator('#progress-info').innerText();
-    assert.ok(!/完成时间：\d/.test(reopened),'重开后必须清除完成时间');
-    assert.match(reopened,/未完成/,'重开后的任务不是已完成');
-    await page.locator('#progress-close').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
-
-    await row(cycle).locator('.progress-inline-status').selectOption('done');
-    await openDone();
-    await doneRow(cycle).locator('.progress-task').click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    await expand('#progress-info');
-    const secondTime=(/完成时间：(.+)/.exec(await page.locator('#progress-info').innerText())||[])[1];
-    assert.ok(secondTime,'第二次完成也必须显示真实完成时间');
-    await expand('#progress-history');
-    const history=await page.locator('#progress-history .progress-history-entry').allTextContents();
-    const finished=history.map((text,index)=>({text,index})).filter(item=>/已完成/.test(item.text));
-    const reopenedAt=history.findIndex(text=>/进行中/.test(text));
-    assert.ok(finished.length>=2,`两次完成动作应各留一条记录，实际 ${finished.length}`);
-    assert.ok(reopenedAt>finished[0].index&&reopenedAt<finished[1].index,'两次完成之间应有一条重开记录');
-    const stamp=text=>(/完成时间：(.+)/.exec(text)||[])[1];
-    assert.equal(stamp(finished[0].text),secondTime,'最新记录应与当前完成时间一致');
-    assert.equal(stamp(finished[1].text),firstTime,'第一次完成的时间应保留在修改记录中');
-    assert.notEqual(stamp(finished[0].text),stamp(finished[1].text),'两次完成时间应可区分');
-    assert.equal(await page.locator('#progress-done summary span').innerText(),String(initialDone+1),'再次完成后 Done 数量应加一');
-    assert.equal(await taskButtons(cycle).count(),1,'两轮完成重开后仍应只有一个任务');
-    await page.locator('#progress-close').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
+    await doneRow(cycle).locator('.progress-done-toggle').click();await doneRow(cycle).waitFor({state:'detached'});
+    await page.locator('#progress-todo-tab').click();await row(cycle).waitFor();
+    const restored=await savedTask(cycle);assert.equal(restored.status,cycleBefore.status);assert.equal(restored.completed_at,null);
+    assert.equal(await page.locator('#progress-done-tab span').innerText(),String(initialDone));
+    assert.equal(await taskButtons(cycle).count(),1);assert.ok((await resumeTitles()).includes(cycle));
+    await open(cycle);await assertHistory(restored);assert.equal(await page.locator('#progress-complete').innerText(),'完成任务');await close();
+    const secondBegin=Date.now();await row(cycle).locator('.progress-done-toggle').click();await row(cycle).waitFor({state:'detached'});
+    await openDone();await doneRow(cycle).locator('.progress-task').click();
+    const second=await savedTask(cycle);assert.equal(second.status,'done');assert.notEqual(second.completed_at,firstTime);
+    assert.ok(Date.parse(second.completed_at)>=secondBegin-1000&&Date.parse(second.completed_at)<=Date.now());
+    const transitions=second.history.slice(beforeCycle.history.length);
+    assert.deepEqual(transitions.map(h=>h.status),['done','active','done']);
+    assert.deepEqual(transitions.map(h=>h.completed_at),[firstTime,null,second.completed_at]);
+    assert.deepEqual(second.history.slice(0,beforeCycle.history.length),beforeCycle.history,'早期历史不能被重写');
+    for(const key of ['checkpoint','next_step','start','end','context_mode'])assert.deepEqual(second[key],cycleBefore[key]);
+    await assertHistory(second);await close();assert.equal(await taskButtons(cycle).count(),1);
+    assert.equal(await page.locator('#progress-done-tab span').innerText(),String(initialDone+1));
 
     /* ---------------------------------------------------------------- A-05 ---
-     * A done task from the old file has no completion time. It must keep saying so,
-     * stay at the end of Done, and not gain a time from a later title edit. */
+     * Old Done has no completed_at. Editing a title preserves legacy text/history
+     * and never invents a completion date. Done uses this iteration's priority/DDL order. */
     const legacyTitle='旧完成事项（无完成时间）';
-    await openDone();
-    const doneTitles=(await page.locator('#progress-done .progress-task').allTextContents()).map(t=>t.trim());
-    // Compare against the full expected order rather than the last row alone: the
-    // legacy fixture is edited later than every completion, so an implementation
-    // that sorted by last-edited instead of completion time would show up here.
+    const legacyTask=await savedTask(legacyTitle);
+    assert.equal(legacyTask.completed_at,null);assert.ok(legacyTask.history.every(h=>h.completed_at==null));
     const doneNow=(await summary(cfg.projectId)).tasks.filter(t=>t.status==='done');
-    const expectedDone=doneNow.filter(t=>t.completed_at)
-      .sort((a,b)=>b.completed_at.localeCompare(a.completed_at)||a.id.localeCompare(b.id))
-      .concat(doneNow.filter(t=>!t.completed_at).sort((a,b)=>a.id.localeCompare(b.id)))
-      .map(t=>t.title.trim());
-    assert.deepEqual(doneTitles,expectedDone,'已完成顺序应为已知完成时间优先、未知完成时间置末');
-    assert.equal(doneTitles[doneTitles.length-1],legacyTitle,'没有完成时间的旧任务排在已知完成时间之后');
-    await page.locator('#progress-done .progress-task-row').filter({hasText:legacyTitle}).locator('.progress-task').click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    await expand('#progress-info');
-    const legacyInfo=await page.locator('#progress-info').innerText();
-    assert.match(legacyInfo,/完成时间未记录/,'旧完成任务必须显示完成时间未记录');
-    assert.ok(!/完成时间：\d/.test(legacyInfo),'不得用文件时间、迁移时间或当天日期冒充完成时间');
-    await expand('#progress-history');
-    assert.match(await page.locator('#progress-history').innerText(),/完成时间未记录/,'修改记录同样不得补造完成时间');
-    await page.locator('#progress-form [name=title]').fill(legacyTitle+'（改名）');
-    await page.locator('#progress-form [type=submit]').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
-    await openDone();
-    await page.locator('#progress-done .progress-task-row').filter({hasText:'（改名）'}).locator('.progress-task').click();
-    await expand('#progress-info');
-    assert.match(await page.locator('#progress-info').innerText(),/完成时间未记录/,'修改已完成任务的标题不得改变完成时间');
-    await page.locator('#progress-close').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
+    const expectedDone=[...doneNow].sort((a,b)=>(rank[a.priority]??1)-(rank[b.priority]??1)||(a.ddl||'9999-12-31').localeCompare(b.ddl||'9999-12-31')||a.id.localeCompare(b.id)).map(t=>t.title);
+    assert.deepEqual(await page.locator('#progress-done .progress-task').allTextContents(),expectedDone);
+    await doneRow(legacyTitle).locator('.progress-task').click();
+    assert.equal(await description.inputValue(),'旧文件里的手写内容');await assertHistory(legacyTask);
+    await page.locator('#progress-form [name=title]').fill(legacyTitle+'（改名）');await save();
+    const renamed=await savedTask(legacyTitle+'（改名）');
+    assert.equal(renamed.id,legacyTask.id);assert.equal(renamed.completed_at,null);assert.equal(renamed.status,'done');
+    assert.ok(renamed.history.every(h=>h.completed_at==null),'人工改名不能伪造任何完成时间');
+    assert.deepEqual(renamed.history.slice(0,legacyTask.history.length),legacyTask.history);
+    for(const key of ['checkpoint','next_step','start','end','context_mode','description'])assert.deepEqual(renamed[key],legacyTask[key]);
+    await doneRow(renamed.title).locator('.progress-task').click();await assertHistory(renamed);await close();
+    // Exercise, rather than merely snapshot, the separate read-only legacy project.
+    await page.goto(origin+`/project/${cfg.legacyProjectId}/todos`);await page.locator('.progress-day').first().waitFor();await openDone();
+    await page.locator('#progress-done .progress-task').click();
+    const readOnly=(await summary(cfg.legacyProjectId)).tasks[0];assert.equal(readOnly.completed_at,null);await assertHistory(readOnly);await close();
+    assert.deepEqual(snapshotFiles(cfg.legacyWikiRoot),legacyBefore,'只读打开列表、详情、历史不能迁移写回旧文件');
 
     /* ---------------------------------------------------------------- A-09 ---
      * Illegal automatic submissions are refused outright, and a refusal changes
@@ -324,114 +313,71 @@ const path=require('node:path');
     assert.equal(boundaryAfter.effective_context.next_step,'自动下一步V2','较新结果必须保留');
 
     /* ---------------------------------------------------------------- A-08 ---
-     * An explicit clear is a human change that incoming automatic content must not
-     * refill; only the explicit 使用自动内容 action releases one field. */
-    const owner='人工覆盖与自动版本';
-    await todos();
-    const ownerTask=(await summary(cfg.projectId)).tasks.find(t=>t.title===owner);
-    assert.ok(ownerTask,'夹具缺少 A-08 用的任务');
-    assert.equal(ownerTask.context_mode.next_step,'auto','夹具任务的下一步应由自动内容拥有');
+     * A manual unified description (including explicit empty text) always wins over
+     * MCP context. The old per-field ownership and automatic result remain intact. */
+    const owner='人工覆盖与自动版本';await todos();
+    const ownerTask=await savedTask(owner);assert.equal(ownerTask.context_mode.next_step,'auto');
     const autoV1=await mcpCall('llmwiki_progress_context_write',autoArgs(ownerTask,{checkpoint:'自动停点V1',next_step:'自动下一步V1'}));
-    assert.equal(autoV1.payload.ok,true,`夹具自动版本应写入：${JSON.stringify(autoV1.payload)}`);
-    await todos();
-    await page.locator('#progress-unscheduled .progress-task-row').filter({hasText:owner}).locator('.progress-task').click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    const ownerNext=page.locator('#progress-form [name=next_step]');
-    assert.equal(await ownerNext.inputValue(),'自动下一步V1','未编辑字段应显示自动内容');
-    assert.equal(await page.locator('#progress-form [name=next_step_mode]').inputValue(),'auto');
-    assert.equal(await page.locator('.progress-use-auto[data-field=next_step]').isVisible(),false,'没有人工覆盖时不应提供使用自动内容');
-    // Clearing must be a real edit: the manual flag is only set by an input event.
-    await ownerNext.click();
-    await ownerNext.press('Control+a');
-    await ownerNext.press('Delete');
-    assert.equal(await ownerNext.inputValue(),'');
-    assert.equal(await page.locator('#progress-form [name=next_step_mode]').inputValue(),'manual','清空应把该字段标为人工');
-    assert.equal(await page.locator('.progress-use-auto[data-field=next_step]').isVisible(),true,'存在人工覆盖时应提供使用自动内容');
-    assert.equal(await page.locator('.progress-use-auto[data-field=checkpoint]').isVisible(),false,'另一个字段不应受影响');
-    await page.locator('#progress-form [type=submit]').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
-    const cleared=(await summary(cfg.projectId)).tasks.find(t=>t.title===owner);
-    assert.equal(cleared.context_mode.next_step,'manual','显式清空应保存为人工覆盖');
-    assert.equal(cleared.effective_context.next_step,'','清空后有效内容应保持为空');
-    assert.equal(cleared.auto_context.next_step,'自动下一步V1','自动版本仍应保留');
+    assert.equal(autoV1.payload.ok,true);await todos();await open(owner);
+    assert.equal(await description.inputValue(),'自动停点V1\n\n下一步：自动下一步V1');
+    await description.focus();await description.press('Control+a');await description.press('Delete');await save();
+    const cleared=await savedTask(owner);assert.equal(cleared.description,'');assert.equal(cleared.description_source,'manual');
+    assert.deepEqual(cleared.context_mode,ownerTask.context_mode,'统一描述不能重写旧字段所有权');
     const autoV2=await mcpCall('llmwiki_progress_context_write',autoArgs(cleared,{checkpoint:'自动停点V2',next_step:'新的自动下一步'}));
-    assert.equal(autoV2.payload.ok,true,`第二版自动内容应写入：${JSON.stringify(autoV2.payload)}`);
-    await todos();
-    await page.locator('#progress-unscheduled .progress-task-row').filter({hasText:owner}).locator('.progress-task').click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    await expand('#progress-auto');
-    assert.match(await page.locator('#progress-auto').innerText(),/下一步：新的自动下一步/,'自动整理应保留最新自动版本');
-    assert.equal(await page.locator('#progress-form [name=next_step]').inputValue(),'','自动更新到达时被清空的字段仍应为空');
-    assert.equal(await page.locator('#progress-form [name=checkpoint]').inputValue(),'自动停点V2','未覆盖字段应读取新的自动内容');
-    await page.locator('.progress-use-auto[data-field=next_step]').click();
-    assert.equal(await page.locator('#progress-form [name=next_step]').inputValue(),'新的自动下一步','明确点击后才改用最新自动版本');
-    assert.equal(await page.locator('#progress-form [name=next_step_mode]').inputValue(),'auto','点击应解除该字段的人工覆盖');
-    assert.equal(await page.locator('#progress-form [name=checkpoint_mode]').inputValue(),'auto','另一个字段的模式不应改变');
-    await page.locator('#progress-form [type=submit]').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
-    const ownerAfter=(await summary(cfg.projectId)).tasks.find(t=>t.title===owner);
-    assert.equal(ownerAfter.context_mode.next_step,'auto','保存后该字段应由自动内容拥有');
-    assert.equal(ownerAfter.effective_context.next_step,'新的自动下一步','保存后应显示最新自动版本');
+    assert.equal(autoV2.payload.ok,true);await todos();await open(owner);
+    assert.equal(await description.inputValue(),'','新自动内容不能回填手动清空的描述');
+    await expand('#progress-legacy');
+    const ownerLegacy=JSON.parse(await page.locator('#progress-legacy pre').innerText());
+    assert.equal(ownerLegacy.auto_context.next_step,'新的自动下一步');
+    assert.equal(ownerLegacy.auto_context.generated_at,autoV2.payload.generated_at);
+    assert.equal(ownerLegacy.auto_context.source_record_id,cfg.recordRelPath);
+    assert.equal(await page.locator('#progress-legacy input, #progress-legacy textarea, #progress-legacy [contenteditable=true]').count(),0);
+    const manualDescription='手写研究安排：保留自己的判断，不接受自动覆盖。';
+    await description.fill(manualDescription);await save();
+    const manual=await savedTask(owner);
+    const autoV3=await mcpCall('llmwiki_progress_context_write',autoArgs(manual,{checkpoint:'自动停点V3',next_step:'自动下一步V3'}));
+    assert.equal(autoV3.payload.ok,true);await todos();await open(owner);assert.equal(await description.inputValue(),manualDescription);await close();
+    const ownerAfter=await savedTask(owner);assert.equal(ownerAfter.description,manualDescription);
+    assert.equal(ownerAfter.auto_context.checkpoint,'自动停点V3');assert.equal(ownerAfter.context_revision,autoV3.payload.context_revision);
+    for(const key of ['checkpoint','next_step','start','end','status','context_mode'])assert.deepEqual(ownerAfter[key],ownerTask[key]);
+    // A legacy handwritten checkpoint/next_step is equally protected from MCP writes.
+    const handwritten=await savedTask('消融实验整理');
+    const injected=await mcpCall('llmwiki_progress_context_write',autoArgs(handwritten,{checkpoint:'不能覆盖旧停点',next_step:'不能覆盖旧下一步'}));
+    assert.equal(injected.payload.ok,true);
+    const retained=await savedTask(handwritten.title);
+    for(const key of ['checkpoint','next_step','description','effective_context','context_mode','history','updated_at'])assert.deepEqual(retained[key],handwritten[key]);
 
     /* ---------------------------------------------------------------- A-13 ---
-     * A newer automatic version arrives while the user is typing. The read-only
-     * display must move on; the open form, its text and the caret must not. */
-    const autoTask='自动整理接入验证';
-    await todos();
-    await page.locator('#progress-unscheduled .progress-task-row').filter({hasText:autoTask}).locator('.progress-task').click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    const nextStep=page.locator('#progress-form [name=next_step]');
-    await expand('#progress-auto');
-    assert.match(await page.locator('#progress-auto').innerText(),/自动整理尚未接通/,'没有自动结果时应如实说明尚未接通');
-    await nextStep.click();
-    await nextStep.pressSequentially('用户正在输入的下一步');
-    const typed=await nextStep.inputValue();
-    assert.equal(typed,'用户正在输入的下一步');
-    assert.equal(await page.locator('#progress-form [name=next_step_mode]').inputValue(),'manual','手动输入应把该字段标为人工');
-    const caret=await nextStep.evaluate(el=>el.selectionStart);
-
-    const beforeInject=await summary(cfg.projectId);
-    const autoTarget=beforeInject.tasks.find(t=>t.title===autoTask);
-    assert.ok(autoTarget,'未找到用于自动接入的任务');
-    assert.equal(autoTarget.context_revision,'','首次接入前不应有自动版本');
+     * Polling updates the list/resume, not the open description, focus or caret.
+     * An automatic result never increments the human task revision. */
+    const autoTask='自动整理接入验证';await todos();await open(autoTask);
+    await page.locator('#progress-form [name=priority]').selectOption('high');await save();
+    await open(autoTask);assert.equal(await description.inputValue(),'');
+    await description.focus();await description.pressSequentially('用户正在输入的统一描述');
+    const typed=await description.inputValue(),caret=await description.evaluate(el=>[el.selectionStart,el.selectionEnd]);
+    const autoTarget=await savedTask(autoTask);assert.equal(autoTarget.context_revision,'');
+    const beforeAuto=snapshots();
     const written=await mcpCall('llmwiki_progress_context_write',autoArgs(autoTarget));
-    assert.ok(!written.rpc.error,`MCP 调用失败：${JSON.stringify(written.rpc.error||written.rpc)}`);
-    assert.equal(written.isError,false,'合法接入不应返回错误');
-    assert.equal(written.payload.ok,true,`自动接入被拒绝：${JSON.stringify(written.payload)}`);
-    assert.equal(written.payload.changed,true,'首次接入应写入新版本');
-
-    await page.waitForFunction(()=>{
-      const body=document.querySelector('#progress-auto-body');
-      return body&&!body.hidden&&body.innerText.includes('自动整理：夜间样本已补齐');
-    },null,{timeout:20000});
-    const resumeItem=page.locator('#progress-resume .progress-resume-item').filter({hasText:autoTask});
-    await resumeItem.waitFor();
-    assert.ok((await resumeItem.innerText()).includes('自动整理：夜间样本已补齐'),'未编辑的摘要显示应就地更新');
-    assert.equal(await nextStep.inputValue(),typed,'后台刷新不得改写正在输入的表单');
-    assert.equal(await nextStep.evaluate(el=>el===document.activeElement),true,'焦点必须留在正在输入的字段');
-    assert.equal(await nextStep.evaluate(el=>el.selectionStart),caret,'光标位置不得被刷新移动');
-    assert.equal(await page.locator('#progress-form [name=next_step_mode]').inputValue(),'manual','刷新不得把人工字段改回自动');
-    const shownStamp=await page.evaluate(ts=>new Date(ts).toLocaleString('zh-CN'),written.payload.generated_at);
-    assert.ok((await page.locator('#progress-auto').innerText()).includes(`生成时间：${shownStamp}`),'自动整理应显示服务端返回的生成时间，而不是任意时间');
-    // A-07: the stored automatic version must point back at the record it came from.
-    const sourceLink=page.locator('#progress-auto-body a');
-    await sourceLink.waitFor();
-    assert.equal((await context.request.get(origin+await sourceLink.getAttribute('href'))).status(),200,'自动版本的来源记录应可打开');
-    // Saving the typed text must still work: a background automatic update may not
-    // manufacture a human revision conflict.
-    await page.locator('#progress-form [type=submit]').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
-    const saved=(await summary(cfg.projectId)).tasks.find(t=>t.title===autoTask);
-    assert.equal(saved.next_step,typed,'保存人工内容后不得丢失或出现伪冲突');
-    assert.equal(saved.context_mode.next_step,'manual','保存后该字段应记为人工');
-    await page.locator('#progress-resume .progress-resume-item').filter({hasText:autoTask}).click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    assert.equal(await page.locator('#progress-form [name=next_step]').inputValue(),typed,'重新打开详情应读取到人工填写的内容');
-    assert.equal(await page.locator('#progress-form [name=checkpoint]').inputValue(),'自动整理：夜间样本已补齐','未编辑字段应读取到新的自动版本');
-    await expand('#progress-auto');
-    assert.match(await page.locator('#progress-auto').innerText(),/自动整理：跑消融实验/,'自动整理应保留最新自动版本');
-    await page.locator('#progress-close').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
+    assert.equal(written.rpc.error,undefined);assert.equal(written.isError,false);assert.equal(written.payload.ok,true);assert.equal(written.payload.changed,true);
+    await page.waitForFunction(id=>document.querySelector('#progress-todo .progress-task-row[data-id="'+id+'"] .progress-description-excerpt')?.textContent.includes('自动整理：夜间样本已补齐'),autoTarget.id,{timeout:20000});
+    const resumeItem=page.locator('#progress-resume .progress-resume-item').filter({hasText:autoTask});await resumeItem.waitFor();
+    assert.match(await resumeItem.innerText(),/自动整理：夜间样本已补齐/);
+    assert.deepEqual(snapshots().tasks,beforeAuto.tasks,'自动上下文更新不能改写人工任务文件');
+    assert.equal(await description.inputValue(),typed);assert.equal(await description.evaluate(el=>el===document.activeElement),true);
+    assert.deepEqual(await description.evaluate(el=>[el.selectionStart,el.selectionEnd]),caret);
+    assert.equal(await page.locator('#progress-form [type=submit]').isEnabled(),true);await save();
+    const saved=await savedTask(autoTask);assert.equal(saved.description,typed);assert.equal(saved.description_source,'manual');
+    for(const key of ['checkpoint','next_step','context_mode'])assert.deepEqual(saved[key],autoTarget[key]);
+    assert.equal(saved.auto_context.generated_at,written.payload.generated_at);assert.equal(saved.auto_context.source_record_id,cfg.recordRelPath);
+    await open(autoTask);assert.equal(await description.inputValue(),typed);await expand('#progress-legacy');
+    const liveContext=JSON.parse(await page.locator('#progress-legacy pre').innerText());assert.deepEqual(liveContext.auto_context,saved.auto_context);
+    // Daily files contain separately addressable entries; keep the exact entry ID.
+    assert.equal((await context.request.get(origin+base+'/'+saved.auto_context.source_record_id)).status(),200,'MCP 来源日档必须可打开');
+    await page.locator('#progress-form [name=record_id] option[value="'+cfg.recordId+'"]').waitFor({state:'attached'});
+    await page.locator('#progress-form [name=record_id]').selectOption(cfg.recordId);
+    const recordLink=await page.locator('#progress-source a').getAttribute('href');assert.equal(recordLink,base+'/'+cfg.recordId.split('/').map(encodeURIComponent).join('/'));
+    assert.equal((await context.request.get(origin+recordLink)).status(),200);await save();
+    await open(autoTask);assert.equal(await page.locator('#progress-form [name=record_id]').inputValue(),cfg.recordId);await close();
 
     // A hidden tab must stop polling and read once immediately when it comes back.
     // This fast harness retains Playwright's default focus/visibility emulation.
@@ -458,77 +404,45 @@ const path=require('node:path');
     assert.ok(polls()>polled&&Date.now()-wake<1500,'重新可见时应立即读取一次，而不是等下一个轮询周期');
 
     /* ---------------------------------------------------------------- A-12 ---
-     * A slow or unavailable background source must not block any foreground action,
-     * mask the page, open a terminal, or disable buttons. */
-    await todos();
-    assert.ok((await page.locator('#progress-resume').innerText()).includes('自动整理：夜间样本已补齐'),'旧上下文应仍可读');
+     * A stalled summary cannot block foreground creation/editing or erase SSR.
+     * No generator, terminal, background window or scheduling endpoint is called. */
+    await todos();assert.ok((await page.locator('#progress-resume').innerText()).includes(typed));
     const stalled=[],pending=new Set(),timers=new Set();
-    await page.route('**/api/project/**/progress*',route=>{
+    const stallRoute=route=>{
       const request=route.request();
       if(request.method()==='GET'&&request.url().includes('view=summary')){
-        stalled.push(request.url());
-        pending.add(route);
-        timers.add(setTimeout(()=>{if(pending.delete(route))try{route.abort();}catch{}},30000));
-        return;
+        stalled.push(request.url());pending.add(route);
+        timers.add(setTimeout(()=>{if(pending.delete(route))route.abort().catch(()=>{});},30000));return;
       }
-      route.continue();
-    });
-    const stallStart=Date.now();
-    while(!stalled.length&&Date.now()-stallStart<10000)await page.waitForTimeout(200);
-    assert.ok(stalled.length>0,'五秒轻量刷新未发起，延迟模拟无效');
-    const pagesBefore=context.pages().length,dialogsBefore=dialogs.length,requestMark=requests.length;
-    const started=Date.now();
-    await page.locator('#progress-new').click();
-    await page.locator('#progress-add input').fill('慢生成期间新增');
-    await page.locator('#progress-add input').press('Enter');
-    // The app itself abandons a stalled read after 3s, so a bound near that would also
-    // pass for a foreground that really did wait for the background source.
-    await page.locator('#progress-unscheduled .progress-task-row').filter({hasText:'慢生成期间新增'}).waitFor({timeout:2500});
-    assert.ok(Date.now()-started<2500,'创建任务不应等待后台来源');
-    assert.ok((await summary(cfg.projectId)).tasks.some(t=>t.title==='慢生成期间新增'),'后台读取被延迟时任务仍应正常落盘');
-    await row('慢生成期间新增').locator('.progress-inline-status').selectOption('active');
-    await page.locator('#progress-resume .progress-resume-item').filter({hasText:'慢生成期间新增'}).waitFor({timeout:6000});
-    // Note material still loads on demand: the records view is not the stalled one.
-    await row('慢生成期间新增').locator('.progress-task').click();
-    await page.locator('#progress-dialog[open]').waitFor();
-    await page.locator('#progress-form [name=record_id] option').nth(1).waitFor({state:'attached',timeout:10000});
-    await page.locator('#progress-close').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
-    assert.equal(await page.locator('dialog[open]').count(),0,'前台操作不得弹出遮罩或对话框');
-    assert.equal(await page.locator('#progress-add button[type=submit]').isDisabled(),false,'添加按钮不得因后台来源被禁用');
-    assert.equal(await row('慢生成期间新增').locator('.progress-inline-status').isDisabled(),false,'状态选择器不得因后台来源被禁用');
-    await page.locator('#progress-new').click();
-    await page.locator('#progress-add input').waitFor({state:'visible'});
-    await page.locator('#progress-add input').scrollIntoViewIfNeeded();
-    assert.equal(await page.evaluate(()=>{
-      const target=document.querySelector('#progress-add input');
-      const box=target.getBoundingClientRect();
-      const top=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2);
-      return target===top||target.contains(top);
-    }),true,'页面被遮罩覆盖，前台操作实际不可用');
-    assert.equal(context.pages().length,pagesBefore,'不得弹出终端或新窗口');
-    assert.equal(dialogs.length,dialogsBefore,'不得弹出原生对话框');
-    // The foreground may only touch the endpoints it actually needs. A call to a
-    // generator, terminal or scheduler would show up here whatever it is called —
-    // a pattern match on four English words would not have caught a rename.
+      return route.continue();
+    };
+    await page.route('**/api/project/**/progress*',stallRoute);
+    const stallStart=Date.now();while(!stalled.length&&Date.now()-stallStart<10000)await page.waitForTimeout(100);
+    assert.ok(stalled.length>0,'后台轮询必须真的进入延迟状态');
+    const pagesBefore=context.pages().length,dialogsBefore=dialogs.length,requestMark=requests.length,started=Date.now();
+    await page.locator('#progress-new').click();await page.locator('#progress-form [name=title]').fill('慢生成期间新增');
+    await page.locator('#progress-form [name=priority]').selectOption('low');
+    assert.equal(await page.locator('#progress-form [name=ddl]').inputValue(),'');
+    await page.locator('#progress-form [type=submit]').click();
+    await row('慢生成期间新增').waitFor({timeout:2500});assert.ok(Date.now()-started<2500,'前台新增不能等待后台 summary');
+    const slowTask=await savedTask('慢生成期间新增');assert.ok(slowTask);assert.equal(slowTask.status,'planned');assert.equal(slowTask.resume_eligible,true);
+    assert.equal(slowTask.ddl,'');assert.equal(slowTask.priority,'low');
+    await open('慢生成期间新增');await page.locator('#progress-form [name=record_id] option').nth(1).waitFor({state:'attached',timeout:10000});await close();
+    assert.equal(await page.locator('dialog[open]').count(),0);assert.equal(await page.locator('#progress-new').isEnabled(),true);
+    assert.equal(await row('慢生成期间新增').locator('.progress-inline-priority').isEnabled(),true);
+    await page.locator('#progress-new').click();const titleInput=page.locator('#progress-form [name=title]');await titleInput.scrollIntoViewIfNeeded();
+    assert.equal(await titleInput.evaluate(target=>{const box=target.getBoundingClientRect(),top=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2);return target===top||target.contains(top);}),true);
+    await close();assert.equal(context.pages().length,pagesBefore);assert.equal(dialogs.length,dialogsBefore);
     const unexpectedCalls=requests.slice(requestMark).filter(url=>{
       const route=url.slice(origin.length).split('#')[0];
-      return !(/^\/static\//.test(route)
-        || /^\/api\/project\/[^/]+\/progress(\?view=(summary|records))?$/.test(route)
-        || route==='/'||route===base||route===base+'/todos'
-        || route.startsWith('/favicon'));
+      return !(/^\/static\//.test(route)||/^\/api\/project\/[^/]+\/progress(\?view=(summary|records))?$/.test(route)
+        ||route==='/'||route===base||route===base+'/todos'||route.startsWith('/favicon'));
     });
-    assert.deepEqual(unexpectedCalls,[],'前台链路只应访问已知的进度与静态资源接口');
-    // Returning to the project page still reads the previously stored context, because
-    // the landing page renders it server-side rather than waiting for the slow read.
-    await page.goto(origin+base+'/todos');
-    await page.locator('#progress-resume .progress-resume-item').first().waitFor();
-    assert.ok((await page.locator('#progress-resume').innerText()).includes('自动整理：夜间样本已补齐'),'返回项目页时旧上下文仍应可读');
-    timers.forEach(clearTimeout);
-    pending.forEach(route=>{try{route.abort();}catch{}});
-    pending.clear();
-    await page.unroute('**/api/project/**/progress*');
-    await todos();
+    assert.deepEqual(unexpectedCalls,[],'新增空描述只应访问已知的进度/静态接口');
+    await page.goto(origin+base+'/todos');await page.locator('#progress-resume li').first().waitFor();
+    assert.ok((await page.locator('#progress-resume').innerText()).includes(typed),'summary 被阻塞时 SSR 仍显示保存的统一描述');
+    timers.forEach(clearTimeout);await Promise.all([...pending].map(route=>route.abort().catch(()=>{})));pending.clear();
+    await page.unroute('**/api/project/**/progress*',stallRoute);await todos();
 
     /* ---------------------------------------------------------------- A-11 ---
      * Linking a note keeps the note and its screenshot byte-for-byte. Unlinking
@@ -536,7 +450,7 @@ const path=require('node:path');
     const notePath=path.join(cfg.wikiRoot,cfg.noteRelPath),imagePath=path.join(cfg.wikiRoot,cfg.imageRelPath);
     const noteBefore=fs.readFileSync(notePath),imageBefore=fs.readFileSync(imagePath);
     assert.ok(fs.existsSync(imagePath),'夹具缺少截图资源');
-    await page.locator('#progress-unscheduled .progress-task-row').filter({hasText:'消融实验整理'}).locator('.progress-task').click();
+    await page.locator('#progress-todo .progress-task-row').filter({hasText:'消融实验整理'}).locator('.progress-task').click();
     await page.locator('#progress-dialog[open]').waitFor();
     const select=page.locator('#progress-form [name=record_id]');
     await select.locator(`option[value="${cfg.noteRelPath}"]`).waitFor({state:'attached',timeout:20000});
@@ -550,7 +464,7 @@ const path=require('node:path');
     assert.deepEqual(fs.readFileSync(notePath),noteBefore,'关联笔记不得改动笔记内容');
     assert.deepEqual(fs.readFileSync(imagePath),imageBefore,'关联笔记不得改动截图');
 
-    await page.locator('#progress-unscheduled .progress-task-row').filter({hasText:'消融实验整理'}).locator('.progress-task').click();
+    await page.locator('#progress-todo .progress-task-row').filter({hasText:'消融实验整理'}).locator('.progress-task').click();
     await page.locator('#progress-dialog[open]').waitFor();
     // Positive control first: without it, "no note entry after unlinking" would also
     // hold if the link had never been stored at all.
@@ -574,9 +488,9 @@ const path=require('node:path');
     fs.rmSync(notePath);
     await page.reload();
     await page.locator('#progress-resume').waitFor();
-    await page.locator('#progress-unscheduled .progress-task-row').filter({hasText:'消融实验整理'}).locator('.progress-task').click();
+    await page.locator('#progress-todo .progress-task-row').filter({hasText:'消融实验整理'}).locator('.progress-task').click();
     await page.locator('#progress-dialog[open]').waitFor();
-    await page.locator('#progress-source').getByText('来源不可用').waitFor({timeout:20000});
+    await page.locator('#progress-source').getByText('来源不可用（保留原关联）',{exact:true}).waitFor({timeout:20000});
     assert.equal(await page.locator('#progress-source a').count(),0,'来源消失后不应再提供打开入口');
     await page.locator('#progress-close').click();
     assert.equal(await taskButtons('消融实验整理').count(),1,'来源消失不得删除任务');
@@ -593,6 +507,9 @@ const path=require('node:path');
     assert.deepEqual(fs.readFileSync(recordPath),recordBefore,'导入候选不得改写科研日档');
     await page.locator('#progress-import-close').click();
 
+    assert.deepEqual(snapshotFiles(cfg.otherWikiRoot),otherBefore,'其他项目任务和助手上下文不能被改写');
+    assert.deepEqual(snapshotFiles(cfg.legacyWikiRoot),legacyBefore,'只读项目必须始终字节不变');
+
     // Only the deliberate, expected network noise is allowed through, matched exactly:
     // a substring test on "404"/"409" would also hide a real application error that
     // happened to quote a status code.
@@ -602,6 +519,6 @@ const path=require('node:path');
     assert.deepEqual(unexpected,[],'不应出现未预期的页面错误');
     assert.deepEqual(dialogs,[],'不应出现未预期的原生对话框');
     await page.screenshot({path:path.join(os.tmpdir(),'llmwiki-progress-acceptance.png'),fullPage:true});
-    console.log('Progress acceptance checks passed: A-06 list/home entry points, A-04 done-reopen-done with history, A-05 legacy completion time, A-13 poll refresh without stealing input, A-12 slow source not blocking, A-11 note/link integrity, DOM-simulated hidden-tab polling (real window switch covered by separate opt-in harness).');
+    console.log('Progress acceptance passed: unified SSR/resume + priority/DDL; explicit Done/restore/timestamps/history; legacy lossless/read-only; MCP ownership/rejection/versioning; project isolation; polling/caret/visibility; stalled-source foreground; note/record/image integrity.');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

@@ -2,6 +2,7 @@
 .console-content:has(#code-app){padding:2px 0 24px}
 .code-app{--code-gutter:25px;font:14px/1.5 var(--font-ui);--code-lane-0:var(--rw-ink);--code-lane-1:var(--rw-purple);--code-lane-2:var(--rw-green);--code-lane-3:var(--rw-sub);color:var(--text);min-width:0;max-width:100%}
 .code-app *{box-sizing:border-box}
+.code-app .ui-icon{width:16px;height:16px;flex-shrink:0;stroke-width:1.65}
 .code-app [hidden]{display:none!important}
 .code-app button,.code-app summary{font:inherit;font-size:12px;touch-action:manipulation;cursor:pointer}
 .code-app button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:34px;padding:7px 10px;border:0;border-radius:7px;background:transparent;color:var(--text);line-height:1.5;max-width:100%;white-space:normal;transition:background-color 150ms,color 150ms}
@@ -95,3 +96,9 @@
 .code-dialog-diff .code-expanded-diff .code-diff{font-size:13px;max-height:calc(65dvh / var(--workbench-scale,1.25));white-space:pre;overflow:auto}
 .code-dialog-diff .code-dialog-heading h2{overflow-wrap:anywhere;min-width:0}
 .code-dialog-diff #code-dialog-feedback:empty{display:none}
+
+/* Branch occupancy stays inline; paths are available on hover, not in a dialog. */
+.code-branch-menu button{gap:8px;text-align:left}
+.code-branch-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.code-branch-state{font-size:11px;color:var(--muted);flex-shrink:0;white-space:nowrap}
+.code-branch-menu button:disabled{opacity:.65}

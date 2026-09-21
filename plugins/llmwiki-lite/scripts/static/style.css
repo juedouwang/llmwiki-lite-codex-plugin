@@ -183,3 +183,16 @@ input[type=date],textarea{background:var(--panel);color:var(--text);border:1px s
 .knowledge-document-toolbar .rw-button{font-size:12px}
 .rw-knowledge-document>#knowledge-page-info{margin-top:32px}
 #knowledge-updates{white-space:nowrap}
+
+/* Project actions stay secondary; keyboard/touch use the same menu as right-click. */
+.project-more{color:var(--rw-sub);opacity:.45;flex:none}
+.project-row:hover .project-more,.project-more:focus-visible{opacity:1}
+.project-context-menu{position:fixed;z-index:180;min-width:145px;padding:5px;border:1px solid var(--rw-line);border-radius:8px;background:var(--rw-paper);box-shadow:0 6px 22px #0002}
+.project-context-menu[hidden]{display:none}
+.project-context-menu button{display:block;text-align:left;width:100%;border:0;background:transparent;border-radius:4px;font-size:12px;padding:8px 10px;color:var(--rw-ink)}
+.project-context-menu button:hover,.project-context-menu button:focus-visible{background:var(--rw-select)}
+.project-context-menu .danger{color:var(--rw-red)}
+#project-name-dialog,#project-remove-dialog{width:360px}
+#project-name-dialog h2,#project-remove-dialog h2{font-size:16px;margin-top:0}
+#project-name-dialog input{width:100%}.project-dialog-status{font-size:12px;color:var(--rw-red)}
+.schedule-help{font-size:12px;line-height:1.8;margin:12px 0}.schedule-help>summary{color:var(--rw-sub);cursor:pointer}

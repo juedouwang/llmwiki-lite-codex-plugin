@@ -1,5 +1,6 @@
 """Optional browser harness. Uses an existing Node/Playwright install, never installs one."""
 
+import argparse
 import base64
 from datetime import date, timedelta
 import json
@@ -152,6 +153,7 @@ def _mcp_call(
             env=env,
             # Shorter than the browser's own deadline, so a slow child still yields a result.
             timeout=60,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
     except subprocess.TimeoutExpired:
         return _tool_error(call_id, "injector: MCP 调用超时")
@@ -190,6 +192,25 @@ def _injector(inject_dir: Path, scripts_dir: Path, home: str, deadline: float, s
             _publish(result, payload)
         stop.wait(0.05)
 
+
+def _run_browser(command: list[str], *, timeout: int) -> subprocess.CompletedProcess:
+    # Capture output explicitly: CREATE_NO_WINDOW must not swallow child diagnostics.
+    result = subprocess.run(
+        command, timeout=timeout, capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="")
+    return result
+
+
+parser = argparse.ArgumentParser(description=__doc__)
+modes = parser.add_mutually_exclusive_group()
+modes.add_argument("--notebook-only", action="store_true", help="Run only notebook acceptance")
+modes.add_argument("--progress-only", action="store_true", help="Run only isolated progress acceptance")
+args = parser.parse_args()
 
 with tempfile.TemporaryDirectory(prefix="llmwiki-browser-") as folder:
     root = Path(folder)
@@ -334,40 +355,44 @@ with tempfile.TemporaryDirectory(prefix="llmwiki-browser-") as folder:
             "legacyProjectId": legacy_project["id"],
             "wikiRoot": progress_project["wiki_root"],
             "otherWikiRoot": other_project["wiki_root"],
+            "legacyWikiRoot": legacy_project["wiki_root"],
             "projectRoot": progress_project["source_root"],
             "stateRoot": progress_project["state_root"],
             "noteRelPath": note_rel,
             "imageRelPath": image_rel,
             "recordRelPath": record["path"],
+            "recordId": record["id"],
             "injectDir": str(inject_dir),
         },
         ensure_ascii=False,
     )
     try:
-        if "--notebook-only" not in sys.argv:
-            site_result = subprocess.run([
-                node,
-                str(Path(__file__).with_name("site_browser_test.cjs")),
-                origin,
-                project["id"],
-            ], timeout=120)
-            if site_result.returncode:
-                raise SystemExit(site_result.returncode)
-            progress_result = subprocess.run(
+        if not args.notebook_only:
+            if not args.progress_only:
+                site_result = _run_browser([
+                    node,
+                    str(Path(__file__).with_name("site_browser_test.cjs")),
+                    origin,
+                    project["id"],
+                ], timeout=120)
+                if site_result.returncode:
+                    raise SystemExit(site_result.returncode)
+            result = _run_browser(
                 [node, str(Path(__file__).with_name("progress_browser_test.cjs")), progress_args],
                 timeout=240,
             )
-            if progress_result.returncode:
-                raise SystemExit(progress_result.returncode)
-        result = subprocess.run(
-            [
-                node,
-                str(Path(__file__).with_name("notebook_browser_test.cjs")),
-                origin,
-                project["id"],
-            ],
-            timeout=150,
-        )
+            if result.returncode:
+                raise SystemExit(result.returncode)
+        if not args.progress_only:
+            result = _run_browser(
+                [
+                    node,
+                    str(Path(__file__).with_name("notebook_browser_test.cjs")),
+                    origin,
+                    project["id"],
+                ],
+                timeout=150,
+            )
     finally:
         stop_injector.set()
         injector.join()

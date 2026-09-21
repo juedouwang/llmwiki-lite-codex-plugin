@@ -802,13 +802,16 @@ class GitWebPolicyTests(GitWebFixture):
         self.assertEqual(self.head(), before)
         self.assertEqual((self.repo / ".git/config").read_bytes(), config)
 
-    def test_multi_worktree_is_browse_only(self):
+    def test_multi_worktree_primary_can_save_without_changing_linked_head(self):
         before = self.commit({"a.txt": "base\n"})
         self.git("worktree", "add", "-b", "other", str(self.root / "linked"))
         self.write("a.txt", "unsaved\n")
-        self.assertFalse(self.api("status", method="GET")["capabilities"]["write"])
-        self.preview("save", status=409, code="unsupported_repo")
-        self.assertEqual(self.head(), before)
+        self.assertTrue(self.api("status", method="GET")["capabilities"]["write"])
+        preview = self.preview("save")
+        result = self.api("execute", self.save_data(preview, "a.txt"))
+        self.assertEqual(result["outcome"], "done")
+        self.assertNotEqual(self.head(), before)
+        self.assertEqual(self.head(self.root / "linked"), before)
 
     def test_detached_head_can_browse_create_branch_but_not_save(self):
         before = self.commit({"a.txt": "base\n"})

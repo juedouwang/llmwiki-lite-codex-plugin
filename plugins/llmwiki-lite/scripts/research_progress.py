@@ -23,6 +23,9 @@ MAX_TASKS = 500
 STATUSES = {"planned", "active", "blocked", "done"}
 RESUME_STATUSES = {"active", "blocked"}
 FIELDS = ("title", "status", "start", "end", "checkpoint", "next_step")
+TASK_FIELDS = ("description", "priority", "ddl")
+PRIORITIES = {"high": 0, "medium": 1, "low": 2}
+MAX_DESCRIPTION = 100_000
 CONTEXT_FIELDS = ("checkpoint", "next_step")
 LINK_FIELD = "record_id"
 MODES = {"manual", "auto"}
@@ -77,22 +80,27 @@ def _stamp(value, *, optional: bool = False) -> str | None:
 def validate(value: dict) -> dict:
     if not isinstance(value, dict):
         raise LLMWikiError("任务必须是对象。")
-    task = {key: _text(value.get(key, ""), 240 if key == "title" else 4000) for key in FIELDS}
+    task = {key: _text(value.get(key, "planned" if key == "status" else ""), 240 if key == "title" else 4000) for key in FIELDS}
+    # Missing new keys mean a legacy task, not an instruction to erase its context.
+    for key in TASK_FIELDS:
+        if key in value:
+            checked = _text(value[key], MAX_DESCRIPTION if key == "description" else 20)
+            task[key] = value[key] if key == "description" else checked
+    if "priority" in task and task["priority"] not in PRIORITIES:
+        raise LLMWikiError("优先级须为 high、medium 或 low。")
     task[LINK_FIELD] = _link(value.get(LINK_FIELD, ""))
     if not task["title"]:
         raise LLMWikiError("请填写任务名称。")
     if task["status"] not in STATUSES:
         raise LLMWikiError("任务状态无效。")
-    for key in ("start", "end"):
-        if task[key]:
+    for key in ("start", "end", "ddl"):
+        if task.get(key):
             try:
                 if date.fromisoformat(task[key]).isoformat() != task[key]:
                     raise ValueError()
             except ValueError as exc:
                 raise LLMWikiError("日期须为 YYYY-MM-DD。") from exc
-    if bool(task["start"]) != bool(task["end"]):
-        raise LLMWikiError("请同时填写开始和结束日期，或都留空作为未排期任务。")
-    if task["start"] and task["end"] < task["start"]:
+    if task["start"] and task["end"] and task["end"] < task["start"]:
         raise LLMWikiError("结束日期不能早于开始日期。")
     return task
 
@@ -264,6 +272,27 @@ def _effective(task: dict, auto: dict | None, field: str) -> str:
     return str((auto or {}).get(field) or "")
 
 
+def task_description(task: dict) -> str:
+    """Read-only migration view; an explicit empty description stays empty."""
+    if "description" in task:
+        return task["description"]
+    context = task.get("effective_context") or task
+    checkpoint = str(context.get("checkpoint") or "")
+    next_step = str(context.get("next_step") or "")
+    return "\n\n".join(part for part in (checkpoint, "下一步：" + next_step if next_step else "") if part)
+
+
+def task_ddl(task: dict) -> str:
+    return task["ddl"] if "ddl" in task else (task.get("end") or task.get("start") or "")
+
+
+def sort_todo(tasks: list[dict]) -> list[dict]:
+    return sorted((task for task in tasks if task.get("status") != "done"), key=lambda task: (
+        PRIORITIES.get(task.get("priority"), 1), task_ddl(task) or "9999-12-31",
+        task.get("created_at", ""), task["id"],
+    ))
+
+
 def public_task(task: dict, auto: dict | None = None) -> dict:
     item = {key: task.get(key, "") for key in FIELDS}
     item[LINK_FIELD] = task.get(LINK_FIELD, "")
@@ -285,6 +314,16 @@ def public_task(task: dict, auto: dict | None = None) -> dict:
         "source_record_id": auto_item.get("source_record_id", ""),
         "generated_at": auto_item.get("generated_at", ""),
     } if item["context_revision"] else None
+    item["resume_eligible"] = task.get("status") != "done" and (
+        task.get("status") in RESUME_STATUSES or any(key in task for key in TASK_FIELDS)
+    )
+    item["description_source"] = "manual" if "description" in task else "legacy"
+    item["description"] = task_description({**item, **({"description": task["description"]} if "description" in task else {})})
+    item["priority"] = task.get("priority", "medium")
+    item["ddl"] = task_ddl(task)
+    # Opaque legacy assistant metadata is not reinterpreted, flattened or discarded.
+    if "assistant_context" in task:
+        item["assistant_context"] = task["assistant_context"]
     return item
 
 
@@ -294,9 +333,15 @@ def _attach(tasks: list[dict], contexts: dict) -> list[dict]:
 
 
 def sort_resume(tasks: list[dict]) -> list[dict]:
-    active = [task for task in tasks if task.get("status") in RESUME_STATUSES]
+    # Old planned ideas remain excluded. Explicit edits in the new task model
+    # count as recent work without asking users to pick an in-progress status.
+    active = [task for task in tasks if task.get("status") != "done" and (
+        task.get("status") in RESUME_STATUSES or task.get("resume_eligible")
+        or any(key in task for key in TASK_FIELDS) and "resume_eligible" not in task
+    )]
     active.sort(key=lambda task: task.get("id") or "")
     active.sort(key=lambda task: task.get("updated_at") or "", reverse=True)
+    active.sort(key=lambda task: PRIORITIES.get(task.get("priority"), 1))
     return active
 
 
@@ -355,6 +400,7 @@ def load(project: dict, view: str | None = None) -> dict:
 def _event(task: dict, now: str) -> None:
     task["updated_at"] = now
     snapshot = {key: task.get(key, "") for key in FIELDS + (LINK_FIELD,)}
+    snapshot.update({key: task[key] for key in TASK_FIELDS if key in task})
     snapshot["completed_at"] = task.get("completed_at")
     snapshot["context_mode"] = dict(task.get("context_mode") or context_mode(task))
     task.setdefault("history", []).append({"at": now, **snapshot})
@@ -375,6 +421,7 @@ def _require_record(project: dict, record_id: str) -> None:
 
 def _apply_completion(task: dict, previous: str, new_status: str, now: str) -> None:
     if previous != "done" and new_status == "done":
+        task["resume_status"] = previous if previous in STATUSES - {"done"} else "planned"
         task["completed_at"] = now
     elif new_status != "done":
         task["completed_at"] = None
@@ -412,12 +459,23 @@ def update(project: dict, payload: dict) -> dict:
                     "completed_at": now if fields["status"] == "done" else None}
             _event(task, now)
             data["tasks"].append(task)
-        elif action == "update":
+        elif action in {"update", "complete", "restore", "delete"}:
             task = next((item for item in data["tasks"] if item["id"] == payload.get("id")), None)
             if task is None:
                 raise LLMWikiError("未找到任务。")
+            if action == "delete":
+                data["tasks"].remove(task)
             incoming = payload.get("task") if isinstance(payload.get("task"), dict) else {}
-            fields = validate(incoming)
+            if action == "complete":
+                incoming = {"status": "done"}
+            elif action == "restore":
+                incoming = {"status": task.get("resume_status", "planned")} if task["status"] == "done" else {}
+            elif action == "delete":
+                incoming = {}
+            # PATCH semantics keep old clients from deleting new fields (and vice versa).
+            fields = validate({**task, **incoming})
+            # Untouched legacy strings/metadata stay byte-for-byte meaningful.
+            fields.update({key: task[key] for key in fields if key in task and key not in incoming})
             if fields[LINK_FIELD] != task.get(LINK_FIELD, ""):
                 _require_record(project, fields[LINK_FIELD])
             modes = _apply_modes(task, fields, incoming)
@@ -426,12 +484,15 @@ def update(project: dict, payload: dict) -> dict:
             next_task.update(fields)
             next_task["context_mode"] = modes
             _apply_completion(next_task, previous_status, fields["status"], now)
-            changed = any(task.get(key, "") != next_task.get(key, "") for key in FIELDS + (LINK_FIELD,))
+            changed = any(task.get(key, "") != next_task.get(key, "") for key in FIELDS + TASK_FIELDS + (LINK_FIELD,))
+            changed = changed or any((key in task) != (key in next_task) for key in TASK_FIELDS)
             changed = changed or context_mode(task) != modes or task.get("completed_at") != next_task.get("completed_at")
             if changed:
                 task.update(fields)
                 task["context_mode"] = modes
                 task["completed_at"] = next_task.get("completed_at")
+                if "resume_status" in next_task:
+                    task["resume_status"] = next_task["resume_status"]
                 _event(task, now)
         elif action == "import":
             selected = payload.get("ids", [])
@@ -582,6 +643,9 @@ def mcp_get(project_root: str, state_root: str | None = None, task_id: str | Non
             "id": task["id"],
             "title": task["title"],
             "status": task["status"],
+            "description": _preview(task["description"]),
+            "priority": task["priority"],
+            "ddl": task["ddl"],
             "updated_at": task["updated_at"],
             "revision": summary["revision"],
             "context_revision": task.get("context_revision") or "",
@@ -620,7 +684,7 @@ def mcp_context_write(
 
 
 def active_tasks(project: dict, limit: int = 3) -> list[dict]:
-    """In-progress work for the project landing page.
+    """Recently touched work for the landing page (priority, then human edit time).
 
     Deliberately avoids the records scan that load() does: the landing page only
     needs what the user was last doing, and must stay cheap to render.
@@ -630,36 +694,6 @@ def active_tasks(project: dict, limit: int = 3) -> list[dict]:
 
 
 def page(home: str, project_id: str) -> str:
-    from llmwiki_registry import get_project
-    from research_web_ui import esc, layout, page_header, new_button, ui_icon, resume_block
-
-    project = get_project(project_id, home=home)["project"]
-    body = f'''<link rel="stylesheet" href="/static/progress.css">
-<section id="research-progress" data-project="{esc(project_id)}">
-{page_header("科研进度", new_button("新建任务", element_id="progress-new", attributes='aria-expanded="false" aria-controls="progress-add"'))}
-<div id="progress-message" role="status" hidden></div>
-{resume_block(project, project_id)}
-<form id="progress-add" class="progress-add" hidden><input type="text" name="title" maxlength="240" aria-label="新任务" placeholder="添加研究任务，回车保存" required autocomplete="off"><button type="submit" class="primary">添加</button><button type="button" id="progress-add-cancel">取消</button></form>
-<div class="progress-range"><span>任务安排</span><span id="progress-range-label" class="meta"></span><div class="progress-week-controls"><button id="progress-prev" class="rw-icon-button" aria-label="上一段时间">{ui_icon("left")}</button><button id="progress-today" class="rw-button">本周</button><button id="progress-next" class="rw-icon-button" aria-label="下一段时间">{ui_icon("right")}</button><details class="progress-range-options"><summary class="rw-icon-button" aria-label="时间范围" title="时间范围">{ui_icon("chevron")}</summary><label>显示范围<select id="progress-days" aria-label="时间范围"><option value="7">一周</option><option value="14">两周</option><option value="28">四周</option></select></label></details></div></div>
-<div id="progress-timeline" aria-label="研究时间轴" tabindex="0"></div>
-<section id="progress-unscheduled"><h2>未排期</h2><div></div></section>
-<details id="progress-done"><summary>已完成 <span></span></summary><div></div></details>
-<dialog id="progress-dialog"><form id="progress-form">
-<div class="progress-dialog-head"><h2>任务</h2><button type="button" id="progress-close" aria-label="关闭任务">×</button></div>
-<label>任务名称<input type="text" name="title" maxlength="240" required></label>
-<label>状态<select name="status"><option value="planned">未开始</option><option value="active">进行中</option><option value="blocked">卡住了</option><option value="done">已完成</option></select></label>
-<div class="progress-dates"><label>开始<input name="start" type="date"></label><label>结束<input name="end" type="date"></label></div>
-<label>上次做到哪<textarea name="checkpoint" rows="3" maxlength="4000" placeholder="如：已跑完基线，夜间数据还没验证；参数保存在 config.yaml"></textarea><button type="button" class="progress-use-auto" data-field="checkpoint" hidden>使用自动内容</button></label>
-<label>下一步<textarea name="next_step" rows="2" maxlength="4000" placeholder="如：先检查昨晚的实验日志，再补夜间数据"></textarea><button type="button" class="progress-use-auto" data-field="next_step" hidden>使用自动内容</button></label>
-<input type="hidden" name="checkpoint_mode" value="auto"><input type="hidden" name="next_step_mode" value="auto">
-<label>关联笔记<select name="record_id"><option value="">不关联</option></select></label>
-<div id="progress-source"></div>
-<details id="progress-info"><summary>任务信息</summary><div></div></details>
-<details id="progress-auto"><summary>自动整理</summary><p id="progress-auto-status" class="meta">自动整理尚未接通</p><div id="progress-auto-body" hidden></div></details>
-<details id="progress-history"><summary>修改记录</summary><div></div></details>
-<p id="progress-error" role="alert" hidden></p><button type="button" id="progress-reload" hidden>读取最新版本，保留当前填写</button>
-<div class="progress-dialog-actions"><span class="meta">日期可都留空</span><button type="submit" class="primary">保存</button></div>
-</form></dialog>
-<div class="progress-more"><button id="progress-import" type="button">导入旧待办</button></div><dialog id="progress-import-dialog"><h2>导入旧待办</h2><p class="muted">从科研记录中选择要跟进的事项，不自动推断日期。此浏览器的旧完成标记会一并保存。</p><form id="progress-import-form"><div id="progress-candidates"></div><p id="progress-import-error" role="alert" hidden></p><div class="actions"><button type="button" id="progress-import-close">取消</button><button class="primary">导入所选</button></div></form></dialog>
-</section><script src="/static/progress.js" defer></script>'''
-    return layout("科研进度 · " + str(project["name"]), body, project_id=project_id, active="todos", home=home)
+    # Stable shared-server entry point; markup belongs to the progress feature.
+    from progress_page import page as render_page
+    return render_page(home, project_id)

@@ -157,6 +157,59 @@ class ContinuousDocuments(unittest.TestCase):
         self.assertEqual(item['body'], '候选观察')
         self.assertTrue(json.dumps(item, ensure_ascii=False))
 
+    def test_report_titles_are_versioned_conflict_checked_and_kept_on_adoption(self):
+        owner = reports.workspace(self.home)
+        day = '2026-09-19'
+        item = reports.create(owner, 'daily', day, [self.p['id']], home=self.home)
+        initial = item['revision']
+        item = reports.update(owner, 'daily', day, {'action': 'save', 'expected_revision': initial,
+                                                  'body': '正文不变', 'title': '人工科研标题'})
+        self.assertNotEqual(item['revision'], initial)
+        self.assertEqual(item['title'], '人工科研标题')
+        self.assertEqual(reports.listing(owner, 'daily', home=self.home)['items'][0]['title'], '人工科研标题')
+        original_revision = item['revision']
+        item = reports.update(owner, 'daily', day, {'action': 'save', 'expected_revision': original_revision,
+                                                  'body': item['body'], 'title': '只改标题'})
+        self.assertNotEqual(item['revision'], original_revision)
+        self.assertEqual(item['body'], '正文不变')
+        with self.assertRaises(reports.ReportError):
+            reports.update(owner, 'daily', day, {'action': 'save', 'expected_revision': original_revision,
+                                               'body': '过时窗口', 'title': '不能覆盖'})
+        item = reports.update(owner, 'daily', day, {'action': 'confirm', 'expected_revision': item['revision']})
+        self.assertEqual(reports.load(owner, 'daily', day, version=1)['title'], '只改标题')
+        item = reports.update(owner, 'daily', day, {'action': 'start_edit', 'expected_revision': item['revision']})
+        item = reports.update(owner, 'daily', day, {'action': 'save', 'expected_revision': item['revision'],
+                                                  'body': item['body'], 'title': '新的草稿标题'})
+        reports.publish(owner, 'daily', day, '新候选正文', generation_id='test', sources=[], fingerprint='new',
+                        project_ids=[self.p['id']], coverage_until='2026-09-19T18:00:00+08:00', gaps=[])
+        candidate = reports.load(owner, 'daily', day, view='candidate')
+        item = reports.update(owner, 'daily', day, {'action': 'adopt_candidate', 'expected_revision': item['revision'],
+                                                  'expected_candidate_sha256': candidate['body_sha256']})
+        self.assertEqual(item['title'], '新的草稿标题')
+        self.assertEqual(reports.load(owner, 'daily', day, view='previous')['title'], '新的草稿标题')
+        item = reports.update(owner, 'daily', day, {'action': 'restore', 'expected_revision': item['revision'], 'version': 1})
+        self.assertEqual(item['title'], '只改标题')
+
+    def test_invalid_report_title_never_changes_body_or_revision(self):
+        owner = reports.workspace(self.home)
+        item = reports.create(owner, 'weekly', '2026-09-14', [self.p['id']], home=self.home)
+        for title in [None, 12, 'a' * 201, 'bad\x00title']:
+            with self.assertRaises(reports.ReportError):
+                reports.update(owner, 'weekly', '2026-09-14', {'action': 'save', 'expected_revision': item['revision'],
+                                                              'title': title, 'body': '不能写入'})
+            self.assertEqual(reports.load(owner, 'weekly', '2026-09-14')['revision'], item['revision'])
+            self.assertEqual(reports.load(owner, 'weekly', '2026-09-14')['body'], '')
+
+    def test_shared_editor_markup_has_autosave_retry_without_extra_controls(self):
+        from document_editor import editor_markup
+        for prefix, notebook in [('nb', True), ('report', False)]:
+            html = editor_markup(prefix, '标题', '/records', notebook=notebook)
+            for suffix in ['save', 'code', 'comment']:
+                self.assertNotIn(f'id="{prefix}-{suffix}"', html)
+            for suffix in ['retry', 'title', 'source', 'preview', 'comments']:
+                self.assertIn(f'id="{prefix}-{suffix}"', html)
+        self.assertIn('确认为正式版', editor_markup('report', '', '/reports'))
+
     def test_publish_return_revision_can_be_used_directly(self):
         owner = reports.workspace(self.home)
         result = reports.publish(owner, 'daily', '2026-09-19', '自动草稿', generation_id='fixture', sources=[], fingerprint='new',

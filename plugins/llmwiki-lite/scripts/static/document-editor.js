@@ -1,5 +1,5 @@
 /* Shared body interaction only; adapters retain document identity and storage. */
-window.ResearchDocument = (() => {
+window.ResearchDocument = window.ResearchDocument || (() => {
   'use strict';
   async function request(url, data) {
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15000);
@@ -18,6 +18,109 @@ window.ResearchDocument = (() => {
   }
   const node = (text, tag = 'p') => { const n = document.createElement(tag); n.textContent = text; return n; };
   const clone = value => JSON.parse(JSON.stringify(value));
+  // The Markdown string is authoritative. Only image tokens become atomic DOM
+  // widgets; ordinary typing and IME never replace the focused editable tree.
+  function liveMarkdown(source, options) {
+    const element = document.createElement('div');
+    element.id = options.prefix + '-live'; element.className = 'rw-editor-live';
+    element.setAttribute('role', 'textbox'); element.setAttribute('aria-multiline', 'true');
+    element.setAttribute('aria-label', source.getAttribute('aria-label'));
+    element.dataset.placeholder = source.placeholder; element.spellcheck = false; element.tabIndex = 0;
+    element.hidden = true; source.after(element);
+    function scan() {
+      const points = new Map(), parts = []; let text = '';
+      function walk(n) {
+        const start = text.length, edges = [start];
+        if (n.nodeType === Node.TEXT_NODE) { text += n.data; parts.push({node:n, start, end:text.length}); }
+        else if (n.nodeType === Node.ELEMENT_NODE) {
+          if (n.hasAttribute('data-md')) { text += n.dataset.md; parts.push({node:n, start, end:text.length, atom:true}); }
+          else if (n.tagName === 'BR') { if (!n.hasAttribute('data-tail')) text += '\n'; }
+          else {
+            for (const child of n.childNodes) {
+              // Handles browser-native line wrappers (including IME on Windows).
+              if (/^(DIV|P)$/.test(child.nodeName) && text && !text.endsWith('\n')) text += '\n';
+              walk(child); edges.push(text.length);
+            }
+          }
+        }
+        points.set(n, {start, end:text.length, edges});
+      }
+      walk(element);
+      return {text, parts, points};
+    }
+    function selection() {
+      const current = window.getSelection();
+      if (!current?.rangeCount || !element.contains(current.anchorNode) || !element.contains(current.focusNode)) return null;
+      const {points} = scan();
+      const offset = (n, pos) => {
+        const point = points.get(n);
+        if (!point) return 0;
+        return n.nodeType === Node.TEXT_NODE ? point.start + pos : point.edges[pos] ?? point.end;
+      };
+      return [offset(current.anchorNode,current.anchorOffset),offset(current.focusNode,current.focusOffset)].sort((a,b)=>a-b);
+    }
+    function select(start, end = start, focus = true) {
+      if (focus) element.focus({preventScroll:true});
+      const {parts, text} = scan();
+      function point(offset) {
+        offset = Math.max(0, Math.min(text.length, offset));
+        for (const part of parts) {
+          if (offset < part.start || offset > part.end) continue;
+          if (!part.atom) return [part.node,offset-part.start];
+          return [part.node.parentNode,[...part.node.parentNode.childNodes].indexOf(part.node)+(offset>part.start?1:0)];
+        }
+        return [element,Math.max(0,element.childNodes.length-1)];
+      }
+      const range=document.createRange(); range.setStart(...point(start));range.setEnd(...point(end));
+      const current=window.getSelection();current.removeAllRanges();current.addRange(range);
+    }
+    function imageURL(href) {
+      // Match the server's local-asset policy. Never fetch remote images merely
+      // because clipboard text or an imported Markdown file contains a URL.
+      if (/^(?:[a-z][a-z\d+.-]*:|\/\/|\\)/i.test(href)) return null;
+      try {
+        const url = new URL(options.imageURL ? options.imageURL(href) : href, location.href);
+        return url.origin === location.origin ? url.href : null;
+      } catch { return null; }
+    }
+    function render(body, range, focus = false) {
+      const fragment=document.createDocumentFragment(); let at=0, fence='', inline='';
+      const tokens=/^[ \t]*(`{3,}|~{3,})[^\n]*$|(`+)|!\[((?:\\.|[^\]\\\n])*)\]\((<[^>\n]+>|[^\s)]+)(?:\s+["'][^\n]*?["'])?\)/gm;
+      for (const match of body.matchAll(tokens)) {
+        if (match[1]) { if (!fence) fence=match[1];else if(match[1][0]===fence[0]&&match[1].length>=fence.length)fence='';inline='';continue; }
+        if (fence) continue;
+        if (match[2]) { if (!inline) inline=match[2];else if(inline===match[2])inline='';continue; }
+        if (inline) continue;
+        const href=imageURL(match[4].replace(/^<|>$/g,'')); if (!href) continue;
+        fragment.append(document.createTextNode(body.slice(at,match.index)));
+        const widget=document.createElement('span'), img=document.createElement('img');
+        widget.className='rw-inline-image';widget.contentEditable='false';widget.dataset.md=match[0];
+        img.src=href;img.alt=match[3].replace(/\\(.)/g,'$1');img.draggable=false;
+        // No caption, fallback label or other text is inserted into the document.
+        img.addEventListener('error',()=>{widget.classList.add('is-unavailable');widget.title='图片暂不可用；Markdown 地址已保留';});
+        widget.append(img);fragment.append(widget);at=match.index+match[0].length;
+      }
+      fragment.append(document.createTextNode(body.slice(at)));
+      const tail=document.createElement('br');tail.dataset.tail='';fragment.append(tail);
+      element.replaceChildren(fragment);element.dataset.empty=String(!body);
+      if(range)select(...range,focus);
+    }
+    return {element, render, select, selection, read:()=>scan().text};
+  }
+  const documentTitles = new Map(), retainedPages = new Set();
+  function applyTitles(root) {
+    if (!root?.querySelectorAll) return;
+    for (const anchor of root.querySelectorAll('a[href]')) {
+      const title = documentTitles.get(new URL(anchor.href,location.href).pathname);
+      if (title === undefined) continue;
+      const label = anchor.matches('.rw-title-button,.timeline-card') ? anchor : anchor.querySelector('.rw-title-button');
+      if (label) label.textContent = title;
+    }
+  }
+  for (const name of ['enter','leave']) document.addEventListener('workbench:'+name,event=>{
+    if(event.detail?.root){retainedPages.add(event.detail.root);applyTitles(event.detail.root);}
+  });
+  document.addEventListener('workbench:dispose',event=>retainedPages.delete(event.detail?.root));
   function mount(options) {
     const root = typeof options.root === 'string' ? document.getElementById(options.root) : options.root;
     const $ = name => root.querySelector(`#${options.prefix}-${name}`);
@@ -28,11 +131,26 @@ window.ResearchDocument = (() => {
     const dialogValue = () => JSON.stringify([...$('dialog').querySelectorAll('input,textarea,select')].map(e => [e.value, e.checked]));
     const dialogDirty = () => $('dialog').open && dialogValue() !== dialogBaseline;
     const source = $('source'), preview = $('preview'), surface = $('document'), title = $('title');
+    const live = liveMarkdown(source, options), editor = live.element;
     const recoveryKey = options.key + ':' + crypto.randomUUID();
     let item, body = '', comments = [], tags = [], mode = 'preview', sequence = 0, saved = 0;
     let saveJob, editJob, timer, composing = false, renderSequence = 0, selection = [0, 0], scroll = {edit: 0, preview: 0};
     let ready = false, busy = false, conflictOpen = false, undo = [], redo = [], remembered = '', selectedQuote = '', nativeBase = '', nativeTip = '', nativeSelection = [0, 0];
     const uploads = new Map();
+    const resolutions = new Map();
+    function paint(focus = false) { if (!composing) live.render(body, mode === 'edit' && (focus || document.activeElement===editor) ? selection : null, focus); }
+    function captureSelection() { const current=live.selection();if(current)selection=current; }
+    function titleChanged() {
+      if (!title) return;
+      const text=title.value.trim() || options.defaultTitle || '无标题';
+      if (active()) document.title=text;
+      const urls=options.titleURLs || [location.pathname];
+      for(const url of urls)documentTitles.set(new URL(url,location.href).pathname,text);
+      applyTitles(document);for(const page of retainedPages)applyTitles(page);
+      const detail={key:options.key, title:text, urls, root:page, revision:item?.revision};
+      options.onTitleChange?.(text,detail);
+      document.dispatchEvent(new CustomEvent('research-document:titlechange',{detail}));
+    }
     const message = text => { $('notice').textContent = text; $('notice').hidden = !text; };
     const close = () => { $('dialog').close(); conflictOpen = false; };
     function modal(heading, content, actions = []) {
@@ -62,9 +180,10 @@ window.ResearchDocument = (() => {
       const readonly = !ready || !item || item.mode === 'readonly';
       for (const name of ['preview-mode','export','copy','info','history','sources','candidate','regenerate','save-as']) if ($(name)) $(name).disabled = !ready || !item || busy;
       for (const name of ['export','copy','save-as']) if ($(name)) $(name).disabled ||= uploads.size > 0 || body.includes('<!--report-upload:');
-      $('edit').disabled = readonly || busy; $('code').disabled = readonly || busy; $('comment').disabled = readonly || busy;
+      for (const name of ['edit','code','comment']) if ($(name)) $(name).disabled = readonly || busy;
+      editor.contentEditable = String(!readonly && !busy);editor.setAttribute('aria-readonly', String(readonly || busy));
       source.readOnly = readonly || busy;
-      if (title) title.readOnly = readonly || busy;
+      if (title) title.readOnly = readonly || busy || item?.mode === 'formal';
       $('edit').setAttribute('aria-pressed', String(mode === 'edit'));
       $('preview-mode').setAttribute('aria-pressed', String(mode === 'preview'));
       if ($('save')) $('save').disabled = readonly || busy;
@@ -79,7 +198,7 @@ window.ResearchDocument = (() => {
       const serial = ++renderSequence;
       await new Promise(resolve => setTimeout(resolve, 150));
       if (serial !== renderSequence || !active()) return;
-      try { const html = await options.preview(body); if (serial === renderSequence && mode === 'preview') preview.innerHTML = html; }
+      try { const html = await options.preview(body); if (serial === renderSequence && mode === 'preview') { preview.innerHTML = html;preview.querySelectorAll('figcaption').forEach(c=>{if(!c.textContent.trim()||c.textContent.trim()==='截图')c.remove();}); } }
       catch (e) { if (serial === renderSequence) message('预览失败，正文仍保留：' + e.message); }
     }
     async function editable() {
@@ -94,10 +213,11 @@ window.ResearchDocument = (() => {
     async function setMode(next, end = false) {
       if (!item || (next === 'edit' && !(await editable()))) return;
       scroll[mode] = window.scrollY;
-      mode = next; source.hidden = next !== 'edit'; preview.hidden = next === 'edit'; state();
+      if (composing) return;
+      mode = next; source.hidden = true; editor.hidden = next !== 'edit'; preview.hidden = next === 'edit'; state();
       if (next === 'edit') {
         if (source.value !== body) source.value = body; height(); if (end) selection = [body.length, body.length];
-        if (active()) { source.focus({preventScroll: true}); source.setSelectionRange(...selection); }
+        if (active()) { paint(); live.select(...selection); }
       } else { await render(); if (active()) preview.focus({preventScroll: true}); }
       if (active()) window.scrollTo(0, scroll[next]);
     }
@@ -134,9 +254,11 @@ window.ResearchDocument = (() => {
     function insert(text, start = selection[0], end = selection[1]) {
       freezeTyping(); undo.push({body, selection: [...selection]}); redo = [];
       source.value = body; source.setSelectionRange(start, end); source.setRangeText(text, start, end, 'end');
-      body = remembered = source.value; selection = [source.selectionStart, source.selectionEnd]; resetNative(); dirty();
+      body = remembered = source.value; selection = [source.selectionStart, source.selectionEnd]; resetNative(); paint(); dirty();
     }
     function replaceToken(token, replacement) {
+      captureSelection();
+      if (composing) { resolutions.set(token,replacement);return; }
       function transform(entry) {
         const at = entry.body.indexOf(token); if (at < 0) return;
         entry.selection = entry.selection.map(pos => pos <= at ? pos : pos >= at + token.length ? pos + replacement.length - token.length : at + replacement.length);
@@ -149,19 +271,19 @@ window.ResearchDocument = (() => {
       if (!body.includes(token)) return;
       const current = {body, selection}; transform(current);
       body = remembered = current.body; selection = current.selection; source.value = body;
-      source.setSelectionRange(...selection); resetNative(); dirty(); if (mode === 'preview') render();
+      source.setSelectionRange(...selection); resetNative(); paint(); dirty(); if (mode === 'preview') render();
     }
     async function display(data, initial = false) {
       clearTimeout(timer); message('');
       item = data; body = data.body; comments = clone(data.comments || []); tags = [...(data.tags || [])];
-      if (title) title.value = data.title || '';
+      if (title) {title.value = data.title || options.defaultTitle || '';titleChanged();}
       source.value = remembered = body; selection = [body.length, body.length]; sequence = saved = 0; undo = []; redo = []; resetNative();
       $('uploads').replaceChildren(); uploads.clear();
       for (const token of body.match(/<!--report-upload:[^>]+-->/g) || []) {
         const row = node('这张截图未完成上传，请移除占位后重新粘贴。','div'), remove = node('移除占位','button');
         remove.onclick=()=>{replaceToken(token,'');row.remove();state();};row.append(remove);$('uploads').append(row);
       }
-      commentList(); $('save-state').textContent = data.exists === false ? '尚未保存' : '已保存';
+      paint(); commentList(); $('save-state').textContent = data.exists === false ? '尚未保存' : '已保存';
       if (data.error_message || data.externally_changed) message(data.error_message || '文件已在外部改变，当前显示磁盘内容。');
       await setMode(initial && !body && data.mode === 'draft' ? 'edit' : 'preview');
     }
@@ -179,14 +301,14 @@ window.ResearchDocument = (() => {
       if (item.mode !== 'draft') return sequence === saved;
       if (saveJob) { const ok = await saveJob; return ok && sequence !== saved ? flush() : ok; }
       if (saved === sequence) return true;
-      const serial = sequence, value = content(); $('save-state').textContent = '保存中';
+      const serial = sequence, value = content(); if($('retry'))$('retry').hidden=true;$('save-state').textContent = '保存中';
       saveJob = (async () => {
         try {
           const next = await options.save(value, item); item = next; saved = serial; state();
-          if (serial === sequence) { localStorage.removeItem(recoveryKey); $('save-state').textContent = '已保存'; }
+          if (serial === sequence) { localStorage.removeItem(recoveryKey); $('save-state').textContent = '已保存'; if($('notice').textContent.startsWith('保存失败'))message(''); }
           return true;
         } catch (e) {
-          recover(); $('save-state').textContent = '保存失败';
+          recover(); if($('retry'))$('retry').hidden=false;$('save-state').textContent = '保存失败';
           if (e.status === 409) await conflict(); else message('保存失败，输入已保留：' + e.message);
           return false;
         }
@@ -195,11 +317,55 @@ window.ResearchDocument = (() => {
       if (ok && saved !== sequence && !composing) return flush();
       return ok;
     }
+    function remember() {
+      undo.push(inputSnapshot || {body,selection:[...selection]});inputSnapshot=null;if(undo.length>100)undo.shift();redo=[];
+    }
+    let compositionSnapshot, inputSnapshot;
+    function endComposition() {
+      if(compositionSnapshot && body!==compositionSnapshot.body){undo.push(compositionSnapshot);redo=[];}
+      compositionSnapshot=null;inputSnapshot=null;composing=false;resetNative();
+      for(const [token,replacement] of resolutions)replaceToken(token,replacement);
+      resolutions.clear();paint();clearTimeout(timer);if(active())timer=setTimeout(flush,600);
+    }
+    editor.addEventListener('beforeinput', event=>{
+      if(composing||event.isComposing)return;
+      captureSelection();
+      if(event.inputType.startsWith('format')){event.preventDefault();return;}
+      if(['historyUndo','historyRedo'].includes(event.inputType)){
+        event.preventDefault();editor.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,cancelable:true,key:event.inputType==='historyUndo'?'z':'y',ctrlKey:true}));return;
+      }
+      inputSnapshot={body,selection:[...selection]};
+      if(['insertParagraph','insertLineBreak'].includes(event.inputType)){
+        event.preventDefault();insert('\n');live.select(...selection);return;
+      }
+    });
+    editor.addEventListener('input', event=>{
+      captureSelection();
+      if(!composing&&!event.isComposing)remember();
+      body=remembered=source.value=live.read();editor.dataset.empty=String(!body);
+      resetNative();dirty();
+      if(!composing&&!event.isComposing&&event.data===')')paint();
+    });
+    editor.addEventListener('compositionstart',()=>{
+      captureSelection();compositionSnapshot={body,selection:[...selection]};composing=true;clearTimeout(timer);
+    });
+    editor.addEventListener('compositionend',endComposition);
+    for(const event of ['keyup','pointerup','focus'])editor.addEventListener(event,captureSelection);
+    document.addEventListener('selectionchange',()=>{if(active()&&!composing)captureSelection();},{signal:lifecycle.signal});
+    // Copy/cut serialize atoms back to Markdown instead of losing their URLs.
+    for(const name of ['copy','cut'])editor.addEventListener(name,event=>{
+      captureSelection();if(selection[0]===selection[1])return;
+      event.preventDefault();event.clipboardData.setData('text/plain',body.slice(...selection));
+      if(name==='cut'&&!composing){insert('');live.select(...selection);}
+    });
     source.addEventListener('input', changed);
     for (const event of ['select', 'click', 'keyup']) source.addEventListener(event, () => { selection = [source.selectionStart, source.selectionEnd]; });
     source.addEventListener('compositionstart', () => { composing = true; clearTimeout(timer); });
     source.addEventListener('compositionend', () => { composing = false; clearTimeout(timer); if (active()) timer = setTimeout(flush, 600); });
-    title?.addEventListener('input', dirty);
+    title?.addEventListener('input', () => {titleChanged();dirty();});
+    title?.addEventListener('compositionstart', () => {composing=true;clearTimeout(timer);});
+    title?.addEventListener('compositionend', endComposition);
+    if($('retry'))$('retry').onclick=flush;
     $('edit').onclick = () => setMode('edit'); $('preview-mode').onclick = () => setMode('preview');
     preview.ondblclick = () => setMode('edit'); preview.onclick = () => { if (!body) setMode('edit'); };
     $('tail').onclick = () => setMode('edit', true);
@@ -212,7 +378,7 @@ window.ResearchDocument = (() => {
         if (file.size > 10 * 1024 * 1024) throw new Error('图片不能超过 10 MiB');
         if (!['image/png','image/jpeg','image/gif','image/webp'].includes(file.type)) throw new Error('支持 PNG、JPEG、GIF、WebP');
         const data = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(file); });
-        const href = await options.upload(data); replaceToken(token, `![截图](${href})`); uploads.delete(token); row.remove();
+        const href = await options.upload(data); replaceToken(token, `![](${href})`); uploads.delete(token); row.remove();
       } catch (e) {
         row.replaceChildren(node('图片上传失败：' + e.message + ' ', 'span'));
         const retry = node('重试', 'button'), remove = node('移除', 'button');
@@ -233,14 +399,14 @@ window.ResearchDocument = (() => {
       }
       if (!images.length && !text) return;
       e.preventDefault(); if (e.target === source) selection=[source.selectionStart,source.selectionEnd];
-      const toPreview = mode === 'preview' || !body;
+      captureSelection();
       if (!(await editable())) return;
       if (images.length) {
         const tokens=images.map(()=>`<!--report-upload:${crypto.randomUUID()}-->`);
         insert('\n'+tokens.join('\n\n')+'\n');images.forEach((file,i)=>upload(file,tokens[i]));
       }
       else insert(text);
-      if (toPreview) await setMode('preview'); else { source.focus({preventScroll:true}); source.setSelectionRange(...selection); }
+      await setMode('edit');
     }
     root.addEventListener('paste', paste);
     document.addEventListener('dragover', e => { if (active() && e.dataTransfer.types.includes('Files')) e.preventDefault(); }, {signal: lifecycle.signal});
@@ -250,13 +416,14 @@ window.ResearchDocument = (() => {
       if (!surface.contains(e.target) || !(await editable())) return;
       const tokens=files.map(()=>`<!--report-upload:${crypto.randomUUID()}-->`);
       insert('\n'+tokens.join('\n\n')+'\n');files.forEach((file,i)=>upload(file,tokens[i]));
-      if (mode === 'preview' || !body) setMode('preview');
+      setMode('edit');
     }, {signal: lifecycle.signal});
     root.addEventListener('keydown', async e => {
       if (e.isComposing || !(e.ctrlKey || e.metaKey)) return;
       const key = e.key.toLowerCase();
       if (key === 's') { e.preventDefault(); await flush(); return; }
       if (!surface.contains(e.target)) return;
+      captureSelection();
       if (key === 'enter') { e.preventDefault(); setMode(mode === 'edit' ? 'preview' : 'edit'); }
       if (key === 'z' || key === 'y') {
         const backward = key === 'z' && !e.shiftKey;
@@ -267,12 +434,12 @@ window.ResearchDocument = (() => {
         const from = backward ? undo : redo, to = backward ? redo : undo, value = from.pop();
         if (!value) return;
         to.push({body, selection: [...selection]}); body = remembered = value.body; selection = value.selection;
-        source.value = body; source.setSelectionRange(...selection); resetNative(); dirty(); if (mode === 'preview') render();
+        source.value = body; source.setSelectionRange(...selection); resetNative(); paint(); dirty(); if (mode === 'preview') render();
       }
     });
-    $('code').onclick = async () => { if (!(await editable())) return; insert('\n```\n\n```\n'); await setMode('edit'); };
+    if ($('code')) $('code').onclick = async () => { if (!(await editable())) return; insert('\n```\n\n```\n'); await setMode('edit'); };
     surface.addEventListener('pointerup', () => { selectedQuote = mode === 'edit' ? source.value.slice(source.selectionStart, source.selectionEnd) : window.getSelection()?.toString() || ''; });
-    $('comment').onclick = async () => {
+    if ($('comment')) $('comment').onclick = async () => {
       if (!(await editable())) return;
       const quote = mode === 'edit' ? body.slice(...selection) : selectedQuote;
       const input = document.createElement('textarea'); input.setAttribute('aria-label','批注内容'); input.maxLength = 10000;
@@ -287,12 +454,12 @@ window.ResearchDocument = (() => {
     $('info').onclick = () => {
       if (!item) return;
       const data = options.info(item), nodes = data.map(([name,value]) => node(name+'：'+(value || '未知')));
-      if (title && item?.mode !== 'readonly') { const input = document.createElement('input'); input.value=tags.join(', '); input.setAttribute('aria-label','标签'); nodes.push(input);
+      if (options.editTags && item?.mode !== 'readonly') { const input = document.createElement('input'); input.value=tags.join(', '); input.setAttribute('aria-label','标签'); nodes.push(input);
         modal('笔记信息', nodes, [['保存标签', ()=>{tags=input.value.split(/[,，]/).map(x=>x.trim()).filter(Boolean);dirty();close();}]]);
       } else modal('文档信息',nodes);
     };
-    const context = {request, modal, close, node, flush, display, message, current:()=>item, content, setMode,
-      clean:()=>sequence===saved&&!saveJob&&!uploads.size,
+    const context = {editor, insert:async text=>{if(await editable()){captureSelection();insert(text);await setMode('edit');}}, request, modal, close, node, flush, display, message, current:()=>item, content, setMode,
+      clean:()=>sequence===saved&&!saveJob&&!uploads.size&&!composing,
       refreshMetadata:data=>{if(item && data.revision===item.revision){item=data;state();}}};
     $('history').onclick = () => options.history(context).catch(e=>message(e.message));
     if ($('sources')) $('sources').onclick = () => options.sources(context).catch(e=>message(e.message));
@@ -323,6 +490,7 @@ window.ResearchDocument = (() => {
       if (!owns(e) || !active()) return;
       height();
       if (sequence !== saved && !composing) timer = setTimeout(flush, 600);
+      if(title&&item)titleChanged();
       if (mode === 'preview' && item) render();
       if (deferredModal) { const args = deferredModal; deferredModal = null; modal(...args); }
     }, {signal: lifecycle.signal});
@@ -348,11 +516,14 @@ window.ResearchDocument = (() => {
       let drafts=stored.filter(d=>d.body!==body||JSON.stringify(d.comments||[])!==JSON.stringify(comments)||JSON.stringify(d.tags||[])!==JSON.stringify(tags)||(title&&d.title!==title.value));
       drafts.sort((a,b)=>b.updated_at-a.updated_at);
       if(drafts.length){const draft=drafts[0];modal('发现未保存的本机稿',[node('服务器正文没有被覆盖。恢复后仍需通过版本检查保存。')],[['恢复本机稿',async()=>{
-        if(!(await editable()))return;body=draft.body;comments=draft.comments||[];tags=draft.tags||[];if(title)title.value=draft.title||'';source.value=remembered=body;selection=[body.length,body.length];resetNative();item.revision=draft.base_revision;commentList();dirty();close();await setMode('edit');
+        if(!(await editable()))return;body=draft.body;comments=draft.comments||[];tags=draft.tags||[];if(title)title.value=draft.title||'';source.value=remembered=body;selection=[body.length,body.length];resetNative();paint();titleChanged();item.revision=draft.base_revision;commentList();dirty();close();await setMode('edit');
         localStorage.removeItem(draft.key);
       }],['忽略此稿',()=>{localStorage.removeItem(draft.key);close();}]]);}
     }).catch(e=>{message('打开失败：'+e.message);$('save-state').textContent='打开失败';});
     return context;
   }
-  return {mount, request, node};
+  return {mount, request, node, applyTitles, assetURL(project, markdownPath, href) {
+    const path=new URL(href.replaceAll('\\','/'), new URL('/'+markdownPath,location.origin)).pathname;
+    return (project==='__workspace__'?'/reports':'/project/'+encodeURIComponent(project))+'/asset'+path;
+  }};
 })();

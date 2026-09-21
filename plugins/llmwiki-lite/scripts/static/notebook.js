@@ -11,7 +11,9 @@
   const load = () => request(api + '?format=markdown').then(normalize);
   const payload = value => ({format: 'markdown', title: value.title, tags: value.tags, body: value.body, comments: value.comments});
   const formatTime = value => value ? new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}) : '未知';
-  mount({root,prefix:'nb', key:`llmwiki-notebook:${project}:${note}`, load,
+  mount({root,prefix:'nb',editTags:true,
+    titleURLs:[`/project/${project}/notebook/${note}`,`/project/${project}/records/manual/${note}.md`],
+    imageURL:href=>window.ResearchDocument.assetURL(project,`records/manual/${note}.md`,href), key:`llmwiki-notebook:${project}:${note}`, load,
     async save(value, item) {
       const result = await request(api, {document: payload(value), revision: item.revision});
       if (root.isConnected) history.replaceState(history.state, '', `/project/${project}/notebook/${note}`);

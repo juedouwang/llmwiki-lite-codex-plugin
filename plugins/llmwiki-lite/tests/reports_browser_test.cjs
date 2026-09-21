@@ -23,7 +23,7 @@ const fs = require('node:fs'), path = require('node:path');
     }, text);
   }
   try {
-    // Regression: the registry selects B, while this tab explicitly browses A.
+    // The agent registry selects B; a fresh browser uses landing A, then its own explicit context.
     const nav = await context.newPage();
     nav.on('pageerror', e => errors.push(e.message));
     async function expectProject(target, pid, name) {
@@ -33,7 +33,7 @@ const fs = require('node:fs'), path = require('node:path');
       }
     }
     await nav.goto(cfg.origin + '/reports');
-    await expectProject(nav, cfg.other_pid, '第二项目');
+    await expectProject(nav, cfg.pid, '报告交互验收');
     await nav.goto(cfg.origin + `/project/${cfg.pid}/records`);
     await follow(nav, nav.getByRole('link',{name:'日报与周报',exact:true}));
     assert.equal(new URL(nav.url()).searchParams.get('context'), cfg.pid);
@@ -128,7 +128,7 @@ const fs = require('node:fs'), path = require('node:path');
     const weeklyApi = cfg.origin + '/api/reports/weekly/2026-09-14';
     const formalWeek = await (await context.request.get(weeklyApi+'?version=1')).json();
     await page.locator('#report-confirm').click();
-    await page.locator('#report-source').fill('两个项目的修订草稿'); await saved();
+    await page.locator('#report-live').fill('两个项目的修订草稿'); await saved();
     const revisedWeek = await (await context.request.get(weeklyApi)).json();
     assert.equal(revisedWeek.mode,'draft'); assert.equal(revisedWeek.metadata.versions.length,1);
     assert.deepEqual([...revisedWeek.metadata.project_ids].sort(),[cfg.pid,cfg.other_pid].sort());
@@ -144,19 +144,19 @@ const fs = require('node:fs'), path = require('node:path');
     assert.equal(new URL(page.url()).pathname, '/reports');
     assert.equal(await page.locator('.console-navigation a[aria-current=page]').innerText(), '日报与周报');
     await follow(page, page.getByRole('link', {name:/日报 · 2026-09-19/}));
-    await page.locator('#report-source').waitFor({state:'visible'});
+    await page.locator('#report-live').waitFor({state:'visible'});
     const heading = '### 1. 编辑器：允许引入成熟组件，不从零自研，';
     await paste(heading);
-    await page.locator('#report-preview h3').waitFor();
+    await page.locator('#report-preview-mode').click();await page.locator('#report-preview h3').waitFor();
     assert.equal(await page.locator('#report-preview h3').innerText(), heading.slice(4));
     assert.ok(await page.locator('#report-preview h3').evaluate(e => Number(getComputedStyle(e).fontWeight) >= 600));
     await saved();
     await page.screenshot({path:path.join(cfg.evidence, '01-markdown-paste.png'), fullPage:true});
     await page.locator('#report-edit').click();
     assert.equal(await page.locator('#report-source').inputValue(), heading);
-    await page.locator('#report-source').press('Control+End');
+    await page.locator('#report-live').press('Control+End');
     await paste('\n\n**结论**\n\n|方法|状态|\n|---|---|\n|A|待验证|\n\n```python\nx = 1\n```');
-    assert.equal(await page.locator('#report-source').isVisible(), true);
+    assert.equal(await page.locator('#report-live').isVisible(), true);
     await page.locator('#report-preview-mode').click();
     await page.locator('#report-preview strong').waitFor();
     assert.equal(await page.locator('#report-preview table').count(), 1);
@@ -164,41 +164,43 @@ const fs = require('node:fs'), path = require('node:path');
     await saved();
     // Image at the selection, while upload is delayed and typing continues.
     await page.locator('#report-edit').click();
-    await page.locator('#report-source').fill('实验说明\n\n下一步');
-    await page.locator('#report-source').evaluate(e => {e.setSelectionRange(6,6); e.dispatchEvent(new Event('select'));});
+    await page.locator('#report-live').fill('实验说明\n\n下一步');
+    await page.locator('#report-live').press('Control+Home');
+    await page.locator('#report-live').press('ArrowDown');
     let release; const gate = new Promise(r => release = r);
     await page.route('**/reports/upload', async route => {await gate; await route.continue();});
     await page.evaluate(png => {
       const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
       const data = new DataTransfer(); data.items.add(new File([bytes], 'shot.png', {type:'image/png'}));
-      document.querySelector('#report-source').dispatchEvent(new ClipboardEvent('paste', {clipboardData:data,bubbles:true,cancelable:true}));
+      document.querySelector('#report-live').dispatchEvent(new ClipboardEvent('paste', {clipboardData:data,bubbles:true,cancelable:true}));
     }, cfg.png);
     await page.waitForFunction(() => document.querySelector('#report-source').value.includes('<!--report-upload:'));
     assert.equal(await page.locator('#report-confirm').isDisabled(), true);
-    await page.locator('#report-source').press('Control+End');
-    await page.locator('#report-source').pressSequentially(' ABC');
+    await page.locator('#report-live').press('Control+End');
+    await page.locator('#report-live').pressSequentially(' ABC');
     release();
-    await page.waitForFunction(() => document.querySelector('#report-source').value.includes('![截图]'));
+    await page.waitForFunction(() => document.querySelector('#report-source').value.includes('![]'));
     await page.unroute('**/reports/upload');
     const imageBody = await page.locator('#report-source').inputValue();
-    assert.ok(imageBody.indexOf('实验说明') < imageBody.indexOf('![截图]'));
-    assert.ok(imageBody.indexOf('![截图]') < imageBody.indexOf('下一步'));
+    assert.ok(imageBody.indexOf('实验说明') < imageBody.indexOf('![]'));
+    assert.ok(imageBody.indexOf('![]') < imageBody.indexOf('下一步'));
     assert.ok(imageBody.endsWith(' ABC'));
     await saved();
     await page.locator('#report-preview-mode').click();
     await page.locator('#report-preview img').waitFor();
     assert.equal(await page.locator('#report-preview img').count(),1);
     await page.screenshot({path:path.join(cfg.evidence, '02-image-position.png'), fullPage:true});
-    // Quoted human annotations travel with drafts and immutable formal versions.
-    await page.locator('#report-edit').click();await page.locator('#report-source').evaluate(e=>{e.setSelectionRange(0,4);e.dispatchEvent(new Event('select'));});
-    await page.locator('#report-comment').click();await page.getByLabel('批注内容').fill('人工批注：等待硬件验证。');
-    await page.locator('#report-dialog-actions').getByRole('button',{name:'添加',exact:true}).click();await saved();
+    // Pre-existing human annotations remain separate and travel with versions.
+    assert.equal(await page.locator('#report-comment,#report-code').count(),0);
+    const annotated=await (await context.request.get(cfg.origin+api)).json();
+    await context.request.post(cfg.origin+api,{headers:{'X-Notebook-Request':'1','Origin':cfg.origin},data:{action:'save',expected_revision:annotated.revision,body:annotated.body,comments:[{id:'legacy-annotation',quote:'实验说明',text:'人工批注：等待硬件验证。',created_at:null}]}});
+    await page.reload();await saved();
     assert.equal(await page.locator('#report-comments blockquote').innerText(),'实验说明');
     // Confirm, edit revision, preserve v1.
     await page.locator('#report-confirm').click();
     await page.waitForFunction(() => document.querySelector('#report-state').textContent === '正式版');
     await page.locator('#report-edit').click();
-    await page.locator('#report-source').fill('第二版结论');
+    await page.locator('#report-live').fill('第二版结论');
     await saved();
     const v1 = await (await context.request.get(cfg.origin + api + '?version=1')).json();
     assert.equal(v1.body, imageBody);assert.equal(v1.comments[0].text,'人工批注：等待硬件验证。');assert.equal(v1.comments[0].quote,'实验说明');
@@ -233,26 +235,26 @@ const fs = require('node:fs'), path = require('node:path');
     assert.match(await page.locator('#report-preview').innerText(), /候选/);
     const old = await (await context.request.get(cfg.origin + `/api/reports/daily/2026-09-18?version=1`)).json();
     assert.equal(old.body, '正式版：实测尚未完成。');
-    // Undo/redo a whole paste, retain native textarea content.
+    // Undo/redo a whole paste; the hidden source remains the lossless Markdown buffer.
     await page.locator('#report-edit').click();
-    await page.locator('#report-source').press('Control+End');
+    await page.locator('#report-live').press('Control+End');
     const before = await page.locator('#report-source').inputValue();
     await paste('\n补充内容');
     await page.waitForFunction(() => document.querySelector('#report-source').value.includes('补充内容'));
-    await page.locator('#report-source').press('Control+z');
+    await page.locator('#report-live').press('Control+z');
     assert.equal(await page.locator('#report-source').inputValue(), before);
-    await page.locator('#report-source').press('Control+Shift+z');
+    await page.locator('#report-live').press('Control+Shift+z');
     assert.equal(await page.locator('#report-source').inputValue(), before+'\n补充内容');
     await saved();
     // Real content conflict between two browser tabs: no silent overwrite.
     await page.goto(url);
     await page.locator('#report-edit').click();
-    await page.locator('#report-source').waitFor({state:'visible'});
+    await page.locator('#report-live').waitFor({state:'visible'});
     const second = await context.newPage(); await second.goto(url);
     await second.locator('#report-edit').click();
-    await second.locator('#report-source').waitFor({state:'visible'});
-    await page.locator('#report-source').fill('标签页 A'); await saved();
-    await second.locator('#report-source').fill('标签页 B');
+    await second.locator('#report-live').waitFor({state:'visible'});
+    await page.locator('#report-live').fill('标签页 A'); await saved();
+    await second.locator('#report-live').fill('标签页 B');
     await second.getByRole('heading', {name:'正文发生冲突'}).waitFor();
     assert.equal(await second.locator('#report-source').inputValue(),'标签页 B');
     await second.getByRole('button', {name:'取消',exact:true}).click();

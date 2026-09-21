@@ -142,8 +142,10 @@
       await ctx.display(await action('restore',ctx.current(),{version:number}));ctx.close();
     }]]:[]);
   }
-  ctx=mount({root,prefix:'report',key:`llmwiki-report:${project}:${kind}:${date}`,load,
-    save:(value,item)=>action('save',item,{body:value.body,comments:value.comments}),
+  ctx=mount({root,prefix:'report',
+    defaultTitle:(kind==='daily'?'日报 · ':'周报 · ')+date,
+    imageURL:href=>window.ResearchDocument.assetURL(project,`records/reports/${kind}-${date}/draft.md`,href),key:`llmwiki-report:${project}:${kind}:${date}`,load,
+    save:(value,item)=>action('save',item,{body:value.body,comments:value.comments,title:value.title}),
     startEdit:item=>action('start_edit',item), confirm:item=>action('confirm',item),
     async preview(body){return (await request(base+'/preview',{kind,period_start:date,body})).html;},
     async upload(data){const path=base==='/api/reports'?base+'/upload':`/api/project/${project}/notebook/upload`;return '../../assets/'+(await request(path,{data})).image;},

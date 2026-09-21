@@ -816,6 +816,9 @@ def main() -> int:
     from test_desktop_launcher import DesktopLauncherTests
     from test_notebook_removal import NotebookRemovalTests
     from test_progress import ProgressTests
+    from test_progress_workbench import ProgressWorkbenchTests
+    from test_project_management import ProjectManagementTests
+    from test_git_web_worktrees import GitWebWorktreeTests
     from test_reports import ReportTests, ReportGenerationTests
     from test_workspace_reports import WorkspaceReportTests
     from test_progress_context import ProgressContextTests
@@ -856,7 +859,7 @@ def main() -> int:
         ReportTests,
         ReportGenerationTests, WorkspaceReportTests,
         NotebookTests, NotebookRemovalTests, ContinuousDocuments, DesktopLauncherTests,
-        ProgressTests,
+        ProgressTests, ProgressWorkbenchTests, ProjectManagementTests, GitWebWorktreeTests,
         ProgressContextTests,
         MCPValidationTests,
         CatalogTests, LiteratureWebTests, CollectionTests, LiteratureScheduleTests,

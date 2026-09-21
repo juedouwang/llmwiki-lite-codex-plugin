@@ -13,11 +13,15 @@
   function capture(doc, url, initialized = false) {
     return {url, main: doc.querySelector('#main-content'), sidebar: doc.querySelector('#console-sidebar')?.cloneNode(true),
       topbar: doc.querySelector('.console-topbar')?.cloneNode(true), title: doc.title,
-      page: doc.body.dataset.workbenchPage || '', project: doc.body.dataset.workbenchProject || '',
+      page: doc.body.dataset.workbenchPage || '', project: doc.body.dataset.workbenchProject || '', session: doc.body.dataset.workbenchSession || '',
       html: doc.querySelector('#main-content')?.innerHTML, initialized, scroll: 0, checked: Date.now()};
+  }
+  function rememberProject(entry) {
+    if (entry.session) document.cookie = `llmwiki_web_project=${entry.session}.${encodeURIComponent(entry.project)}; Path=/; SameSite=Strict`;
   }
   const initial = capture(document, current, true);
   entries.set(current, initial);
+  rememberProject(initial);
   history.replaceState({...history.state, workbenchIndex: index}, '', location.href);
   function installStyles(entry) {
     entry.main.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
@@ -69,6 +73,7 @@
     main().replaceWith(entry.main);
     current = entry.url; document.title = entry.title;
     document.body.dataset.workbenchPage = entry.page; document.body.dataset.workbenchProject = entry.project;
+    document.body.dataset.workbenchSession = entry.session; rememberProject(entry);
     installStyles(entry);
     window.scrollTo(0, entry.scroll);
     signal('enter', entry, {restored});
@@ -120,6 +125,40 @@
       return true;
     }
   }
+  document.addEventListener('workbench:projects-changed', event => {
+    const projects = event.detail.projects || [], names = new Map(projects.map(p => [p.id, p.name]));
+    function refreshShell(sidebar, projectId) {
+      if (!sidebar) return;
+      sidebar.querySelectorAll('.console-project-menu a[data-project-id]').forEach(a => {
+        if (!names.has(a.dataset.projectId)) a.remove();
+        else a.textContent = names.get(a.dataset.projectId);
+      });
+      const label = sidebar.querySelector('.console-project-label b');
+      if (label && names.has(projectId)) label.textContent = label.title = names.get(projectId);
+    }
+    function refreshTitle(topbar, projectId, title) {
+      const breadcrumb = topbar?.querySelector('.console-breadcrumbs a');
+      if (breadcrumb && names.has(projectId)) breadcrumb.textContent = names.get(projectId);
+      const renamed = event.detail.renamed;
+      return renamed?.id === projectId ? title.replace(renamed.previousName, names.get(projectId)) : title;
+    }
+    refreshShell(document.querySelector('#console-sidebar'), document.body.dataset.workbenchProject);
+    document.title = refreshTitle(document.querySelector('.console-topbar'), document.body.dataset.workbenchProject, document.title);
+    for (const [url, entry] of entries) {
+      refreshShell(entry.sidebar, entry.project);
+      entry.title = refreshTitle(entry.topbar, entry.project, entry.title);
+      if (url !== current && (entry.page === 'home' || !names.has(entry.project))) {
+        signal('dispose', entry); entries.delete(url);
+      }
+    }
+    const selected = document.body.dataset.workbenchProject;
+    if (selected && !names.has(selected)) {
+      const fallback = projects[0]?.id || '';
+      rememberProject({session: document.body.dataset.workbenchSession, project: fallback});
+      // No editor is open: removal is only available in the project manager.
+      location.assign('/projects?context=' + encodeURIComponent(fallback));
+    }
+  });
   document.addEventListener('workbench:project-preferences', event => {
     // Update every retained sidebar so cached column returns cannot restore the old order.
     const ids = event.detail.project_order || [];

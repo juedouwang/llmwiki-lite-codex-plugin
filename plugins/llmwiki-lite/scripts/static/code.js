@@ -155,6 +155,8 @@
     $('change-note').textContent = !writable() ? '仅展示版本历史，未执行工作区过滤器检查。' : s.ongoing ? '有未完成的 Git 操作，其他写操作暂停。'
       : files().length ? '尚未保存为版本 · 按完整文件保存，不自动上传'
         : head.unborn ? '工作区干净 · 尚无提交' : '工作区干净';
+    if (s.worktree?.count > 1) $('change-note').textContent += ' · 仅操作当前工作树';
+    $('change-note').title = s.worktree?.count > 1 ? text(s.worktree.path) : '';
     $('save').hidden = !files().length;
     $('save').disabled = Boolean(writeReason('save')) || !files().length;
     $('merge').disabled = Boolean(writeReason('merge'));
@@ -177,19 +179,26 @@
     if (menu.dataset.signature !== menuSignature) {
       menu.dataset.signature = menuSignature; menu.replaceChildren();
       for (const branch of list(s.branches)) {
-        const control = button(branch.name + (branch.current ? ' · 当前' : ''), () => {
+        const control = button(null, () => {
           $('branches').open = false;
           if (!branch.current) openAction('switch_branch', {branch: branch.name});
         });
+        control.append(detailActionIcon('git'), el('span', branch.name, 'code-branch-name'));
+        if (branch.current || branch.switchable === false) {
+          control.append(el('small', branch.current ? '当前' : '其他工作树使用中', 'code-branch-state'));
+        }
+        control.title = branch.switch_reason || writeReason('switch_branch') || branch.name;
         control.dataset.branch = branch.name;
         control.setAttribute('aria-current', String(Boolean(branch.current)));
-        control.disabled = branch.current || Boolean(writeReason('switch_branch'));
+        control.disabled = branch.current || branch.switchable === false || Boolean(writeReason('switch_branch'));
         menu.append(control);
       }
-      const create = button('＋ 新建分支（不切换）', () => {
+      const create = button('新建分支（不切换）', () => {
         $('branches').open = false; openAction('create_branch', {target_oid: state.status.head.oid});
       }, 'new-branch');
-      create.disabled = Boolean(writeReason('create_branch')); menu.append(create);
+      create.prepend(detailActionIcon('plus'));
+      create.disabled = Boolean(writeReason('create_branch'));
+      create.title = writeReason('create_branch'); menu.append(create);
     }
     if (state.modal) updateConfirm(state.modal);
     for (const [id, action] of [['create-from', 'create_branch'], ['restore', 'restore']]) {
@@ -509,15 +518,22 @@
     container.querySelector('.code-file')?.click();
   }
   function detailActionIcon(name) {
-    const svg = svgElement('svg', {class: 'ui-icon', width: 20, height: 20, viewBox: '0 0 24 24',
-      fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round',
+    const svg = svgElement('svg', {class: 'ui-icon', width: 16, height: 16, viewBox: '0 0 24 24',
+      fill: 'none', stroke: 'currentColor', 'stroke-width': 1.65, 'stroke-linecap': 'round',
       'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false'});
-    if (name === 'branch') {
-      svg.append(svgElement('path', {d: 'M6 7v10M9 20a9 9 0 0 0 9-9M18 16v6M15 19h6'}));
-      for (const [cx, cy] of [[6, 4], [6, 20], [18, 8]]) svg.append(svgElement('circle', {cx, cy, r: 3}));
-    } else if (name === 'file') {
-      svg.append(svgElement('path', {d: 'M14 2H6a2 2 0 0 0-2 2v6m16 0V8l-6-6v6h6M20 14v6a2 2 0 0 1-2 2h-6M5 14l-3 3 3 3M9 14l3 3-3 3'}));
-    } else svg.append(svgElement('path', {d: 'M3 10a9 9 0 1 1 2.8 8.5M3 4v6h6'}));
+    // Approved Lucide glyphs, not hand-composed three-circle branch symbols.
+    const paths = {
+      git: ['M15 6a9 9 0 0 0-9 9V3'],
+      branch: ['M6 3v12', 'M15 6a9 9 0 0 0-9 9', 'M18 15v6', 'M21 18h-6'],
+      file: ['M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4',
+        'M14 2v4a2 2 0 0 0 2 2h4', 'm5 12-3 3 3 3', 'm9 18 3-3-3-3'],
+      restore: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
+      plus: ['M12 5v14', 'M5 12h14'],
+    };
+    for (const d of paths[name]) svg.append(svgElement('path', {d}));
+    if (name === 'git' || name === 'branch') {
+      for (const [cx, cy] of [[18, 6], [6, 18]]) svg.append(svgElement('circle', {cx, cy, r: 3}));
+    }
     return svg;
   }
   function fileStatus(file) {

@@ -13,6 +13,7 @@ from llmwiki_core import LLMWikiError, _wiki_page_title, status, wiki_list
 from llmwiki_registry import get_project, list_projects, load_settings
 from markdown_renderer import render_markdown
 from research_records import MAX_LIST_RECORDS, list_records, read_record
+import web_session
 
 IMAGE_MIME_TYPES = {
     ".png": "image/png",
@@ -24,12 +25,12 @@ IMAGE_MIME_TYPES = {
 _ICON_PATHS = {
     "workbench": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/>',
     "switch": '<path d="m7 9 5-5 5 5m-10 6 5 5 5-5"/>',
-    "merge": '<path d="M6 9v6M9 6a9 9 0 0 1 9 9"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/>',
+    "merge": '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
     "download": '<path d="M12 5v14m-7-7 7 7 7-7"/>',
     "upload": '<path d="M12 19V5m-7 7 7-7 7 7"/>',
     "files": '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"/>',
     "refresh": '<path d="M3 11a9 9 0 0 1 15.4-6.4L21 7M21 3v4h-4M21 13a9 9 0 0 1-15.4 6.4L3 17M7 17H3v4"/>',
-    "git": '<path d="M6 7v10M9 20a9 9 0 0 0 9-9"/><circle cx="6" cy="4" r="3"/><circle cx="6" cy="20" r="3"/><circle cx="18" cy="8" r="3"/>',
+    "git": '<path d="M15 6a9 9 0 0 0-9 9V3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>',
     "reports": '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
     "folder": '<path d="M3.5 8V6.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V8Z"/><path d="M3.5 9h17"/>',
     "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>',
@@ -53,6 +54,7 @@ _ICON_PATHS = {
     "monitor": '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 17v4M8 21h8"/>',
     "resume": '<path d="M3 3v8a4 4 0 0 0 4 4h14m-6-6 6 6-6 6"/>',
     "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    "more": '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     "star": '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/>',
 }
 
@@ -146,7 +148,7 @@ def _layout_context(
     try:
         listed = list_projects(home)
         projects = list(listed.get("projects") or [])
-        current_id = project_id if project_id is not None else listed.get("landing_project_id")
+        current_id = project_id if project_id is not None else (web_session.current_project() if web_session.current_project() is not None else listed.get("landing_project_id"))
     except (LLMWikiError, OSError, ValueError):
         return [], project_id, None
     project: dict[str, Any] | None = None
@@ -187,6 +189,7 @@ def _console_breadcrumbs(title: str, project: dict[str, Any] | None, active: str
 
 def layout(title: str, body: str, query: str = "", project_id: str | None = None, active: str = "", home: str | None = None, report_query: dict[str, str] | None = None) -> str:
     projects, current_id, project = _layout_context(home, project_id)
+    context_query = "?" + urlencode({"context": current_id or ""})
     # Switching project keeps the section, never a different project's document id.
     suffix = {"records": "/records", "literature": "/literature", "code": "/code",
               "todos": "/todos", "overview": "", "pages": ""}.get(active, "/todos")
@@ -202,7 +205,7 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
     project_picker = (
         '<details class="console-project-switcher"><summary aria-label="切换研究项目">'
         f'<span class="console-project-label"><small>当前项目</small><b title="{esc(project["name"]) if project else "选择项目"}">{esc(project["name"]) if project else "选择项目"}</b></span><span class="switcher-chevron">{ui_icon("switch")}</span></summary>'
-        f'<div class="console-project-menu">{project_menu}<a href="/projects">管理项目</a><a href="/settings#register-project">＋ 添加项目</a></div></details>'
+        f'<div class="console-project-menu">{project_menu}</div></details>'
     )
     project_section = ""
     if project:
@@ -222,7 +225,7 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
         project_section = (project_picker if projects else "") + _console_nav_item(reports_url, "日报与周报", "reports", "reports", active)
     sidebar = (
         '<aside class="console-sidebar" id="console-sidebar" aria-label="侧栏">'
-        '<div class="console-sidebar-heading"><a class="console-sidebar-brand" href="/projects" aria-label="野人工作台：项目总览">'
+        f'<div class="console-sidebar-heading"><a class="console-sidebar-brand" href="/projects{esc(context_query)}" aria-label="野人工作台：项目总览">'
         + ui_icon("workbench") + '<span>野人工作台</span></a>'
         f'<button class="sidebar-close" aria-label="关闭导航菜单" onclick="toggleConsoleSidebar(false)">{ui_icon("close")}</button></div>'
         '<nav class="console-navigation" aria-label="主导航">'
@@ -230,18 +233,18 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
         + '</nav><div class="console-sidebar-footer">'
         + '<span class="console-avatar" aria-hidden="true">野</span><span class="console-profile-label">本地</span>'
         + '<details class="theme-menu"><summary class="rw-icon-button" aria-label="外观" title="外观">' + ui_icon("monitor") + '</summary><div class="theme-options" aria-label="外观模式">' + theme_choices() + '</div></details>'
-        + _console_nav_item("/settings", "设置", "settings", "settings", active) + '</div></aside>'
+        + _console_nav_item("/settings" + context_query, "设置", "settings", "settings", active) + '</div></aside>'
     )
     return (
         '<!doctype html><html lang="zh-CN" data-workbench-scale="1.25"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f'<title>{esc(title)} · 野人工作台</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/style.css"></head>'
-        f'<body data-workbench-page="{esc(active)}" data-workbench-project="{esc(current_id or "")}"><a class="skip-link" href="#main-content">跳到内容</a><div class="console-shell">' + sidebar
+        f'<body data-workbench-page="{esc(active)}" data-workbench-project="{esc(current_id or "")}" data-workbench-session="{esc(web_session.session_id())}"><a class="skip-link" href="#main-content">跳到内容</a><div class="console-shell">' + sidebar
         + '<button class="console-overlay" id="console-overlay" aria-label="关闭导航"></button>'
         '<div class="console-main">'
         f'<header class="console-topbar"><button class="console-menu-button" type="button" aria-label="打开导航菜单" aria-expanded="false" aria-controls="console-sidebar" onclick="toggleConsoleSidebar()">{ui_icon("sidebar")}</button>'
         + _console_breadcrumbs(title, project, active)
-        + '<a class="console-search" href="/search" aria-label="搜索">' + ui_icon('search') + '</a></header>'
+        + f'<a class="console-search" href="/search{esc(context_query)}" aria-label="搜索">' + ui_icon('search') + '</a></header>'
         + f'<div class="console-content"><main id="main-content" tabindex="-1">{body}</main></div>'
         + '<footer class="workbench-footer"><span>从上次停下的地方继续。</span><span>本地工作台 · 内容保存在你的设备</span></footer></div></div>'
         + LIGHTBOX_HTML + '<script src="/static/app.js" defer></script>'
@@ -337,6 +340,20 @@ def page_link(project_id: str, page: dict[str, Any], *, show_path: bool = False)
     details = f'<div class="meta path">{esc(path)}</div>' if show_path else ""
     return f'<li data-page-title="{esc((str(page["title"]) + " " + path).lower())}"><a href="{pageurl(project_id, path)}">{esc(page["title"])}</a>{details}</li>'
 
+def project_management_controls() -> str:
+    return '''<div id="project-context-menu" class="project-context-menu" role="menu" aria-label="项目操作" hidden>
+<button type="button" role="menuitem" data-project-action="rename">重命名</button>
+<button type="button" role="menuitem" data-project-action="remove" class="danger">从列表移除</button></div>
+<dialog id="project-name-dialog" aria-labelledby="project-name-heading"><form id="project-name-form">
+<h2 id="project-name-heading">重命名项目</h2><label>项目名称<input id="project-new-name" maxlength="120" required autocomplete="off"></label>
+<p class="meta">只修改显示名称，不移动目录或修改项目文件。</p><p class="project-dialog-status" role="alert"></p>
+<div class="actions"><button type="button" data-project-cancel>取消</button><button type="submit" class="primary">确定</button></div></form></dialog>
+<dialog id="project-remove-dialog" aria-labelledby="project-remove-heading"><h2 id="project-remove-heading">从列表移除项目？</h2>
+<p id="project-remove-name"></p><p class="meta">只取消注册，代码、知识库、科研记录和附件全部保留。以后可重新添加原目录。</p>
+<p class="project-dialog-status" role="alert"></p><div class="actions"><button type="button" data-project-cancel>取消</button>
+<button type="button" id="project-remove-confirm" class="danger">确认移除</button></div></dialog>'''
+
+
 def home_page(home: str, params: dict[str, list[str]]) -> str:
     from research_progress import active_tasks
 
@@ -356,56 +373,22 @@ def home_page(home: str, params: dict[str, list[str]]) -> str:
             if current else ""
         )
         rows.append(
-            f'<div class="project-row" data-project-id="{esc(pid)}"><div class="project-row-heading">'
+            f'<div class="project-row" data-project-id="{esc(pid)}" data-project-name="{esc(project["name"])}"><div class="project-row-heading">'
             f'<button type="button" class="project-drag-handle row-icon" aria-label="拖动排序：{esc(project["name"])}" title="拖动排序；聚焦后按上下方向键" aria-describedby="project-order-hint">{ui_icon("folder")}</button>'
             f'<a class="project-row-main" href="{purl(pid)}/todos"><span class="row-title">{esc(project["name"])}</span>'
             f'<span class="meta">{count} 篇知识页</span><span class="row-arrow">{ui_icon("arrow")}</span></a>'
             f'<button type="button" class="project-default" aria-pressed="{str(listed["web_default_project_id"] == pid).lower()}" aria-label="设为启动项目：{esc(project["name"])}" title="设为启动项目，再次点击取消">{ui_icon("star")}</button>'
+            f'<button type="button" class="project-more rw-icon-button" aria-label="更多操作：{esc(project["name"])}" aria-haspopup="menu" title="更多操作">{ui_icon("more")}</button>'
             f'</div>{task_html}</div>'
         )
     content = '<div class="project-list">' + "".join(rows) + '</div>' if rows else '<div class="empty"><h2>添加你的第一个项目</h2><p>关联本地项目，开始整理文献与研究记录。</p><a class="button primary" href="/settings#register-project">添加项目</a></div>'
     body = notice(params) + page_header("项目", '<a class="button" href="/settings#register-project">＋ 添加项目</a>') + content
     body = (f'<section id="project-manager" data-default-project="{esc(listed["web_default_project_id"] or "")}">' + body
             + '<p class="meta" id="project-order-hint">拖动文件夹调整顺序；星标指定启动项目，未指定时进入第一项。</p>'
+            + project_management_controls()
             + '<p id="project-preferences-status" class="meta" role="status" aria-live="polite"></p></section>'
             + '<script src="/static/projects.js" defer></script>')
     return layout("项目", body, active="home", home=home)
-
-
-def resume_block(project: dict, project_id: str) -> str:
-    """M-01: what the user was last doing, on the research-progress page.
-
-    Rendered server-side so it is there before any JavaScript runs, and so it still
-    works if the progress page itself fails to load.
-    """
-    from research_progress import active_tasks
-
-    tasks = active_tasks(project)
-    items = []
-    for task in tasks:
-        note = task.get("record_id")
-        note_html = (
-            f'<a class="rw-button resume-note" href="{esc(recordurl(project_id, note))}">{ui_icon("notebook")}查看记录</a>'
-            if note
-            else ""
-        )
-        context = task.get("effective_context") or {}
-        checkpoint = context.get("checkpoint") if "checkpoint" in context else task.get("checkpoint")
-        step = context.get("next_step") if "next_step" in context else task.get("next_step")
-        items.append(
-            '<div class="progress-resume-item">'
-            f'<a class="resume-title" href="{esc(purl(project_id))}/todos#task-{task["id"]}"><strong>{esc(task["title"])}</strong></a>'
-            f'<p>{esc(checkpoint or "暂无记录")}</p>'
-            f'<p><span class="meta">下一步</span>　{esc(step or "暂无记录")}</p>'
-            f'<div class="progress-resume-actions"><a class="rw-button rw-outline" href="{esc(purl(project_id))}/todos#task-{task["id"]}">打开任务</a>{note_html}</div></div>'
-        )
-    if not items:
-        return f'<section id="progress-resume" data-project="{esc(project_id)}" hidden></section>'
-    return (
-        f'<section id="progress-resume" aria-label="继续上次" data-project="{esc(project_id)}">'
-        f'<div class="progress-resume-label">{ui_icon("resume")}<h2>继续上次</h2></div>'
-        + "".join(items) + "</section>"
-    )
 
 
 def knowledge_records(project: dict[str, Any]) -> list[dict[str, Any]]:

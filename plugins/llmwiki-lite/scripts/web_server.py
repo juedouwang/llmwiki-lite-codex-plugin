@@ -8,6 +8,7 @@ import mimetypes
 import os
 import re
 import subprocess
+import secrets
 import sys
 import time
 import webbrowser
@@ -41,6 +42,7 @@ from llmwiki_registry import (  # noqa: E402
     list_projects,
     update_project_preferences,
     register_project,
+    rename_project,
     unregister_project,
     update_project_storage,
     update_settings,
@@ -62,6 +64,7 @@ from research_web_ui import (  # noqa: E402
     todos_page,
 )
 import git_web  # noqa: E402
+import web_session  # noqa: E402
 
 MAX_FORM_BYTES = 65_536
 
@@ -88,6 +91,7 @@ def msgurl(path: str, message: str | None = None, error: str | None = None) -> s
 
 
 def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
+    epoch = secrets.token_hex(12)
     class Handler(BaseHTTPRequestHandler):
         server_version = "LLMWikiWeb/0.3"
 
@@ -95,6 +99,9 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             self.send_response(code)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(length))
+            if content_type.startswith("text/html") and code < 400 and not self.headers.get("X-Workbench-Navigation") and web_session.session_id():
+                selected = quote(web_session.current_project() or "", safe="")
+                self.send_header("Set-Cookie", f"{web_session.COOKIE}={epoch}.{selected}; Path=/; SameSite=Strict")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
@@ -223,6 +230,28 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     self.wfile.write(chunk)
                     remaining -= len(chunk)
         def do_GET(self) -> None:  # noqa: N802
+            parsed = urlparse(self.path)
+            # API/prefetch reads must never change the selected browser project.
+            if parsed.path.startswith(("/static/", "/api/")) or parsed.path == "/health":
+                self.dispatch_get()
+                return
+            listed = list_projects(home)
+            ids = {item["id"] for item in listed["projects"]}
+            cookie = web_session.cookie_project(self.headers.get("Cookie"), epoch)
+            selected = cookie if cookie in ids else listed["landing_project_id"]
+            explicit = re.match(r"/project/([^/]+)(?:/|$)", parsed.path)
+            context = parse_qs(parsed.query, keep_blank_values=True).get("context")
+            if explicit and unquote(explicit[1]) in ids:
+                selected = unquote(explicit[1])
+            elif context is not None:
+                selected = context[0] if context[0] in ids else ""
+            token = web_session.enter(selected, epoch)
+            try:
+                self.dispatch_get()
+            finally:
+                web_session.leave(token)
+
+        def dispatch_get(self) -> None:
             if self.headers.get("Host", "") not in {
                 f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"
             }:
@@ -347,7 +376,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     self.wfile.write(raw)
                     return
                 if parsed.path == "/":
-                    pid = list_projects(home)["landing_project_id"]
+                    pid = web_session.current_project() or list_projects(home)["landing_project_id"]
                     redirect(self, purl(pid) + "/todos" if pid else "/projects")
                     return
                 if parsed.path == "/projects":
@@ -500,6 +529,19 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 if not isinstance(payload, dict):
                     raise LLMWikiError("请求必须是 JSON 对象。")
+                project_action = re.fullmatch(r"/api/projects/([^/]+)/(rename|unregister)", path)
+                if project_action:
+                    pid = unquote(project_action[1])
+                    if project_action[2] == "rename":
+                        if set(payload) != {"name"}:
+                            raise LLMWikiError("重命名只接受项目名称。")
+                        result = rename_project(pid, payload["name"], home=home)
+                    else:
+                        if payload != {"confirm": True}:
+                            raise LLMWikiError("请确认从列表移除项目；不会删除文件。")
+                        result = unregister_project(pid, home=home)
+                    self.json({**result, **list_projects(home)})
+                    return
                 if path == "/api/projects/preferences":
                     if not payload or set(payload) - {"default_project_id", "project_order"}:
                         raise LLMWikiError("仅支持默认项目和项目排序。")
@@ -623,7 +665,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             if code_match:
                 self.code_post(unquote(code_match[1]), code_match[2])
                 return
-            if parsed.path == "/api/projects/preferences" or parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
+            if parsed.path.startswith("/api/projects/") or parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
                 self.notebook_post(parsed.path)
                 return
             if parsed.path.startswith("/api/project/"):

@@ -188,7 +188,7 @@ class ProgressTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), raw)
 
     def test_validation(self):
-        for fields in ({"start": "2026-02-30", "end": "2026-03-01"}, {"start": "2026-09-20", "end": "2026-09-18"}, {"start": "2026-09-18"}, {"title": ""}, {"status": "70%"}):
+        for fields in ({"start": "2026-02-30", "end": "2026-03-01"}, {"start": "2026-09-20", "end": "2026-09-18"}, {"title": ""}, {"status": "70%"}):
             with self.assertRaises(LLMWikiError):
                 self.create(**fields)
 

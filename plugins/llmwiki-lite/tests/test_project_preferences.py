@@ -92,7 +92,7 @@ class ProjectPreferencesTests(unittest.TestCase):
             self.assertEqual(get("/")[0], origin + f'/project/{self.a["id"]}/todos')
             url, page = get("/projects")
             self.assertEqual(url, origin + "/projects")
-            self.assertIn('console-sidebar-brand" href="/projects"', page)
+            self.assertIn(f'console-sidebar-brand" href="/projects?context={self.a["id"]}"', page)
             self.assertIn('project-drag-handle', page)
             with self.assertRaises(urllib.error.HTTPError) as error:
                 post({"default_project_id": self.z["id"]}, same_origin=False)
