@@ -1,10 +1,10 @@
 ---
 name: llmwiki-understand
-description: Understand a research or software project and create a small, useful, source-backed Markdown Wiki with Codex reasoning. Use for requests to understand, document, explain, map, or build a Wiki for a project, codebase, experiment, or research topic.
+description: Understand a research or software project and create a small, useful, source-backed Markdown Wiki. Use for requests to understand, document, explain, map, or build a Wiki for a project, codebase, experiment, or research topic.
 ---
 # Understand a project
 
-Codex does semantic work. MCP performs bounded filesystem mechanics.
+You do the semantic work. MCP performs bounded filesystem mechanics.
 
 1. Resolve or register the project with `llmwiki_project_get` and `llmwiki_project_register`.
 2. Read existing pages with `llmwiki_wiki_list`; open useful pages only when they exist.
@@ -25,7 +25,7 @@ Codex does semantic work. MCP performs bounded filesystem mechanics.
 
 ## Literature reading contract
 
-When the project contains downloaded papers or the user asks Codex to read a paper:
+When the project contains downloaded papers or the user asks you to read a paper:
 
 - Keep the original paper inside the registered project, normally under `references/`, `papers/`, or another user-chosen source directory. Never rewrite or delete it.
 - Read the original before summarizing. Write the durable assistant-reading version as Simplified Chinese Markdown in `wiki_root`.

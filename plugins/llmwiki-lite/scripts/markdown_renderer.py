@@ -8,6 +8,8 @@ from urllib.parse import quote, urlparse
 
 
 def _route(project_id: str, kind: str, path: str) -> str:
+    if project_id == "__workspace__":
+        return f"/reports/{kind}/{quote(path.replace(chr(92), chr(47)).lstrip(chr(47)), safe=chr(47))}"
     return f"/project/{quote(project_id, safe='')}/{kind}/{quote(path.replace(chr(92), '/').lstrip('/'), safe='/')}"
 
 
@@ -140,6 +142,10 @@ def _block_start(lines: list[str], i: int) -> bool:
 
 
 def render_markdown(text: str, project_id: str, current_page: str) -> str:
+    if "<!-- llmwiki-notebook-v1:" in text:
+        from research_notebook import reader_markdown
+        text = reader_markdown(text, project_id)
+    text = re.sub(r"\n<!-- llmwiki-notebook-v1:[A-Za-z0-9+/=]+ -->\n?\Z", "\n", text)
     meta, body = _frontmatter(text.replace("\r\n", "\n").replace("\r", "\n"))
     out: list[str] = []
     if meta:
@@ -149,8 +155,10 @@ def render_markdown(text: str, project_id: str, current_page: str) -> str:
             rows.append(
                 f"<dt>{html.escape(key.strip()) if sep and not raw[:1].isspace() else ''}</dt><dd>{render_inline(value.strip() if sep and not raw[:1].isspace() else raw, project_id, current_page) or '&nbsp;'}</dd>"
             )
+        notebook = any(re.fullmatch(r'type:\s*["\']?research-notebook["\']?\s*', row) for row in meta)
+        disclosure = '<details class="frontmatter"><summary>笔记信息</summary><dl>' if notebook else '<details class="frontmatter"><summary>文档元数据</summary><dl>'
         out.append(
-            '<details class="frontmatter" open><summary>文档元数据</summary><dl>'
+            disclosure
             + "".join(rows)
             + "</dl></details>"
         )

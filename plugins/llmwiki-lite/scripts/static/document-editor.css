@@ -1,0 +1,36 @@
+/* Geometry and typography from approved-workbench.html's continuous document. */
+.rw-document-toolbar,.rw-editor-header{display:flex;gap:9px;align-items:center;flex-wrap:wrap;min-width:0}
+.rw-document-toolbar{padding:0 0 18px;border-bottom:1px solid var(--line);margin-bottom:26px}
+.rw-document-toolbar .muted{font-size:12px}.rw-spacer{flex:1}.rw-editor-body{max-width:780px;margin:0 auto;padding:0 10px}
+.rw-title-input,.rw-document-title{font-size:22px!important;font-weight:500!important;line-height:1.5;margin:0 0 18px!important;padding:0!important;border:0!important;box-shadow:none!important;background:transparent!important;width:100%;min-width:0;overflow-wrap:anywhere}
+.rw-editor-header{border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:18px}
+.rw-editor-header [aria-pressed=true]{background:var(--soft)}.rw-button,.rw-icon-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:33px;padding:6px 10px;border:0;border-radius:6px;font-size:12px;background:transparent;color:var(--text);text-decoration:none}
+.rw-button:hover,.rw-icon-button:hover{background:var(--soft)}.rw-primary{background:var(--text)!important;color:var(--panel)!important}.rw-icon-button{padding:6px;min-width:30px}
+.rw-editor-text{display:block;width:100%;min-height:300px;resize:none;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;font:14px/1.85 ui-monospace,Consolas,monospace;outline:none}
+.rw-preview{min-height:260px;outline:none;overflow-wrap:anywhere}.rw-preview img{max-width:100%;height:auto}.rw-preview pre{max-width:100%;overflow:auto}.rw-preview h3{font-weight:650}.document-tail{height:70px;cursor:text;outline:none}
+.document-notice{padding:10px 12px;background:var(--soft);font-size:13px;margin:12px 0;overflow-wrap:anywhere}.document-comments{border-top:1px solid var(--line);margin-top:22px;padding-top:16px}.document-comments h3{font-size:13px;font-weight:500}.document-comment{padding:8px 0}.document-comment p{white-space:pre-wrap;overflow-wrap:anywhere}.document-comment blockquote{white-space:pre-wrap;max-height:160px;overflow:auto;color:var(--muted);border-left:2px solid var(--line);padding-left:12px;margin:0}
+.document-dialog{max-width:620px;width:calc(100% - 30px);max-height:calc(85vh / var(--workbench-scale,1.25));overflow:auto;border:1px solid var(--line);border-radius:12px;padding:24px;background:var(--panel);color:var(--text)}.document-dialog::backdrop{background:#0004}.document-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}.document-dialog textarea{width:100%;min-height:120px}.document-dialog-actions{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.document-dialog h2{font-size:17px}.rw-document-more summary{list-style:none;font-size:20px;cursor:pointer}
+@media(max-width:775px){.rw-editor-body{padding:0}.rw-title-input,.rw-document-title{font-size:20px!important}.rw-editor-text{font-size:16px}.rw-document-toolbar{gap:6px}.document-dialog{padding:17px}.rw-editor-header{gap:4px}}
+
+/* A continuous writing surface, not another framed form inside the document. */
+.rw-editor-text:focus-visible,.rw-title-input:focus-visible{outline:none}.rw-document-more>summary::after{display:none}
+
+/* Live Markdown keeps a single caret/IME surface, with image atoms inline. */
+.document-surface [hidden],.rw-document-toolbar [hidden]{display:none!important}
+.rw-editor-live{min-height:300px;outline:none;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:4;font:14px/1.85 ui-monospace,Consolas,monospace;cursor:text}
+.rw-editor-live[data-empty=true]::before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;position:absolute}
+.rw-inline-image{display:inline-block;max-width:100%;vertical-align:middle;white-space:normal;line-height:0;margin:6px 0;user-select:all}
+.rw-inline-image img{display:block;max-width:100%;height:auto;max-height:65vh;object-fit:contain}
+.rw-inline-image.is-unavailable{min-width:80px;min-height:36px;border:1px dashed var(--line)}
+.rw-save-retry{font-size:12px;color:var(--muted)}
+.rw-preview figcaption:empty{display:none}
+@media(max-width:775px){.rw-editor-live{font-size:16px}}
+
+/* Shared notebook/report preview: left-aligned heading hierarchy and breathing room. */
+.rw-preview{line-height:1.8;text-align:left}
+.rw-preview h1,.rw-preview h2,.rw-preview h3,.rw-preview h4,.rw-preview h5,.rw-preview h6{line-height:1.5;text-align:left}
+.rw-preview h1{font-size:24px;margin:1.5em 0 1em}
+.rw-preview h2{font-size:20px;margin:1.8em 0 .8em}
+.rw-preview h3{font-size:17px;margin:1.5em 0 .65em}
+.rw-preview h4,.rw-preview h5,.rw-preview h6{margin:1.3em 0 .6em}
+.rw-preview>:first-child{margin-top:0}

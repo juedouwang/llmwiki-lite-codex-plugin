@@ -1,6 +1,6 @@
-"""Deterministic storage helpers for Codex-authored research process records.
+"""Deterministic storage helpers for assistant-authored research process records.
 
-New records use one Markdown file per calendar day. Each explicit Codex action
+New records use one Markdown file per calendar day. Each explicit assistant action
 appends one human-readable entry to that day's file. Legacy one-record pages
 remain readable and are included in listings without being rewritten.
 """
@@ -381,6 +381,11 @@ def _parse_daily_records(path: Path, root: Path, text: str) -> list[dict[str, An
 
 
 def _load_legacy_record(path: Path, root: Path, text: str) -> dict[str, Any]:
+    if "<!-- llmwiki-notebook-v1:" in text:
+        from research_notebook import reader_markdown
+        metadata, _ = _frontmatter(text)
+        text = reader_markdown(text, str(metadata.get("project_id") or ""))
+    text = re.sub(r"\n<!-- llmwiki-notebook-v1:[A-Za-z0-9+/=]+ -->\n?\Z", "\n", text)
     metadata, body = _frontmatter(text)
     relative = path.relative_to(root).as_posix()
     return _metadata_record(
@@ -515,6 +520,8 @@ def list_records(
     records: list[dict[str, Any]] = []
     if records_root.is_dir():
         for path in records_root.rglob("*.md"):
+            if path.relative_to(records_root).parts[0] == "reports":
+                continue
             records.extend(_load_records_from_path(path, root))
     query = _text(query, "query", single_line=True).lower()
     if query:

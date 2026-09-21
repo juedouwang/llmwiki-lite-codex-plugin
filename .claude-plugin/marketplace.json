@@ -1,0 +1,24 @@
+{
+  "name": "llmwiki-lite",
+  "owner": {
+    "name": "LLM Wiki Agent contributors",
+    "url": "https://github.com/juedouwang/llmwiki-lite-codex-plugin"
+  },
+  "description": "LLM Wiki Lite 科研助手：七个独立工作流 Skill、确定性 MCP 工具、可选变更 Hook 与 loopback 中文科研知识工作台。",
+  "plugins": [
+    {
+      "name": "llmwiki-lite",
+      "source": "./plugins/llmwiki-lite",
+      "displayName": "LLM Wiki Lite 科研助手",
+      "description": "理解科研或软件项目并维护实用的中文 Markdown Wiki，支持文献精读、科研记录与本地研究工作台。",
+      "category": "Productivity",
+      "keywords": [
+        "wiki",
+        "research",
+        "literature",
+        "mcp",
+        "knowledge"
+      ]
+    }
+  ]
+}

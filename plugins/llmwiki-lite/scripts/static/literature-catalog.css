@@ -1,0 +1,11 @@
+#literature {max-width:none;margin:0;padding:0} .literature-toolbar {display:flex;align-items:center;gap:1rem;flex-wrap:wrap} .literature-toolbar h1 {margin-right:auto} #literature label {display:block;margin:.75rem 0} #literature input:not([type=checkbox]),#literature textarea {display:block;width:100%;padding:.6rem;border:1px solid var(--line);border-radius:6px;box-sizing:border-box} #literature form {max-width:640px;padding:1rem;background:var(--panel,#f6f7f9);border-radius:8px} #literature [hidden] {display:none!important} .literature-list {list-style:none;padding:0} .literature-list li {padding:16px 7px;border-bottom:1px solid var(--line);scroll-margin-top:5rem} .literature-list li>a {font-size:1.05rem;font-weight:600;overflow-wrap:anywhere} .literature-meta {font-size:.85rem;color:var(--muted);margin-top:.4rem} .literature-meta span {margin-left:.5rem} .literature-reading {display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0} #literature details {margin:16px 0} #literature details p {overflow-wrap:anywhere} #literature form button {margin:4px;padding:7px 10px} .literature-error {color:var(--danger);white-space:pre-wrap} .literature-paging {display:flex;gap:1rem} .literature-highlight {outline:2px solid var(--rw-purple);background:var(--rw-purple-soft)} #literature-message {min-height:1.5rem} #literature h1 {overflow-wrap:anywhere}
+
+#literature .rw-filter-row input[type=search]{width:210px;max-width:100%;margin:0;padding:6px 9px}
+#literature .literature-more{margin-left:auto;font-size:12px;position:relative}
+#literature .literature-more a{position:absolute;right:0;top:100%;z-index:3;white-space:nowrap;padding:10px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+#literature-message:empty{display:none}
+#literature-collection{margin-top:24px;font-size:12px;color:var(--muted)}
+#literature form{border:1px solid var(--line);margin:0 0 20px}
+#literature .rw-list-row .rw-list-meta:empty{display:none}
+
+#literature .literature-more{margin:0 0 0 auto}#literature .rw-list{margin:0}.literature-paging:empty{display:none}

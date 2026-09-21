@@ -1,0 +1,31 @@
+{
+  "head": "edc41d32c23ab95fc2762939a056697bfb4656a1",
+  "files": {
+    "plugins\\llmwiki-lite\\scripts\\git_graph.py": "55b35938b32e180233877ff341af0aca0492810a335f68dcb16e5ef364852f32",
+    "plugins\\llmwiki-lite\\scripts\\git_merge.py": "75119dd8259a9e662e7a1cb233eb63b26bb714ed43dc5323de2c56ec0c1d2e93",
+    "plugins\\llmwiki-lite\\scripts\\git_operations.py": "595366022766eb36163466704fbf3ac15bcc2d7e4e2ca3226f4900e94f1449e1",
+    "plugins\\llmwiki-lite\\scripts\\git_recovery.py": "3e4ee6520afaaa952144b2045e26fdc47a23d5194dd0896a864c8df316a5d5d6",
+    "plugins\\llmwiki-lite\\scripts\\git_revert_restore.py": "a6c975356c99a3d60117ef7ecbe15f6c41489fb435061dc8cb004c8801b8d042",
+    "plugins\\llmwiki-lite\\scripts\\git_service.py": "d0f73c043270bb7b342f9564f26a01cc17222377aeed2e8f21bd04b7c1daaf30",
+    "plugins\\llmwiki-lite\\scripts\\literature_catalog.py": "7ef0d4c18b2e52b709abce428b75d562da271aa3a58bf300992a63bc5c9416f6",
+    "plugins\\llmwiki-lite\\scripts\\literature_catalog_web.py": "f231cfb78ca182b571371ff1e35ccb270f8c617b3e77e0df9c62a2936cefe127",
+    "plugins\\llmwiki-lite\\scripts\\literature_web.py": "b5f218ffdc171ecb81aa4abadde4a1509298056e36d7fc358ba416661a05d5e2",
+    "plugins\\llmwiki-lite\\scripts\\llmwiki_core.py": "c0feb94753a680c1a7b5547ccee66d0965d81228328df5d522466bfa59405279",
+    "plugins\\llmwiki-lite\\scripts\\llmwiki_registry.py": "b48cd0e58115bbcaac7ce86c4cd0e42d605691a53d39ee5a525c5e8fb885515c",
+    "plugins\\llmwiki-lite\\scripts\\markdown_renderer.py": "17cfc3a2e6ee3f7b45c36fffb84560e964f00e74a3eac4047d07803c9dc6a57d",
+    "plugins\\llmwiki-lite\\scripts\\mcp_server.py": "17de368c87295a6f2af0f56029352d460476f3ca1007bdd50b48e6698d862e5b",
+    "plugins\\llmwiki-lite\\scripts\\record_change.py": "afbfe83784d21e89b5097c15687000adb5f89bdbded481887b66aaa003d42a44",
+    "plugins\\llmwiki-lite\\scripts\\research_capture.py": "8c4cbfe4313129fe2156e53f9bdc43270a63cdb7b05e768586660b598ed2ffa9",
+    "plugins\\llmwiki-lite\\scripts\\research_notebook.py": "f3e7bd857f5948a24d041e1957efb75fef2fb298dabc31f56bd2497076507fc8",
+    "plugins\\llmwiki-lite\\scripts\\research_progress.py": "c4baaa85f98d7539368b69b8d8a681f3e335085962df48c788d4ed085f84d52c",
+    "plugins\\llmwiki-lite\\scripts\\research_records.py": "4fe52a53e5fe31c935d1eb528172875ec7f7f7efba5da0ebbfaaa876f85f5810",
+    "plugins\\llmwiki-lite\\scripts\\research_web_ui.py": "2e4860b308d49c87fdc127130ee911a5a6041b854f61365f3406f220bdfc0da8",
+    "plugins\\llmwiki-lite\\scripts\\web_server.py": "50d6479b1690b11cfbfb93b31bf9692d0e8c1c8d0ac1632d33806460a1e14489",
+    "plugins\\llmwiki-lite\\scripts\\workbench_store.py": "7341f5034e266f124e636df0fe4fe7d55ed637261637aab109cb4d7788736b70",
+    "openspec\\changes\\research-progress-todo-done\\.openspec.yaml": "e461a5cd9c263851dbb46471f9e3afd45a09338ec7b15a042283644a5ef6972b",
+    "openspec\\changes\\research-progress-todo-done\\design.md": "0e42181458e1a924c6d224fa86fca213bd1bdf2a4226e457698e8bbff5d0102e",
+    "openspec\\changes\\research-progress-todo-done\\proposal.md": "e02b3eaba88e7deed5b227dc4008d162e6b0a73b8fff7e131623ed228717186f",
+    "openspec\\changes\\research-progress-todo-done\\tasks.md": "a8cebfbbc197ec58072d529343623509cab9d4e92b8f3548463572652f7731c1",
+    "openspec\\changes\\research-progress-todo-done\\specs\\research-progress\\spec.md": "47fed973c099e74d70a2d2e13684d97b2b59c30d0b64db9266820295c4f30996"
+  }
+}
