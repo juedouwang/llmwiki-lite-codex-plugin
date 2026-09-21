@@ -25,3 +25,12 @@
 .rw-save-retry{font-size:12px;color:var(--muted)}
 .rw-preview figcaption:empty{display:none}
 @media(max-width:775px){.rw-editor-live{font-size:16px}}
+
+/* Shared notebook/report preview: left-aligned heading hierarchy and breathing room. */
+.rw-preview{line-height:1.8;text-align:left}
+.rw-preview h1,.rw-preview h2,.rw-preview h3,.rw-preview h4,.rw-preview h5,.rw-preview h6{line-height:1.5;text-align:left}
+.rw-preview h1{font-size:24px;margin:1.5em 0 1em}
+.rw-preview h2{font-size:20px;margin:1.8em 0 .8em}
+.rw-preview h3{font-size:17px;margin:1.5em 0 .65em}
+.rw-preview h4,.rw-preview h5,.rw-preview h6{margin:1.3em 0 .6em}
+.rw-preview>:first-child{margin-top:0}

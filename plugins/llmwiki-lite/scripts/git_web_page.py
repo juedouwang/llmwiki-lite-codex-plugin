@@ -34,16 +34,26 @@ def page(home: str, project_id: str, params: Any = None) -> str:
     project = get_project(project_id, home=home)["project"]
     project_id = str(project["id"])
     api = f"/api/project/{quote(project_id, safe='')}/code"
+    worktree_id = (params or {}).get("worktree", "")
+    if isinstance(worktree_id, list):
+        worktree_id = worktree_id[-1] if worktree_id else ""
+    code_url = f"/project/{quote(project_id, safe='')}/code"
     body = f'''
 <link rel="stylesheet" href="/static/code.css">
 <section id="code-app" class="code-app" data-project-id="{esc(project_id)}"
-         data-api="{esc(api)}" aria-label="代码版本管理">
+         data-api="{esc(api)}" data-worktree-id="{esc(worktree_id)}" aria-label="代码版本管理">
   <div class="code-toolbar" aria-label="版本操作">
     <details id="code-branches" class="code-branch-picker">
       <summary aria-label="切换或新建分支">{code_icon("git")}
         <span id="code-branch-label">读取分支…</span>{code_icon("chevron")}</summary>
       <div id="code-branch-menu" class="code-branch-menu" aria-label="本地分支"></div>
     </details>
+    <details id="code-worktrees" class="code-branch-picker code-worktree-picker" hidden>
+      <summary aria-label="选择工作树">{code_icon("folder")}
+        <span id="code-worktree-label">选择工作树</span>{code_icon("chevron")}</summary>
+      <div id="code-worktree-menu" class="code-branch-menu" aria-label="已有工作树"></div>
+    </details>
+    <a id="code-worktree-home" class="code-worktree-home" href="{esc(code_url)}" hidden>返回注册目录</a>
     <button id="code-merge" type="button" data-action="merge" disabled>{code_icon("merge")}合并</button>
     <span class="code-spacer"></span>
     <button id="code-pull" type="button" data-action="pull" disabled>{code_icon("download")}pull</button>

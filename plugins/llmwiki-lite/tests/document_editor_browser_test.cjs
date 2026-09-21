@@ -20,6 +20,23 @@ const cfg=JSON.parse(process.argv[2]);
    await live(prefix).press('Control+v');
    await page.waitForFunction(({prefix,previous})=>document.getElementById(prefix+'-source').value!==previous,{prefix,previous});
  }
+ async function headingSpacing(prefix){
+   await page.locator(`#${prefix}-preview-mode`).click();
+   await page.locator(`#${prefix}-preview h1`).waitFor({state:"visible"});
+   await page.locator(`#${prefix}-preview h2`).waitFor({state:"visible"});
+   for(const width of [1280,700]){
+     await page.setViewportSize({width,height:960});
+     for(const scheme of ['light','dark']){
+       await page.emulateMedia({colorScheme:scheme});
+       const layout=await page.locator(`#${prefix}-preview`).evaluate(el=>{
+         const a=el.querySelector('h1'),b=el.querySelector('h2'), ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();
+         return {gap:br.top-ar.bottom,left:Math.abs(ar.left-br.left),align:getComputedStyle(b).textAlign};
+       });
+       assert.ok(layout.gap>=24,JSON.stringify(layout));assert.ok(layout.left<1);assert.equal(layout.align,'left');
+     }
+   }
+   await page.setViewportSize({width:1280,height:960});await page.emulateMedia({colorScheme:'light'});
+ }
  async function imageCount(prefix,n){await page.waitForFunction(({prefix,n})=>{const images=[...document.querySelectorAll('#'+prefix+'-live img')];return images.length===n&&images.every(i=>i.complete&&i.naturalWidth>0);},{prefix,n});}
  try{
    cfg.png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=400;c.height=140;const g=c.getContext('2d');g.fillStyle='#edf5f1';g.fillRect(0,0,400,140);g.strokeStyle='#377857';g.lineWidth=3;g.beginPath();for(let x=12;x<390;x++)g.lineTo(x,70+32*Math.sin(x/35));g.stroke();return c.toDataURL('image/png').split(',')[1];});
@@ -85,9 +102,10 @@ const cfg=JSON.parse(process.argv[2]);
    const beforeLeave=page.url();page.once('dialog',dialog=>dialog.dismiss());await page.reload({timeout:1500}).catch(()=>{});
    assert.equal(page.url(),beforeLeave);assert.equal(await page.locator('#nb-title').inputValue(),'失败仍即时显示');
    await page.unroute(api);await page.locator('#nb-retry').click();await saved('nb');
+   await live('nb').press('Control+End');await paste('nb',{text:'\n\n# 科研日报\n\n## 一、阶段进展\n\n### 实验观察\n文字说明。'});await saved('nb');
    const persisted=await body('nb');await page.reload();await saved('nb');assert.equal(await page.title(),'失败仍即时显示');
    await page.locator('#nb-edit').click();await imageCount('nb',6);assert.equal(await body('nb'),persisted);
-   await page.locator('#nb-preview-mode').click();assert.equal(await page.locator('#nb-preview figcaption').count(),0);
+   await headingSpacing('nb');assert.equal(await page.locator('#nb-preview figcaption').count(),0);
    await page.screenshot({path:path.join(cfg.evidence,'notebook-preview.png')});
    await page.goto(base+'/records');assert.match(await page.locator('#research-records').innerText(),/失败仍即时显示/);
    // Old blocks/comments stay byte-identical on open; explicit edit migrates losslessly.
@@ -105,8 +123,9 @@ const cfg=JSON.parse(process.argv[2]);
      const reportAPI=`${cfg.origin}/api/reports/${kind}/${date}`;
      await page.goto(`${cfg.origin}/reports/${kind}/${date}?context=${cfg.pid}`);await live('report').waitFor({state:'visible'});
      assert.equal(await page.locator('#report-save,#report-code,#report-comment').count(),0);
-     await paste('report',{text:'## 临时报告\n\n```python\nprint(1)\n```\n'});
+     await paste('report',{text:'# 科研报告\n\n## 临时报告\n\n```python\nprint(1)\n```\n'});
      await paste('report',{png:cfg.png});await imageCount('report',1);await saved('report');
+     await headingSpacing('report');await page.locator('#report-edit').click();
      await page.locator('#report-title').fill(kind+' 人工标题');assert.equal(await page.title(),kind+' 人工标题');await saved('report');
      assert.equal((await read(reportAPI)).title,kind+' 人工标题');
      await page.locator('#report-confirm').click();await page.waitForFunction(()=>document.querySelector('#report-confirm').textContent==='修改正式版');

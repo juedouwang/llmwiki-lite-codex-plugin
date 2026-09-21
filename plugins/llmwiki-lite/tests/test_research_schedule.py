@@ -63,6 +63,27 @@ class ScheduleTests(unittest.TestCase):
         self.official(prompt='Different configuration')
         self.assertFalse(self.begin()['ok'])
 
+    def test_new_project_is_selected_without_rebinding_shared_plan(self):
+        before = report_settings(self.home)
+        receipt = self.receipt.read_bytes()
+        source = self.root / 'new-project'
+        source.mkdir()
+        added = register_project(str(source), home=self.home)['project']
+        selected = [self.p['id'], added['id']]
+        saved = report_settings(self.home)
+        self.assertEqual(saved['project_ids'], selected)
+        self.assertEqual(saved['runtime'], before['runtime'])
+        self.assertEqual(saved['connection'], 'configured')
+        self.assertEqual(self.receipt.read_bytes(), receipt)
+        with patch('research_capture_runtime.capture_project', return_value={'written': 0}) as capture:
+            started = self.begin()
+        self.assertTrue(started['cycle_id'])
+        self.assertCountEqual([call.args[0]['id'] for call in capture.call_args_list], selected)
+        self.assertEqual(started['budgets']['knowledge_runs'], 2)
+        cycle = schedule._json(schedule._cycle_path(self.home, started['cycle_id']))
+        self.assertEqual(cycle['project_ids'], selected)
+        self.assertEqual(self.receipt.read_bytes(), receipt)
+
     def test_nonoverlap_expiry_and_no_source_read_when_paused(self):
         first = self.begin()['cycle_id']
         self.assertIsNotNone(first)

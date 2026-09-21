@@ -634,6 +634,36 @@ class GitTests(Fixture):
         self.git('commit', '-q', '-m', message, stamp=stamp, author=author)
         return self.git('rev-parse', 'HEAD')
 
+    def test_report_mode_only_reads_commit_messages(self):
+        oid = self.commit({'src/main.py': 'private implementation sentinel'}, message='完成接口适配，未实测')
+        (self.source / 'src/main.py').write_text('uncommitted sentinel', encoding='utf-8')
+        (self.source / 'untracked.txt').write_text('untracked sentinel', encoding='utf-8')
+        self.hints([self.hint(['src/main.py'])])
+        self.authorize()
+        self.database()
+        self.activity(text='今天讨论接口适配。')
+        actual = sources._git
+        commands = []
+
+        def git(root, args, **kwargs):
+            commands.append(args[0])
+            self.assertNotIn(args[0], ['diff', 'diff-tree', 'status', 'ls-files', 'show'])
+            return actual(root, args, **kwargs)
+
+        with mock.patch.object(sources, '_git', side_effect=git):
+            items, gaps = sources.extra_sources(self.project, DAY, settings=self.settings, now=NOW, report_only=True)
+        self.assertIn('log', commands)
+        self.assertEqual({i['kind'] for i in items}, {'git_commit', 'conversation'})
+        text = '\n'.join(i['text'] for i in items)
+        self.assertIn(oid, text)
+        self.assertIn('完成接口适配，未实测', text)
+        self.assertNotIn('sentinel', text)
+        self.assertNotIn('src/main.py', text)
+        self.assertFalse(any('diff' in g or '未跟踪' in g or '变化路径' in g for g in gaps), gaps)
+        # Historical report mode has no missing-worktree warning either.
+        _, gaps = sources.extra_sources(self.project, DAY, settings=self.settings, now=NOW + timedelta(days=1), report_only=True)
+        self.assertFalse(any('status/diff' in g for g in gaps), gaps)
+
     def test_root_commit_metadata_diff_and_committer_beijing_day(self):
         oid = self.commit({'src/main.py': 'print("unverified")\n'}, stamp='2026-09-18T16:00:00Z',
                           author='2025-01-01T00:00:00Z')

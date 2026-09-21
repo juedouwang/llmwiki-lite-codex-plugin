@@ -8,6 +8,9 @@
   const $ = id => root.querySelector(`#code-${id}`);
   const endpoint = root.dataset.api;
   const projectId = root.dataset.projectId;
+  const worktreeId = root.dataset.worktreeId ?? new URL(location.href).searchParams.get('worktree') ?? '';
+  const pickerIds = ['branches', 'worktrees'].filter(id => $(id));
+  const codeUrl = `/project/${encodeURIComponent(projectId)}/code`;
   const PAGE_SIZE = 100;
   const ROW_HEIGHT = 68;
   const DETAIL_CACHE_SIZE = 48;
@@ -82,7 +85,9 @@
     const controller = new AbortController();
     if (key) { reads.get(key)?.abort(); reads.set(key, controller); }
     try {
-      const response = await fetch(endpoint + path, {
+      const url = new URL(endpoint + path, location.origin);
+      if (worktreeId) url.searchParams.set('worktree', worktreeId);
+      const response = await fetch(url.href, {
         method, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
         headers: method === 'POST'
           ? {'Content-Type': 'application/json', 'X-Notebook-Request': '1', Accept: 'application/json'}
@@ -141,10 +146,44 @@
     }
     return true;
   }
+  function worktreeLink(id, label, className, registered = false) {
+    const link = el('a', label, className);
+    link.href = codeUrl + (registered ? '' : query({worktree: id}));
+    link.dataset.worktree = id;
+    return link;
+  }
+  function renderWorktrees() {
+    // An already-running server may still serve the pre-upgrade page shell.
+    if (!$('worktrees')) return;
+    const s = state.status, trees = list(s.worktrees);
+    $('worktrees').hidden = trees.length < 2;
+    $('worktree-home').hidden = true;
+    const current = trees.find(tree => tree.current);
+    $('worktree-label').textContent = current ? `工作树 · ${current.name}` : '选择工作树';
+    $('worktrees').querySelector('summary').title = text(s.worktree?.path);
+    const menu = $('worktree-menu'), signature = JSON.stringify(trees);
+    if (menu.dataset.signature === signature) return;
+    menu.dataset.signature = signature; menu.replaceChildren();
+    for (const tree of trees) {
+      const control = tree.available && !tree.current
+        ? worktreeLink(tree.id, null, 'code-worktree-option', tree.registered)
+        : el('div', null, 'code-worktree-option');
+      control.title = tree.reason || tree.path;
+      if (tree.current) control.setAttribute('aria-current', 'true');
+      if (!tree.available) control.setAttribute('aria-disabled', 'true');
+      const heading = el('span', null, 'code-worktree-heading');
+      heading.append(el('span', tree.branch || '游离 HEAD'),
+        el('small', [tree.current ? '当前' : '', tree.registered ? '注册目录' : ''].filter(Boolean).join(' · ')));
+      control.append(heading, el('small', tree.path, 'code-worktree-path'));
+      if (!tree.available) control.append(el('small', tree.reason, 'code-worktree-path'));
+      menu.append(control);
+    }
+  }
   function renderStatus() {
     const s = state.status;
     if (!s) return;
     const head = s.head || {};
+    renderWorktrees();
     $('branch-label').textContent = head.detached ? `游离 HEAD · ${short(head.oid)}` : head.branch || '尚无分支';
     const reasons = [];
     if (!writable()) reasons.push(text(s.capabilities?.reason) || '当前仓库仅可读取。');
@@ -191,7 +230,13 @@
         control.dataset.branch = branch.name;
         control.setAttribute('aria-current', String(Boolean(branch.current)));
         control.disabled = branch.current || branch.switchable === false || Boolean(writeReason('switch_branch'));
-        menu.append(control);
+        if (branch.worktree_id && !branch.current) {
+          const row = el('div', null, 'code-occupied-branch');
+          const link = worktreeLink(branch.worktree_id, '进入所在工作树', 'code-worktree-enter',
+            list(s.worktrees).some(tree => tree.id === branch.worktree_id && tree.registered));
+          link.title = text(branch.worktree_path);
+          row.append(control, link); menu.append(row);
+        } else menu.append(control);
       }
       const create = button('新建分支（不切换）', () => {
         $('branches').open = false; openAction('create_branch', {target_oid: state.status.head.oid});
@@ -245,6 +290,9 @@
         const s = await api('/status', {key: 'status'});
         if (serial !== state.refresh) return;
         if (!s?.head || !Array.isArray(s.files) || !s.capabilities) throw fail('状态接口字段不完整。');
+        if (worktreeId && s.worktree?.id !== worktreeId) {
+          throw fail('工作树上下文不一致，请重启服务后重新选择。');
+        }
         state.status = s; state.statusError = false; renderStatus();
         if (!state.selected && s.head.oid && state.detailOpen) selectCommit(s.head.oid);
         if (s.ongoing) await refreshMerge();
@@ -255,9 +303,12 @@
       } catch (error) {
         if (!ignored(error) && serial === state.refresh) {
           state.statusError = true;
+          if (worktreeId && $('worktree-home')) $('worktree-home').hidden = false;
           feedback((state.status ? '显示上次读取结果；当前状态未能核对。' : '') + errorText(error), true);
-          if (state.status) renderStatus();
-          else {
+          if (state.status) {
+            renderStatus();
+            if (worktreeId && $('worktree-home')) $('worktree-home').hidden = false;
+          } else {
             $('change-title').textContent = '无法读取工作区';
             $('change-note').textContent = errorText(error);
             for (const id of ['save', 'merge', 'pull', 'push']) $(id).disabled = true;
@@ -1397,8 +1448,36 @@
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
-  $('branches').addEventListener('keydown', event => {
-    if (event.key === 'Escape') { $('branches').open = false; $('branches').querySelector('summary').focus(); }
+  function positionPicker(picker) {
+    if (!picker?.open) return;
+    const menu = picker.querySelector('.code-branch-menu');
+    menu.style.left = '0px';
+    const bounds = menu.getBoundingClientRect();
+    const scale = bounds.width / menu.offsetWidth || 1;
+    const overflow = Math.max(0, bounds.right - document.documentElement.clientWidth + 12);
+    menu.style.left = `${-overflow / scale}px`;
+  }
+  listen(window, 'resize', () => {
+    if (samePage()) for (const id of pickerIds) positionPicker($(id));
+  });
+  for (const id of pickerIds) {
+    const picker = $(id);
+    picker.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { picker.open = false; picker.querySelector('summary').focus(); }
+    });
+    picker.addEventListener('toggle', () => {
+      if (picker.open) {
+        const other = $(id === 'branches' ? 'worktrees' : 'branches');
+        if (other) other.open = false;
+        positionPicker(picker);
+      }
+    });
+  }
+  listen(document, 'click', event => {
+    if (!samePage()) return;
+    for (const id of pickerIds) {
+      if (!$(id).contains(event.target)) $(id).open = false;
+    }
   });
   const handlers = {
     save: () => openAction('save', {}), merge: () => openAction('merge', {}),
@@ -1460,6 +1539,7 @@
   listen(document, 'workbench:leave', event => {
     if (!ownsNavigation(event)) return;
     if (state.modal && !hasUnsavedWork()) closeModal();
+    for (const id of pickerIds) $(id).open = false;
     suspendReads();
   });
   listen(document, 'workbench:enter', event => {

@@ -16,7 +16,7 @@ const git=(project,...args)=>execFileSync('git',args,{cwd:project.root,encoding:
     await page.waitForFunction(()=>document.querySelector('#code-refresh')?.disabled===false);
     await page.waitForSelector('#code-create-from');
   };
-  const open=async project=>{await page.goto(`${cfg.origin}/project/${project.pid}/code`);await ready();};
+  const open=async project=>{await page.goto(`${cfg.origin}/project/${project.pid}/code${project.worktree ? "?worktree="+project.worktree : ""}`);await ready();};
   const confirm=async()=>{
     await page.waitForFunction(()=>document.querySelector('#code-confirm')?.disabled===false);
     await page.locator('#code-confirm').click();
@@ -33,7 +33,58 @@ const git=(project,...args)=>execFileSync('git',args,{cwd:project.root,encoding:
   try{
     const primaryIndex=fs.readFileSync(cfg.primary_index);
     const linkedStaged=git(cfg.linked,'rev-parse',':b.txt');
-    await open(cfg.linked);
+    // During deployment, old in-memory SSR can coexist with newly served JS.
+    await page.route(`**/project/${cfg.primary.pid}/code`, async route=>{
+      const response=await route.fetch();
+      const body=(await response.text()).replace(/<details id="code-worktrees"[\s\S]*?<\/details>/,'')
+        .replace(/<a id="code-worktree-home"[^>]*>[\s\S]*?<\/a>/,'').replace(/ data-worktree-id="[^"]*"/,'');
+      await route.fulfill({response,body});
+    }, {times:1});
+    await open(cfg.primary);
+    assert.equal(await page.locator('#code-worktrees').count(),0);
+    assert.equal(await page.locator('#code-branch-label').innerText(),'main');
+    assert.equal(await page.locator('#code-save').isEnabled(),true);
+    console.log('PASS old running page shell remains usable with new static assets');
+    await open(cfg.primary);
+    await page.locator('#code-branches summary').click();
+    assert.equal(await page.locator('#code-branch-menu [data-branch="experiment"]').isDisabled(),true);
+    await page.locator(`#code-branch-menu a[data-worktree="${cfg.linked.worktree}"]`).click();
+    await page.waitForURL(url=>url.searchParams.get('worktree')===cfg.linked.worktree);
+    await ready();
+    assert.equal(await page.locator('#code-app').getAttribute('data-project-id'),cfg.primary.pid);
+    assert.equal(await page.locator('#code-app').getAttribute('data-worktree-id'),cfg.linked.worktree);
+    assert.equal(git(cfg.primary,'rev-parse','HEAD'),cfg.initial);
+    assert.deepEqual(fs.readFileSync(cfg.primary_index),primaryIndex);
+    await page.locator('#code-worktrees summary').click();
+    await page.locator('#code-worktree-menu a').filter({hasText:'注册目录'}).click();
+    await page.waitForURL(url=>!url.search); await ready();
+    assert.equal(await page.locator('#code-branch-label').innerText(),'main');
+    await page.locator('#code-worktrees summary').click();
+    await page.locator(`#code-worktree-menu a[data-worktree="${cfg.linked.worktree}"]`).click();
+    await page.waitForURL(url=>url.searchParams.get('worktree')===cfg.linked.worktree); await ready();
+    await page.goBack(); await page.waitForURL(url=>!url.search); await ready();
+    await page.goForward(); await page.waitForURL(url=>Boolean(url.search)); await ready();
+    await page.reload(); await ready();
+    assert.equal(await page.locator('#code-branch-label').innerText(),'experiment');
+    await page.locator('#code-worktrees summary').click();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#code-worktrees').getAttribute('open'),null);
+    await page.locator('#code-worktrees summary').click();
+    await page.locator('#code-feedback').click();
+    assert.equal(await page.locator('#code-worktrees').getAttribute('open'),null);
+    for (const colorScheme of ['light','dark']) {
+      await page.emulateMedia({colorScheme});
+      for (const width of [1440,580,320]) {
+        await page.setViewportSize({width,height:960});
+        await page.locator('#code-worktrees summary').click();
+        await page.screenshot({path:path.join(cfg.evidence,`worktree-picker-${colorScheme}-${width}.png`),fullPage:true});
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'worktree menu overflow '+width);
+        await page.keyboard.press('Escape');
+      }
+    }
+    await page.setViewportSize({width:1440,height:960}); await page.emulateMedia({colorScheme:'light'});
+    console.log('PASS same-project owner entry / worktree picker / back-forward-reload / no checkout / keyboard and outside close');
+
     assert.equal(writes.length,0,'opening never auto-saves or fetches');
     assert.equal(await page.locator('#code-capability').isVisible(),false);
     assert.match(await page.locator('#code-change-note').innerText(),/仅操作当前工作树/);
@@ -59,6 +110,32 @@ const git=(project,...args)=>execFileSync('git',args,{cwd:project.root,encoding:
     await page.setViewportSize({width:1440,height:960});
     await page.locator('#code-branches summary').click();
     console.log('PASS approved code icons / writable linked worktree / occupied branch inline / 320-1440px');
+
+    // Leaving through history must not discard a draft or execute it elsewhere.
+    await page.locator('#code-save').click();
+    await page.locator('#code-save-message').fill('keep this draft');
+    await page.goBack();
+    await page.waitForURL(url=>url.searchParams.get('worktree')===cfg.linked.worktree);
+    assert.equal(await page.locator('#code-save-message').inputValue(),'keep this draft');
+    await page.locator('#code-dialog-close').click();
+    assert.equal(git(cfg.linked,'rev-parse','HEAD'),cfg.initial);
+    // A delayed linked status must not overwrite main after directory navigation.
+    let unblock, intercepted;
+    const gate=new Promise(resolve=>{unblock=resolve;});
+    const hit=new Promise(resolve=>{intercepted=resolve;});
+    const slow=async route=>{intercepted();await gate;await route.continue().catch(()=>{});};
+    await page.route('**/code/status?worktree='+cfg.linked.worktree,slow);
+    await page.locator('#code-refresh').click(); await hit;
+    await page.locator('#code-worktrees summary').click();
+    await page.locator('#code-worktree-menu a').filter({hasText:'注册目录'}).click();
+    await page.waitForURL(url=>!url.search); await ready(); unblock();
+    await page.unroute('**/code/status?worktree='+cfg.linked.worktree,slow);
+    assert.equal(await page.locator('#code-branch-label').innerText(),'main');
+    await page.locator('#code-worktrees summary').click();
+    await page.locator(`#code-worktree-menu a[data-worktree="${cfg.linked.worktree}"]`).click();
+    await page.waitForURL(url=>Boolean(url.search)); await ready();
+    assert.equal(await page.locator('#code-branch-label').innerText(),'experiment');
+    console.log('PASS draft leave protection / delayed response stays in its worktree');
 
     await save('linked selected only',['a.txt']);
     assert.notEqual(git(cfg.linked,'rev-parse','HEAD'),cfg.initial);
@@ -91,10 +168,16 @@ const git=(project,...args)=>execFileSync('git',args,{cwd:project.root,encoding:
     assert.equal(await nowOccupied.isDisabled(),true);
     assert.ok((await nowOccupied.getAttribute('title')).includes(cfg.linked.root));
     assert.equal(await page.locator('#code-branch-menu [data-branch="experiment"]').isEnabled(),true);
+    await page.goto(`${cfg.origin}/project/${cfg.primary.pid}/code?worktree=${'f'.repeat(64)}`);
+    await page.locator('#code-worktree-home').waitFor({state:'visible'});
+    assert.equal(await page.locator('#code-merge').isDisabled(),true);
+    await page.locator('#code-worktree-home').click();
+    await page.waitForURL(url=>!url.search); await ready();
+    assert.equal(await page.locator('#code-branch-label').innerText(),'main');
     assert.deepEqual(errors,[]);
     assert.deepEqual(dialogs,[]);
-    assert.ok(writes.every(url=>url.includes(`/project/${cfg.linked.pid}/code/`)),'writes remain project/worktree-bound');
-    assert.ok(writes.every(url=>!url.endsWith('/fetch')),'no automatic remote check');
+    assert.ok(writes.every(url=>url.includes(`/project/${cfg.primary.pid}/code/`) && new URL(url).searchParams.get("worktree")===cfg.linked.worktree),'writes remain project/worktree-bound');
+    assert.ok(writes.every(url=>!new URL(url).pathname.endsWith('/fetch')),'no automatic remote check');
     console.log('PASS refreshed cross-worktree occupancy / no native dialogs / no cross-project writes');
   }catch(error){
     await page.screenshot({path:path.join(cfg.evidence,'failure.png'),fullPage:true}).catch(()=>{});

@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import research_reports as reports
-from llmwiki_registry import register_project, list_projects
+from llmwiki_registry import register_project, list_projects, unregister_project
 from research_records import write_record
 from web_server import create_server
 
@@ -45,6 +45,54 @@ class WorkspaceReportTests(unittest.TestCase):
         # Fixture only: never asserted to be an official scheduled run.
         config['runtime'] = {'automation_id': 'fixture-only', 'target_thread_id': 'fixture-only', 'status': 'ACTIVE'}
         reports._write_json(target, config)
+
+    def test_settings_save_skips_removed_project_capture_cleanup(self):
+        from research_capture import read_consent
+        current = reports.report_settings(self.home)
+        current = reports.save_settings({'expected_revision': current['revision'],
+                                        'capture_hosts': ['codex']}, self.home)
+        kept_consent = read_consent(self.projects[0])
+        removed_consent = read_consent(self.projects[1])
+        unregister_project(self.ids[1], home=self.home)
+        current = reports.report_settings(self.home)
+        saved = reports.save_settings({'expected_revision': current['revision'],
+                                       'project_ids': self.ids[:1], 'capture_hosts': ['codex']}, self.home)
+        self.assertEqual(saved['project_ids'], self.ids[:1])
+        self.assertEqual(list(saved['activity_db_paths']), self.ids[:1])
+        self.assertEqual(saved['runtime'], current['runtime'])
+        self.assertEqual(saved['daily_time'], current['daily_time'])
+        self.assertEqual(read_consent(self.projects[0]), kept_consent)
+        self.assertEqual(read_consent(self.projects[1]), removed_consent)
+
+    def test_settings_pause_revokes_registered_but_skips_removed_project(self):
+        from research_capture import read_consent
+        current = reports.report_settings(self.home)
+        current = reports.save_settings({'expected_revision': current['revision'],
+                                        'capture_hosts': ['codex']}, self.home)
+        removed_consent = read_consent(self.projects[1])
+        unregister_project(self.ids[1], home=self.home)
+        current = reports.report_settings(self.home)
+        saved = reports.save_settings({'expected_revision': current['revision'], 'enabled': False,
+                                       'project_ids': [], 'capture_hosts': []}, self.home)
+        self.assertFalse(read_consent(self.projects[0])['capture_enabled'])
+        self.assertEqual(read_consent(self.projects[1]), removed_consent)
+        self.assertEqual(saved['activity_db_paths'], {})
+        self.assertEqual(saved['runtime'], current['runtime'])
+        self.assertEqual(saved['connection'], 'paused')
+
+    def test_settings_rejects_stale_removed_selection_without_writes(self):
+        current = reports.report_settings(self.home)
+        unregister_project(self.ids[1], home=self.home)
+        path = Path(self.home) / 'reports-settings.json'
+        before = path.read_bytes()
+        with self.assertRaises(reports.ReportError) as conflict:
+            reports.save_settings({'expected_revision': current['revision'], 'project_ids': self.ids}, self.home)
+        self.assertEqual(conflict.exception.code, 'REVISION_CONFLICT')
+        current = reports.report_settings(self.home)
+        with self.assertRaisesRegex(reports.ReportError, '项目已被移除'):
+            reports.save_settings({'expected_revision': current['revision'],
+                                   'project_ids': self.ids, 'capture_hosts': ['codex']}, self.home)
+        self.assertEqual(path.read_bytes(), before)
 
     def test_sunday_enablement_does_not_backfill_last_fridays_weekly(self):
         self.day = '2026-09-20'  # Enable Sunday, after the preceding Friday slot.
@@ -77,6 +125,122 @@ class WorkspaceReportTests(unittest.TestCase):
                                        source_summaries={sid: '隔离测试材料，代码变动不代表硬件验证。' for sid in source_ids},
                                        home=self.home, now=self.clock)
         return result, items
+
+    def image_record(self):
+        from research_notebook import upload, image_path
+        from run_reports_browser import _png_bytes
+        project = self.projects[0]
+        raw = _png_bytes()
+        name = upload(project, {'data': base64.b64encode(raw).decode()})['image']
+        write_record(project['source_root'], state_root=project['state_root'], title='实验结果图',
+                     understanding=f'用户要求保留此图，尚未实测。\n![对比结果](../../assets/{name})',
+                     recorded_at=self.day + 'T17:00:00+08:00')
+        # Use an explicit wiki-root-relative image, as the editor/report supports.
+        records = list((Path(project['wiki_root']) / 'records').rglob('*.md'))
+        for path in records:
+            text = path.read_text(encoding='utf-8')
+            path.write_text(text.replace('../../assets/', '/records/assets/'), encoding='utf-8')
+        run = reports.report_plan(self.home, now=self.clock)['runs'][0]
+        items = reports.report_sources(run['run_id'], home=self.home, now=self.clock)['items']
+        item = next(i for i in items if i.get('attachments'))
+        return run, item, image_path(project, name), raw
+
+    def test_selected_image_is_durable_and_reusable_by_weekly(self):
+        from research_notebook import image_path
+        from report_images import discover
+        run, item, original, raw = self.image_record()
+        target = item['attachments'][0]['target']
+        self.assertEqual(list((Path(self.owner['wiki_root']) / 'records/assets').glob('*')), [])
+        self.finish(run, '# 日报\n\n![用户说明：对比结果](' + target + ')')
+        document = reports.load(self.owner, 'daily', self.day)
+        self.assertNotIn('report-image:', document['body'])
+        name = re.search(r'/records/assets/([^)]*)', document['body']).group(1)
+        original.unlink()
+        self.assertEqual(image_path(self.owner, name).read_bytes(), raw)
+        from markdown_renderer import render_markdown
+        html = render_markdown(document['body'], '__workspace__', 'records/reports/preview.md')
+        self.assertIn('/reports/asset/records/assets/' + name, html)
+        weekly_source = {'id': 'daily-source', 'kind': 'daily_report', 'text': document['body']}
+        discover(weekly_source, self.owner)
+        self.assertTrue(weekly_source['attachments'][0]['available'])
+        result, gaps = __import__('report_images').materialize('![图](' + weekly_source['attachments'][0]['target'] + ')',
+                                                            [weekly_source], self.owner, home=self.home)
+        self.assertIn('/records/assets/' + name, result)
+        self.assertEqual(gaps, [])
+        self.assertEqual(len(list(image_path(self.owner, name).parent.glob('*'))), 1)
+
+    def test_explicit_clipboard_reference_persists_without_image_analysis(self):
+        from uuid import uuid4
+        from report_images import discover, materialize
+        from research_notebook import image_path
+        from run_reports_browser import _png_bytes
+        # All files are synthetic; never enumerate the user's Temp attachments.
+        with tempfile.TemporaryDirectory(prefix='report-clipboard-fixture-') as tmp:
+            path = Path(tmp) / ('codex-clipboard-' + str(uuid4()) + '.png')
+            raw = _png_bytes()
+            path.write_bytes(raw)
+            source = {'id': 'explicit-user-image', 'kind': 'conversation',
+                      'text': 'user:\n# Files mentioned by the user:\n\n## 结果图: ' + str(path) + '\n请把结果图放进日报。'}
+            with patch('report_images.tempfile.gettempdir', return_value=tmp):
+                discover(source, self.projects[0])
+                target = source['attachments'][0]['target']
+                body, gaps = materialize('![用户提供的结果图](' + target + ')', [source], self.owner, home=self.home)
+            path.unlink()
+            name = re.search(r'/records/assets/([^)]*)', body).group(1)
+            self.assertEqual(image_path(self.owner, name).read_bytes(), raw)
+            self.assertEqual(gaps, [])
+            # Reports edited in the existing UI use ../../assets/name too.
+            source = {'id': 'daily', 'kind': 'daily_report', 'locator': 'report:daily:2026-09-25:draft',
+                      'text': '![图](../../assets/' + name + ')'}
+            discover(source, self.owner)
+            self.assertTrue(source['attachments'][0]['available'])
+
+    def test_selected_missing_image_does_not_block_text_report(self):
+        run, item, original, _ = self.image_record()
+        original.unlink()
+        self.finish(run, '# 日报\n文字记录保留。\n![关键图](' + item['attachments'][0]['target'] + ')')
+        document = reports.load(self.owner, 'daily', self.day)
+        self.assertIn('文字记录保留', document['body'])
+        self.assertIn('图片未收录', document['body'])
+        self.assertTrue(any('关键图片' in g for g in document['selected_metadata']['gaps']))
+
+    def test_unselected_image_not_read_or_copied(self):
+        run, _, original, _ = self.image_record()
+        original.unlink()
+        self.finish(run, '# 日报\n仅总结文字，不选普通截图。')
+        document = reports.load(self.owner, 'daily', self.day)
+        self.assertFalse(any('关键图片' in g for g in document['selected_metadata']['gaps']))
+        self.assertEqual(list((Path(self.owner['wiki_root']) / 'records/assets').glob('*')), [])
+
+    def test_unknown_or_uncited_image_rejected(self):
+        self.records()
+        run = reports.report_plan(self.home, now=self.clock)['runs'][0]
+        with self.assertRaisesRegex(reports.ReportError, '已引用来源'):
+            self.finish(run, '# 日报\n![伪造](report-image:not-in-sources)')
+
+    def test_image_discovery_rejects_outside_paths_and_assistant_messages(self):
+        from report_images import discover, materialize
+        from research_notebook import upload, image_path
+        from run_reports_browser import _png_bytes
+        project = self.projects[0]
+        name = upload(project, {'data': base64.b64encode(_png_bytes()).decode()})['image']
+        path = image_path(project, name)
+        text = '# Files mentioned by the user:\n\n## 结果图: ' + str(path)
+        item = {'id': 'user-image', 'kind': 'conversation', 'text': 'user:\n' + text}
+        discover(item, project)
+        self.assertTrue(item['attachments'][0]['available'])
+        path.write_bytes(b'changed')
+        body, gaps = materialize('![图](' + item['attachments'][0]['target'] + ')', [item], self.owner, home=self.home)
+        self.assertIn('图片未收录', body)
+        self.assertTrue(gaps)
+        for text in ['assistant:\n' + text, 'user:\n## 非授权图: ' + str(Path(self.tmp.name) / 'outside.png')]:
+            other = {'id': 'excluded', 'kind': 'conversation', 'text': text}
+            discover(other, project)
+            self.assertNotIn('attachments', other)
+        other = {'id': 'outside', 'kind': 'manual_note', 'locator': 'records/manual/n.md',
+                 'text': '![越界](../../../../outside.png)\n![远程](https://example.invalid/a.png)'}
+        discover(other, project)
+        self.assertNotIn('attachments', other)
 
     def test_no_owner_configuration_and_no_read_before_six(self):
         config = reports.report_settings(self.home)
@@ -142,11 +306,99 @@ class WorkspaceReportTests(unittest.TestCase):
         self.assertEqual(adopted['metadata']['project_ids'], self.ids[:1])
         self.assertEqual(reports.load(self.owner, 'daily', self.day, view='previous')['body'], '人工综合结论')
 
-    def test_new_registration_does_not_silently_expand_authorization(self):
+    def test_new_registration_defaults_to_selected_without_enabling_capture(self):
+        from research_capture import read_consent
+        before = reports.report_settings(self.home)
+        path = Path(self.tmp.name) / 'new-project'
+        path.mkdir()
+        with patch('research_capture_runtime.capture_project', side_effect=AssertionError('no collection at registration')):
+            new = register_project(str(path), home=self.home)['project']
+        saved = reports.report_settings(self.home)
+        self.assertEqual(saved['project_ids'], self.ids + [new['id']])
+        self.assertEqual(saved['runtime'], before['runtime'])
+        self.assertEqual(saved['daily_time'], before['daily_time'])
+        self.assertEqual(saved['capture_hosts'], [])
+        self.assertFalse(read_consent(new)['capture_enabled'])
+        self.assertNotIn(new['id'], saved['activity_db_paths'])
+        with self.assertRaises(reports.ReportError) as conflict:
+            reports.save_settings({'expected_revision': before['revision'], 'project_ids': self.ids}, self.home)
+        self.assertEqual(conflict.exception.code, 'REVISION_CONFLICT')
+
+    def test_new_project_inherits_saved_hosts_but_not_opted_out_projects(self):
+        from research_capture import read_consent
+        current = reports.report_settings(self.home)
+        current = reports.save_settings({'expected_revision': current['revision'], 'project_ids': self.ids[:1],
+                                         'capture_hosts': ['codex']}, self.home)
         path = Path(self.tmp.name) / 'new-project'
         path.mkdir()
         new = register_project(str(path), home=self.home)['project']
-        self.assertNotIn(new['id'], reports.report_settings(self.home)['project_ids'])
+        saved = reports.report_settings(self.home)
+        self.assertEqual(saved['project_ids'], self.ids[:1] + [new['id']])
+        self.assertEqual(saved['runtime'], current['runtime'])
+        self.assertEqual(saved['start_date'], current['start_date'])
+        self.assertTrue(read_consent(new)['capture_enabled'])
+        self.assertEqual([h for h, enabled in read_consent(new)['hosts'].items() if enabled], ['codex'])
+        self.assertEqual(Path(saved['activity_db_paths'][new['id']]), Path(new['state_root']) / 'workbench/runtime.sqlite3')
+        self.assertFalse(read_consent(self.projects[1])['capture_enabled'])
+
+    def test_repeat_registration_preserves_user_opt_out(self):
+        current = reports.report_settings(self.home)
+        reports.save_settings({'expected_revision': current['revision'], 'project_ids': self.ids[:1]}, self.home)
+        config = Path(self.home) / 'reports-settings.json'
+        before = config.read_bytes()
+        result = register_project(self.projects[1]['source_root'], name='重新命名', home=self.home)
+        self.assertTrue(result['existing'])
+        self.assertEqual(config.read_bytes(), before)
+        self.assertEqual(reports.report_settings(self.home)['project_ids'], self.ids[:1])
+
+    def test_new_selection_never_enables_initial_or_paused_schedule(self):
+        path = Path(self.tmp.name) / 'first-project'
+        path.mkdir()
+        fresh_home = str(Path(self.tmp.name) / 'fresh-home')
+        fresh = register_project(str(path), home=fresh_home)['project']
+        initial = reports.report_settings(fresh_home)
+        self.assertEqual(initial['project_ids'], [fresh['id']])
+        self.assertFalse(initial['enabled'])
+        self.assertFalse(initial['knowledge_enabled'])
+        self.assertFalse(initial['literature_enabled'])
+        self.assertEqual(initial['runtime'], {})
+        self.assertEqual(initial['capture_hosts'], [])
+        self.assertIsNone(initial['daily_time'])
+        current = reports.report_settings(self.home)
+        reports.save_settings({'expected_revision': current['revision'], 'enabled': False}, self.home)
+        paused = register_project(str(path), home=self.home)['project']
+        saved = reports.report_settings(self.home)
+        self.assertIn(paused['id'], saved['project_ids'])
+        self.assertEqual(saved['connection'], 'paused')
+        self.assertEqual(saved['runtime'], current['runtime'])
+
+    def test_removed_project_is_pruned_without_blocking_daily_plan(self):
+        self.records()
+        current = reports.report_settings(self.home)
+        current = reports.save_settings({'expected_revision': current['revision'], 'capture_hosts': ['codex']}, self.home)
+        config = Path(self.home) / 'reports-settings.json'
+        legacy = config.read_bytes()
+        removed_root = Path(self.projects[1]['state_root'])
+        retained = {str(p.relative_to(removed_root)): p.read_bytes() for p in removed_root.rglob('*') if p.is_file()}
+        unregister_project(self.ids[1], home=self.home)
+        raw = json.loads(config.read_text(encoding='utf-8'))
+        self.assertEqual(raw['project_ids'], self.ids[:1])
+        self.assertEqual(list(raw['activity_db_paths']), self.ids[:1])
+        self.assertEqual(raw['runtime'], current['runtime'])
+        # Simulate a config written by an older version; GET normalizes without writing.
+        config.write_bytes(legacy)
+        saved = reports.report_settings(self.home)
+        self.assertEqual(saved['project_ids'], self.ids[:1])
+        self.assertEqual(list(saved['activity_db_paths']), self.ids[:1])
+        self.assertEqual(config.read_bytes(), legacy)
+        planned = reports.report_plan(self.home, now=self.clock)
+        self.assertTrue(planned['runs'])
+        self.assertEqual(planned['runs'][0]['project_ids'], self.ids[:1])
+        after = {str(p.relative_to(removed_root)): p.read_bytes() for p in removed_root.rglob('*') if p.is_file()}
+        self.assertEqual(after, retained)
+        # Save a current selection to persist removal; never touches removed files.
+        reports.save_settings({'expected_revision': saved['revision'], 'project_ids': self.ids[:1]}, self.home)
+        self.assertEqual(json.loads(config.read_text(encoding='utf-8'))['project_ids'], self.ids[:1])
 
     def test_legacy_report_links_and_bodies_are_preserved(self):
         legacy = reports.create(self.projects[0], 'daily', self.day, home=self.home)

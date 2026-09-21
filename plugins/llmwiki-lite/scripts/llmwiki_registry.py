@@ -383,6 +383,9 @@ def register_project(
             settings = load_settings(str(root))
             settings["current_project_id"] = record["id"]
             _write_json(root / "settings.json", settings)
+        if existing is None:
+            from research_reports import sync_registered_projects
+            sync_registered_projects(str(root), added=record)
     init_project(
         str(source),
         state_root=str(record["state_root"]),
@@ -527,4 +530,6 @@ def unregister_project(identifier: str, *, home: str | None = None) -> dict[str,
             settings["web_default_project_id"] = None
         settings["project_order"] = [pid for pid in settings.get("project_order", []) if pid != record["id"]]
         _write_json(root / "settings.json", settings)
+        from research_reports import sync_registered_projects
+        sync_registered_projects(str(root))
     return {"ok": True, "unregistered": record, "files_deleted": False}

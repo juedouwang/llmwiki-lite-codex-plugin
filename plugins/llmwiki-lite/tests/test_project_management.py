@@ -135,6 +135,12 @@ class ProjectManagementTests(preferences.ProjectPreferencesTests):
         menu = html.split('<div class="console-project-menu">')[1].split("</div>")[0]
         self.assertNotIn("管理项目", menu)
         self.assertNotIn("添加项目", menu)
-        self.assertIn("计划决定何时整理", html)
+        self.assertIn("所有参与项目共用一份整理计划", html)
+        self.assertIn("新注册项目默认参与", html)
         self.assertIn("会话关联决定用哪些材料", html)
-        self.assertIn("保存设置不会开始定时运行", html)
+        self.assertIn("保存配置不会创建后台进程", html)
+        self.assertIn("不自动开启取材或恢复已暂停计划", html)
+        with urllib.request.urlopen(origin + "/api/reports/settings") as response:
+            config = json.load(response)
+        self.assertCountEqual(config["project_ids"], [self.a["id"], self.z["id"]])
+        self.assertFalse(config["enabled"])

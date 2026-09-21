@@ -338,7 +338,7 @@ class _GitProject:
 _DIFF_FLAGS = ['--relative', '--no-ext-diff', '--no-textconv', '--no-color', '--ignore-submodules=all']
 
 
-def _git_sources(git, day, now):
+def _git_sources(git, day, now, *, metadata_only=False):
     bundle = git.bundle
     start = _midnight(day)
     end = start + timedelta(days=1)
@@ -359,6 +359,11 @@ def _git_sources(git, day, now):
             continue
         if not (start <= occurred < end and occurred <= now):
             continue
+        if metadata_only:
+            bundle.add('git_commit', f'git:commit:{oid}',
+                       f'Git 提交 {oid}\n提交时间（committer）：{occurred.isoformat()}\n提交说明：\n{message.strip()}',
+                       occurred=occurred.isoformat(), observed=occurred.isoformat(), revision=oid)
+            continue
         parent = parents.split()[0] if parents else None
         if parent and not re.fullmatch(r'[0-9a-f]{40,64}', parent):
             bundle.gaps.add('Git 父提交身份不可用。')
@@ -373,6 +378,8 @@ def _git_sources(git, day, now):
         text += '可用变化路径：\n' + '\n'.join(paths) + '\n\n' + patch
         bundle.add('git_commit', f'git:commit:{oid}', text, occurred=occurred.isoformat(),
                    observed=occurred.isoformat(), revision=oid)
+    if metadata_only:
+        return
     if _date(day) != now.astimezone(CST).date():
         bundle.gaps.add('历史工作区 status/diff 未捕获，不能据当前状态回填历史。')
         return
@@ -771,7 +778,7 @@ def read_activity_source(project, locator, *, settings=None, now=None):
         raise ActivitySourceUnavailable('UNREADABLE', '既有活动库不可读，不能判定为来源删除。') from None
 
 
-def extra_sources(project, day, *, settings, now):
+def extra_sources(project, day, *, settings, now, report_only=False):
     """补充某个北京时间自然日的来源，不调用采集器、不读取账户会话文件。"""
     now = _clock(now)
     target = _date(day)
@@ -789,12 +796,12 @@ def extra_sources(project, day, *, settings, now):
     try:
         policy = _Policy(project)
         git = _GitProject(policy, bundle)
-        _git_sources(git, day, now)
+        _git_sources(git, day, now, metadata_only=report_only)
     except _Unavailable as exc:
         bundle.gaps.add(str(exc))
     except (capture.CaptureError, OSError, ValueError, KeyError, RuntimeError):
         bundle.gaps.add('Git/忽略规则不可验证，未声称覆盖对应材料。')
-    if policy:
+    if policy and not report_only:
         try:
             _hints(project, day, now, policy, git, bundle)
         except _Unavailable as exc:

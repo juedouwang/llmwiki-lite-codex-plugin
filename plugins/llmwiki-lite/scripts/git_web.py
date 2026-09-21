@@ -100,7 +100,7 @@ def checked_git():
 
 
 class Repo:
-    def __init__(self, home, project_id):
+    def __init__(self, home, project_id, worktree_id=None):
         # A server launched from a Git hook/tool must not inherit another
         # worktree's index, object store, namespace or repository selection.
         if any(os.environ.get(k) for k in ('GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE',
@@ -115,6 +115,34 @@ class Repo:
         self.root = Path(self.project['source_root']).resolve()
         self.state = Path(self.project['state_root']).resolve() / 'git-web'
         self.exe = checked_git()
+        self.registered_root = self.root
+        self.locate()
+        self.registered_common = self.common
+        self.worktree_id = worktree_id or ''
+        if self.worktree_id:
+            if not isinstance(self.worktree_id, str) or not re.fullmatch(r'[0-9a-f]{64}', self.worktree_id):
+                fail('invalid_worktree', '工作树标识无效，请返回注册目录重新选择。', 400)
+            worktrees = self.worktrees()
+            if self.worktree_reason(worktrees):
+                fail('worktree_unavailable', '注册目录的 Git 绑定已失效，请修复后重新选择。')
+            selected = next((w for w in worktrees if self.worktree_token(w['path']) == self.worktree_id), None)
+            if not selected or selected['bare'] or selected['prunable'] or not Path(selected['path']).is_dir():
+                fail('worktree_unavailable', '该工作树已移走或不可用，请返回注册目录重新选择。')
+            self.root = Path(selected['path'])
+            try:
+                self.locate()
+                reason = self.worktree_reason(worktrees)
+                if self.common != self.registered_common or reason:
+                    fail('worktree_unavailable', reason or '工作树不再属于注册仓库。')
+            except (GitError, OSError, ValueError, subprocess.CalledProcessError, WebGitError):
+                fail('worktree_unavailable', '工作树绑定已失效，请返回注册目录重新选择。')
+            if self.root != self.registered_root:
+                self.state = self.state / 'worktrees' / self.worktree_id
+        self.key = digest(str(self.common).casefold() if os.name == 'nt' else str(self.common))
+        self.binding = digest([str(Path(home).resolve()), self.pid, str(self.registered_root), str(self.root), str(self.common), str(self.gitdir)])
+        self._config = None
+
+    def locate(self):
         # One process for related metadata; these are re-read for every request.
         meta = self.git('rev-parse', '--path-format=absolute', '--show-toplevel',
                         '--git-common-dir', '--absolute-git-dir', '--show-object-format',
@@ -124,11 +152,33 @@ class Repo:
             fail('unsupported_repo', '请注册代码仓库根目录；不会操作其父仓库或裸仓库。')
         self.common = Path(values[1]).resolve()
         self.gitdir = Path(values[2]).resolve()
-        self.key = digest(str(self.common).casefold() if os.name == 'nt' else str(self.common))
-        self.binding = digest([str(Path(home).resolve()), self.pid, str(self.root), str(self.common), str(self.gitdir)])
         self.oid_length = 64 if values[3] == 'sha256' else 40
         self.superproject = values[4] if len(values) > 4 else ''
-        self._config = None
+
+    def worktree_token(self, path):
+        parts = [str(Path(self.home).resolve()), self.pid, str(self.registered_root),
+                 str(self.registered_common), str(Path(path).resolve())]
+        return digest([v.casefold() for v in parts] if os.name == 'nt' else parts)
+
+    def worktree_options(self, worktrees):
+        options = []
+        for tree in worktrees:
+            root = Path(tree['path'])
+            gitdir = root / '.git'
+            try:
+                if gitdir.is_file():
+                    value = gitdir.read_text(encoding='utf-8').strip()
+                    if value.startswith('gitdir: '):
+                        gitdir = (root / value[8:]).resolve()
+                reason = self.worktree_reason(worktrees, root=root, gitdir=gitdir)
+            except (OSError, ValueError):
+                reason = '工作树目录不可用，请在原 Git 工具中修复后刷新。'
+            options.append({'id': self.worktree_token(root), 'path': str(root), 'name': root.name,
+                            'branch': tree['branch'].removeprefix('refs/heads/'),
+                            'detached': not tree['branch'], 'current': root == self.root,
+                            'registered': root == self.registered_root,
+                            'available': not reason, 'reason': reason})
+        return options
 
     @property
     def config(self):
@@ -175,27 +225,29 @@ class Repo:
             })
         return records
 
-    def worktree_reason(self, worktrees):
-        current = [w for w in worktrees if Path(w['path']) == self.root]
+    def worktree_reason(self, worktrees, *, root=None, gitdir=None):
+        root = self.root if root is None else root
+        gitdir = self.gitdir if gitdir is None else gitdir
+        current = [w for w in worktrees if Path(w['path']) == root]
         if len(current) != 1 or current[0]['bare'] or current[0]['prunable']:
             return '当前目录不是有效的已登记工作树，请在原 Git 工具中修复后刷新。'
-        dotgit = self.root / '.git'
+        dotgit = root / '.git'
         if dotgit.is_symlink() or getattr(dotgit, 'is_junction', lambda: False)():
             return '工作树的 .git 路径被重定向，网页暂仅支持浏览。'
         try:
             if dotgit.is_file():
                 value = dotgit.read_text(encoding='utf-8').strip()
-                if not value.startswith('gitdir: ') or (self.root / value[8:]).resolve() != self.gitdir:
+                if not value.startswith('gitdir: ') or (root / value[8:]).resolve() != gitdir:
                     return '工作树 Git 目录绑定已改变，请刷新后重试。'
-            elif not dotgit.is_dir() or dotgit.resolve() != self.gitdir:
+            elif not dotgit.is_dir() or dotgit.resolve() != gitdir:
                 return '工作树 Git 目录绑定无效，请在原 Git 工具中处理。'
-            if self.gitdir != self.common:
+            if gitdir != self.common:
                 # A registered linked worktree needs both directions of Git's
                 # own binding, not merely a client-controlled .git pointer.
-                if self.gitdir.parent != self.common / 'worktrees':
+                if gitdir.parent != self.common / 'worktrees':
                     return '非标准工作树 Git 目录暂仅支持浏览。'
-                common = (self.gitdir / (self.gitdir / 'commondir').read_text(encoding='utf-8').strip()).resolve()
-                backlink = Path((self.gitdir / 'gitdir').read_text(encoding='utf-8').strip()).resolve()
+                common = (gitdir / (gitdir / 'commondir').read_text(encoding='utf-8').strip()).resolve()
+                backlink = Path((gitdir / 'gitdir').read_text(encoding='utf-8').strip()).resolve()
                 if common != self.common or backlink != dotgit.resolve():
                     return '工作树双向绑定不一致，请在原 Git 工具中修复后刷新。'
         except (OSError, ValueError):
@@ -206,7 +258,7 @@ class Repo:
         owners = [w['path'] for w in (self.worktrees() if worktrees is None else worktrees)
                   if w['branch'] == 'refs/heads/' + branch and Path(w['path']) != self.root]
         return ('该分支正在其他工作树使用：' + '、'.join(owners)
-                + '。请切换其他分支，或在原 Git 工具中释放后刷新。') if owners else ''
+                + '。可进入所在工作树；不会在当前目录重复检出。') if owners else ''
 
     def check_switch(self, branch):
         reason = self.switch_reason(branch)
@@ -216,7 +268,7 @@ class Repo:
     def revalidate(self):
         # Repo was constructed before waiting for the common-dir lock. Resolve
         # registration/location/config again *under* that lock, before writing.
-        fresh = Repo(self.home, self.pid)
+        fresh = Repo(self.home, self.pid, self.worktree_id)
         if (fresh.root, fresh.common, fresh.gitdir, fresh.state) != (self.root, self.common, self.gitdir, self.state):
             fail('state_changed', '注册目录或工作树绑定已改变，请刷新并重新确认。')
         self._config = None
@@ -448,6 +500,7 @@ class Repo:
 def status(repo):
     worktrees = repo.worktrees()
     capabilities = repo.capabilities(worktrees)
+    options = repo.worktree_options(worktrees)
     head, refs = repo.head(), repo.refs()
     remotes = []
     for name in repo.git('remote').stdout.splitlines():
@@ -470,10 +523,15 @@ def status(repo):
         if ref.startswith('refs/heads/'):
             name = ref[11:]
             reason = repo.switch_reason(name, worktrees)
+            owner = next((w for w in options if w['branch'] == name and not w['current']), None)
             branches.append({'name': name, 'oid': oid, 'current': name == head['branch'],
-                             'switchable': not reason, 'switch_reason': reason})
+                             'switchable': not reason, 'switch_reason': reason,
+                             'worktree_id': owner['id'] if owner and owner['available'] else None,
+                             'worktree_path': owner['path'] if owner else None})
     return {'ok': True, 'capabilities': capabilities, 'head': head,
-            'worktree': {'path': str(repo.root), 'linked': repo.gitdir != repo.common, 'count': len(worktrees)},
+            'worktree': {'id': repo.worktree_token(repo.root), 'path': str(repo.root),
+                         'linked': repo.gitdir != repo.common, 'count': len(worktrees)},
+            'worktrees': options,
             'branches': branches,
             'remotes': remotes, 'upstream': upstream, 'files': repo.files() if capabilities['write'] else [], 'ongoing': repo.ongoing(),
             'last_fetch_at': cached.get('last_fetch_at')}
@@ -916,11 +974,14 @@ def merge_action(repo, action, payload):
     fail('invalid_request', '未知合并操作。', 400)
 
 
-def dispatch(home, project_id, method, endpoint, data=None):
+def dispatch(home, project_id, method, endpoint, data=None, *, worktree_id=None):
     """Return (JSON, HTTP status), never raw stderr or a client-supplied path."""
     try:
-        repo = Repo(home, project_id)
         data = {} if data is None else data
+        if method == 'GET':
+            data = dict(data)
+            worktree_id = data.pop('worktree', worktree_id)
+        repo = Repo(home, project_id, worktree_id)
         if method == 'GET':
             if endpoint == 'status':
                 result = status(repo)

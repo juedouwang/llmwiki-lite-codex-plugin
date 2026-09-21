@@ -34,21 +34,26 @@
 .progress-range{justify-content:space-between;font-size:12px;margin:12px 0;flex-wrap:wrap}
 .progress-week-controls{gap:5px}.progress-week-controls button{padding:5px 9px}.progress-week-controls svg{width:16px;height:16px}.progress-week-controls select{font-size:12px}
 #progress-timeline{overflow:auto;border:1px solid var(--line);border-radius:8px;max-width:100%}
-.progress-grid{min-width:620px}.progress-grid-row{display:grid;grid-template-columns:210px repeat(var(--days),minmax(25px,1fr));min-height:40px;align-items:stretch;border-bottom:1px solid var(--line)}
+.progress-grid{--task-column:200px;min-width:calc(var(--task-column) + var(--days)*36px)}.progress-grid-row{display:grid;grid-template-columns:var(--task-column) repeat(var(--days),minmax(36px,1fr));min-height:42px;align-items:stretch;border-bottom:1px solid var(--line)}
 .progress-grid-row:last-child{border:0}.progress-grid-head{min-height:32px;color:var(--muted);font-size:11px}
-.progress-name,.progress-day{padding:8px}.progress-day{text-align:center}.progress-day.is-today{background:var(--soft);color:var(--text)}
-.progress-calendar-title{text-align:left;background:transparent;border:0;padding:8px 12px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.progress-name,.progress-day{padding:8px 12px}.progress-day{padding:8px 0;text-align:center;white-space:nowrap}.progress-day.is-today{background:var(--soft);color:var(--text)}
+.progress-name,.progress-calendar-title{position:sticky;left:0;z-index:1;background:var(--panel)}
+.progress-calendar-title{display:block;min-width:0;text-align:left;border:0;border-right:1px solid var(--line);border-radius:0;padding:8px 12px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.progress-calendar-title:hover{background:var(--soft)}
 .progress-track{grid-column:2/-1;display:grid;grid-template-columns:repeat(var(--days),minmax(0,1fr));align-items:center;background:repeating-linear-gradient(to right,transparent 0,transparent calc(100% / var(--days) - 1px),var(--line) calc(100% / var(--days) - 1px),var(--line) calc(100% / var(--days)))}
-.progress-marker{padding:3px;border:0;border-radius:5px;min-width:0;background:var(--priority-bg);color:var(--priority-ink);margin:3px}
+#research-progress .progress-bar{display:block;min-height:0;height:26px;min-width:0;max-width:100%;padding:0 8px;border:0;border-radius:5px;background:var(--priority-bg);color:var(--priority-ink);margin:5px 3px;text-align:left;font-size:11px;line-height:26px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#research-progress .progress-bar:hover{filter:brightness(.96)}
+#research-progress .progress-bar.is-overdue{background:light-dark(#f8e9e8,#3b2a2c);color:light-dark(#9b4d4b,#e0a4a5)}
+#research-progress .progress-bar.is-clipped-start{border-top-left-radius:0;border-bottom-left-radius:0}#research-progress .progress-bar.is-clipped-end{border-top-right-radius:0;border-bottom-right-radius:0}
 .progress-empty{font-size:13px;color:var(--muted);padding:18px 12px}.progress-outside{margin:8px;font-size:12px;color:var(--muted);border:0}
 #progress-message{font-size:13px;padding:12px;background:var(--soft);border-radius:6px;margin:12px 0}
 #progress-dialog,#progress-import-dialog{box-sizing:border-box;width:min(700px,calc(calc(100vw / var(--workbench-scale,1)) - 32px));max-height:calc(90vh / var(--workbench-scale,1));overflow:auto;border:1px solid var(--line);border-radius:12px;padding:24px;color:var(--text);background:var(--panel)}
 #progress-dialog::backdrop,#progress-import-dialog::backdrop{background:#0005}
 .progress-dialog-head{justify-content:space-between}.progress-dialog-head h2{margin:0!important}.progress-dialog-head button{border:0;background:transparent;font-size:20px}
 #progress-form>label,.progress-task-options label{display:flex;flex-direction:column;gap:6px;margin:16px 0;font-size:12px;color:var(--muted)}
-#progress-form input,#progress-form textarea,#progress-form select{box-sizing:border-box;width:100%;font:14px/1.7 var(--font-ui);color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px}
-#progress-form textarea{resize:vertical;min-height:130px}.progress-task-options{align-items:stretch}.progress-task-options label{flex:1;min-width:0}
-.progress-date-shortcuts{margin:-5px 0 16px;flex-wrap:wrap}.progress-date-shortcuts button{padding:4px 10px;font-size:12px;background:var(--soft);border:1px solid var(--line)}
+#progress-form input,#progress-form textarea,#progress-form select{box-sizing:border-box;width:100%;min-width:0;max-width:100%;margin:0;font:14px/1.7 var(--font-ui);color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px}
+#progress-form input,#progress-form select{height:38px;line-height:normal}
+#progress-form textarea{resize:vertical;min-height:130px}.progress-task-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:16px;margin:16px 0}.progress-deadline-field{min-width:0}#progress-form .progress-task-options label{min-width:0;margin:0}
+.progress-date-shortcuts{margin:8px 0 0;gap:6px;flex-wrap:wrap}.progress-date-shortcuts button{padding:4px 8px;font-size:12px;background:var(--soft);border:1px solid var(--line)}
 #progress-description-preview,#progress-legacy,#progress-history{font-size:12px;margin:14px 0;border-top:1px solid var(--line);padding-top:10px}
 #progress-preview{font-size:13px;overflow-wrap:anywhere;max-height:360px;overflow:auto;padding:8px 0}
 #progress-preview img{display:block;max-width:100%;max-height:320px;object-fit:contain;border-radius:6px}#progress-preview figure{margin:10px 0}#progress-preview pre,#progress-legacy pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
@@ -58,7 +63,7 @@
 .progress-dialog-actions{justify-content:flex-end;flex-wrap:wrap;margin-top:18px}.progress-dialog-actions .rw-spacer{flex:1}.progress-danger{color:var(--danger);background:transparent;border:0}
 .progress-candidate{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);font-size:13px}.progress-candidate input{width:auto;margin-top:4px}
 .progress-more{margin-top:20px}.progress-more button{border:0;background:transparent;color:var(--muted);font-size:12px}
-@media(max-width:700px){.progress-task-row{grid-template-columns:22px minmax(0,1fr) 95px;gap:8px}.progress-inline-priority{grid-column:3;width:95px;grid-row:1}.progress-ddl{grid-column:2;grid-row:2}.progress-task-options{flex-direction:column;gap:0}.progress-task-options label{margin:8px 0}.progress-dialog-actions{gap:7px}.progress-toolbar{align-items:flex-start}#progress-dialog,#progress-import-dialog{padding:16px}}
+@media(max-width:700px){.progress-task-row{grid-template-columns:22px minmax(0,1fr) 95px;gap:8px}.progress-inline-priority{grid-column:3;width:95px;grid-row:1}.progress-ddl{grid-column:2;grid-row:2}.progress-task-options{grid-template-columns:minmax(0,1fr);gap:14px}.progress-grid{--task-column:150px}.progress-dialog-actions{gap:7px}.progress-toolbar{align-items:flex-start}#progress-dialog,#progress-import-dialog{padding:16px}}
 
 /* Override shared button minimums: keep completion circles round and dates on one line. */
 #research-progress .progress-done-toggle{min-height:0;min-width:0;width:21px;height:21px;flex-shrink:0}

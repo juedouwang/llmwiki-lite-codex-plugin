@@ -17,14 +17,15 @@
   const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const today=()=>iso(new Date()),from=s=>new Date(s+'T12:00:00');
   const add=(s,n)=>{const d=from(s);d.setDate(d.getDate()+n);return iso(d);};
-  const week=()=>add(today(),-((from(today()).getDay()+6)%7));
+  const delta=(a,b)=>Math.round((from(a)-from(b))/86400000);
+  const shortDate=s=>`${Number(s.slice(5,7))}/${Number(s.slice(8))}`;
   const recordUrl=id=>`/project/${encodeURIComponent(project)}/records/`+id.replace(/^records\//,'').split('/').map(encodeURIComponent).join('/');
   const description=t=>t.description??[t.effective_context?.checkpoint??t.checkpoint,t.effective_context?.next_step??t.next_step].filter(Boolean).join('\n\n');
   const ddl=t=>t.ddl??(t.end||t.start||'');
   const sorted=list=>[...list].sort((a,b)=>(rank[a.priority]??1)-(rank[b.priority]??1)||(ddl(a)||'9999-12-31').localeCompare(ddl(b)||'9999-12-31')||a.id.localeCompare(b.id));
   let tasks=[],revision='',records=[],candidates=[],recordsLoaded=false,ready=false,busy=false;
   let editing=null,baseline=null,dialogRevision='',session=0,descriptionTouched=false,conflict=false;
-  let view='todo',start=week(),days=7,timer=null,inflight=false,epoch=0,previewTimer=null,previewSequence=0;
+  let view='todo',start=today(),days=7,timer=null,inflight=false,epoch=0,previewTimer=null,previewSequence=0;
   const uploads=new Map();
   function notice(text){const n=$('#progress-message');if(n){n.textContent=text;n.hidden=!text;}}
   function error(text){const n=$('#progress-error');if(n){n.textContent=text;n.hidden=!text;}}
@@ -99,19 +100,25 @@
       const tab=$('#progress-'+name+'-tab');tab.setAttribute('aria-pressed',String(view===name));tab.querySelector('span').textContent=String(list.length);
     }
     $('#progress-schedule').hidden=view==='done';
-    const end=add(start,days-1),timeline=$('#progress-timeline');timeline.replaceChildren();
+    const current=today(),end=add(start,days-1),timeline=$('#progress-timeline');timeline.replaceChildren();
     $('#progress-range-label').textContent=`${start} — ${end}`;
     const grid=node('div','progress-grid');grid.style.setProperty('--days',days);
-    const header=node('div','progress-grid-row progress-grid-head');header.append(node('span','progress-name','截止日'));
-    for(let i=0;i<days;i++){const date=add(start,i);header.append(node('span','progress-day'+(date===today()?' is-today':''),['日','一','二','三','四','五','六'][from(date).getDay()]+' '+Number(date.slice(8))));}grid.append(header);
-    for(const task of todo.filter(t=>ddl(t)>=start&&ddl(t)<=end)){
-      const row=node('div','progress-grid-row'),name=button(task.title,()=>openTask(task),'progress-calendar-title');row.append(name);
-      const track=node('div','progress-track'),marker=button('◆',()=>openTask(task),'progress-marker priority-'+(task.priority||'medium'));
-      let offset=0;while(add(start,offset)!==ddl(task)&&offset<days)offset++;marker.style.gridColumn=String(offset+1);marker.title=task.title+' · DDL '+ddl(task);marker.setAttribute('aria-label',marker.title);track.append(marker);row.append(track);grid.append(row);
+    const header=node('div','progress-grid-row progress-grid-head');header.append(node('span','progress-name','任务'));
+    for(let i=0;i<days;i++){const date=add(start,i);header.append(node('span','progress-day'+(date===current?' is-today':''),['日','一','二','三','四','五','六'][from(date).getDay()]+' '+Number(date.slice(8))));}grid.append(header);
+    // Show the remaining span, not a stored start date. Overdue work stays visible today.
+    const scheduled=todo.filter(t=>ddl(t)).map(task=>({task,due:ddl(task),from:current,to:ddl(task)<current?current:ddl(task)}));
+    for(const item of scheduled.filter(t=>t.to>=start&&t.from<=end)){
+      const {task,due}=item,overdue=due<current;
+      const row=node('div','progress-grid-row'),name=button(task.title,()=>openTask(task),'progress-calendar-title');name.title=task.title;row.append(name);
+      const track=node('div','progress-track'),bar=button(overdue?'已逾期':due===current?'今天截止':shortDate(due)+' 截止',()=>openTask(task),'progress-bar priority-'+(task.priority||'medium'));
+      bar.style.gridColumn=`${Math.max(0,delta(item.from,start))+1} / ${Math.min(days-1,delta(item.to,start))+2}`;
+      bar.classList.toggle('is-overdue',overdue);bar.classList.toggle('is-clipped-start',item.from<start);bar.classList.toggle('is-clipped-end',item.to>end);
+      bar.title=task.title+' · '+(overdue?'截止 '+due+'，已逾期 '+delta(current,due)+' 天':current+' — '+due)+' · '+priorities[task.priority||'medium'];
+      bar.setAttribute('aria-label',bar.title);track.append(bar);row.append(track);grid.append(row);
     }
-    timeline.append(grid);if(grid.children.length===1)timeline.append(node('p','progress-empty','这段时间没有截止任务。未排期任务仍保留在 Todo。'));
-    const outside=todo.filter(t=>ddl(t)&&(ddl(t)<start||ddl(t)>end));
-    if(outside.length)timeline.append(button(`${outside.length} 项任务在此范围外 · 查看最近截止日`,()=>{start=sorted(outside).map(ddl).sort()[0];render();},'progress-outside'));
+    timeline.append(grid);if(grid.children.length===1)timeline.append(node('p','progress-empty','这段时间没有已排期任务。未排期任务仍保留在 Todo。'));
+    const outside=scheduled.filter(t=>t.to<start||t.from>end);
+    if(outside.length)timeline.append(button(`${outside.length} 项任务在此范围外 · 回到今天`,()=>{start=today();render();},'progress-outside'));
   }
   function legacyInfo(task){
     const detail=$('#progress-legacy'),keys=['checkpoint','next_step','start','end','status','context_mode','effective_context','auto_context','assistant_context'];
@@ -232,7 +239,7 @@
     });
     for(const name of ['todo','done'])$('#progress-'+name+'-tab').addEventListener('click',()=>{view=name;render();});
     $('#progress-priority-filter').addEventListener('change',render);
-    $('#progress-prev').addEventListener('click',()=>{start=add(start,-days);render();});$('#progress-next').addEventListener('click',()=>{start=add(start,days);render();});$('#progress-today').addEventListener('click',()=>{start=week();render();});$('#progress-days').addEventListener('change',e=>{days=Number(e.target.value);render();});
+    $('#progress-prev').addEventListener('click',()=>{start=add(start,-days);render();});$('#progress-next').addEventListener('click',()=>{start=add(start,days);render();});$('#progress-today').addEventListener('click',()=>{start=today();render();});$('#progress-days').addEventListener('change',e=>{days=Number(e.target.value);render();});
     $('#progress-import').addEventListener('click',async()=>{try{await ensureRecords();if(!active())return;
       const box=$('#progress-candidates');box.replaceChildren();
       candidates.filter(c=>!tasks.some(t=>t.id===c.id)).forEach(c=>{const label=node('label','progress-candidate'),check=node('input');check.type='checkbox';check.value=c.id;label.append(check,node('span','',c.title));box.append(label);});

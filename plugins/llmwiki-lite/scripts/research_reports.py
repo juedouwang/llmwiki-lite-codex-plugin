@@ -447,11 +447,35 @@ def report_settings(home=None) -> dict:
     stored = _json(path, {})
     values = {key: stored.get(key, value) for key, value in defaults.items()}
     values['weekly_owner_project_id'] = None  # Read-only compatibility field; new reports never have an owner.
+    # Old registries may contain removed projects: never let one stale ID block all reports.
+    registered = {p['id'] for p in list_projects(home=home)['projects']}
+    values['project_ids'] = [pid for pid in values['project_ids'] if pid in registered]
+    values['activity_db_paths'] = {pid: path for pid, path in values['activity_db_paths'].items()
+                                   if pid in values['project_ids']}
     runtime = stored.get('runtime') or {}
     return {'ok': True, **values, 'report_scope': 'workspace', 'reports_url': '/reports', 'revision': digest(values), 'runtime': runtime, 'config_path': str(path.resolve()),
             'workflow_cli': str(Path(__file__).with_name('research_cycle.py').resolve()),
             'workflow_skill': str(Path(__file__).resolve().parents[1] / 'skills/llmwiki-research-record/SKILL.md'),
             'connection': 'paused' if not values['enabled'] else ('configured' if runtime.get('automation_id') and runtime.get('target_thread_id') and str(runtime.get('status', 'ACTIVE')).upper() == 'ACTIVE' else 'pending')}
+
+
+
+def sync_registered_projects(home, *, added: dict | None = None) -> None:
+    """Registry caller holds _home_lock; keep selection and registration in one lock."""
+    current = report_settings(home)
+    ids, paths = current['project_ids'], current['activity_db_paths']
+    if added is not None:
+        if added['id'] not in ids:
+            ids.append(added['id'])
+        # Inherit only saved host choices, never turn capture or the schedule on.
+        from research_capture_runtime import configure_capture
+        configure_capture(added, current['capture_hosts'])
+        if current['capture_hosts']:
+            paths[added['id']] = str(safe_file(Path(added['state_root']), 'workbench/runtime.sqlite3'))
+    path = Path(current['config_path'])
+    stored = _json(path, {})
+    if stored.get('project_ids') != ids or stored.get('activity_db_paths', {}) != paths:
+        _write_json(path, {**stored, 'project_ids': ids, 'activity_db_paths': paths})
 
 
 def save_settings(payload: dict, home=None) -> dict:
@@ -472,8 +496,9 @@ def save_settings(payload: dict, home=None) -> dict:
         if not isinstance(ids, list) or any(not isinstance(i, str) for i in ids):
             raise ReportError('项目列表无效。')
         config['project_ids'] = list(dict.fromkeys(ids))
-        for pid in ids:
-            project_for(pid, home)
+        projects = {p['id']: p for p in list_projects(home=home)['projects']}
+        if any(pid not in projects for pid in ids):
+            raise ReportError('参与项目已被移除，请刷新页面后重新选择。')
         for key in ('daily_time', 'weekly_time'):
             value = config[key]
             if value is not None and (not isinstance(value, str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', value)):
@@ -507,7 +532,10 @@ def save_settings(payload: dict, home=None) -> dict:
         if 'capture_hosts' in payload or (config['capture_hosts'] and ids != current['project_ids']):
             from research_capture_runtime import configure_capture
             for pid in set(current['project_ids']) - set(config['project_ids']):
-                configure_capture(project_for(pid, home), [])
+                # An unregistered project may remain in older saved settings.
+                # Do not resolve it or touch its retained files during cleanup.
+                if pid in projects:
+                    configure_capture(projects[pid], [])
             for pid in config['project_ids']:
                 project = project_for(pid, home)
                 configure_capture(project, config['capture_hosts'])
@@ -579,11 +607,13 @@ def collect_sources(project: dict, day: str, *, now: datetime | None = None, hom
     except (LLMWikiError, OSError, ValueError, KeyError, TypeError):
         gaps.append('任务历史不可用。')
     from research_sources import extra_sources
-    extra, missing = extra_sources(project, day, settings=report_settings(home), now=now)
+    extra, missing = extra_sources(project, day, settings=report_settings(home), now=now, report_only=True)
     items.extend(extra)
     gaps.extend(missing)
+    from report_images import discover
     for item in items:
         item['project_name'] = project['name']
+        discover(item, project)
     return items, sorted(set(gaps))
 
 
@@ -627,6 +657,8 @@ def _report_sources(owner: dict, kind: str, start: str, ids: list, home, now: da
                           'project_ids': included, 'kind': 'daily_report', 'occurred_at': day,
                           'observed_at': now.isoformat(), 'locator': locator, 'revision': revision,
                           'text': report['body'], 'certainty': 'event'})
+            from report_images import discover
+            discover(items[-1], daily_owner)
             covered.update(included)
             gaps.extend(selected.get('gaps', []))
             if not report['metadata']['versions']:
@@ -851,8 +883,10 @@ def report_finish(run_id: str, outcome: str, body=None, source_ids=None, source_
                 if not body.startswith(title + '\n') or headings != ['本周工作', '下周计划', '需要协调与帮助'] or re.search(r'【.*?】|^#+ 周报风格说明', body, re.M):
                     raise ReportError('生成周报不符合用户模板。', 'INVALID_GENERATED_REPORT')
             sources = [{k: v for k, v in available[sid].items() if k not in {'text', 'role'}} | {'summary': source_summaries[sid]} for sid in source_ids]
+            from report_images import materialize
+            body, image_gaps = materialize(body, [available[sid] for sid in source_ids], project, home=home)
             result = publish(project, run['kind'], run['period_start'], body, generation_id=run_id, sources=sources,
-                             fingerprint=run['input_fingerprint'], project_ids=run['project_ids'], coverage_until=run['coverage_until'], gaps=run['gaps'], _locked=True, _finish_signature=signature)
+                             fingerprint=run['input_fingerprint'], project_ids=run['project_ids'], coverage_until=run['coverage_until'], gaps=sorted(set(run['gaps'] + image_gaps)), _locked=True, _finish_signature=signature)
         else:
             with nullcontext():
                 meta = _meta(project, key)
@@ -875,9 +909,11 @@ def settings_section(home: str) -> str:
     projects = list_projects(home=home)['projects']
     checks = ''.join(f'<label class="check-label"><input name="report-project" type="checkbox" value="{esc(p["id"])}">{esc(p["name"])}</label>' for p in projects)
     return f'''<details class="settings-section" id="report-settings"><summary>报告自动整理</summary>
-<p class="meta">工作台负责保存和展示；实际总结由你使用的助手完成。“连接宿主计划”就是让助手在指定时间自动来整理，而不是让网站自己运行模型。</p>
-<details class="schedule-help"><summary>为什么要连接计划、关联会话？</summary>
-<p><strong>计划决定何时整理。</strong>先保存下面的项目和时间设置，再把“复制连接指令”交给助手，在当前对话中连接内置定时计划。只勾选开关、保存设置不会开始定时运行，也不会启动额外终端。</p>
+<p class="meta">所有参与项目共用一份整理计划。连接一次后，新注册项目默认参与，下次运行自动采用最新选择；不想参与时取消勾选并保存即可。</p>
+<details class="schedule-help"><summary>计划与取材说明</summary>
+<p><strong>只需首次连接。</strong>第一次保存项目和时间后，将连接指令交给助手创建或复用共享计划。已连接后，注册新项目自动参与，取消参与或调整取材授权时保存设置，下次运行自动读取；不会新增计划或后台终端。新注册项目默认勾选；已取消的项目不会因重复注册恢复勾选。对话取材只沿用已保存的宿主授权，不自动开启取材或恢复已暂停计划。</p>
+<p><strong>调整执行时刻。</strong>网页保存的是取材与报告设置；如需改变计划唤醒时刻或恢复宿主中暂停的计划，请复制维护指令交给助手同步同一计划，不要另建一份。</p>
+<button type="button" id="report-copy-maintain" hidden>复制计划维护指令</button>
 <p><strong>会话关联决定用哪些材料。</strong>助手需要知道哪段本机对话属于哪个项目，避免把不同科研任务混进报告。这不是让你给每条消息做标记；能按项目目录识别的会自动归属，无法确定时才需要指定。</p>
 <p>不接入对话也可使用科研记录、任务历史和只读 Git 材料；接入后仅使用授权范围内的本机会话，不读取网页聊天，也不回填授权前历史。定时执行依赖宿主运行和计划连接状态，不是离线云服务。</p></details>
 <p id="report-connection" class="muted">读取配置中…</p>
@@ -888,8 +924,8 @@ def settings_section(home: str) -> str:
 <label>周报时间（北京时间）<input type="time" id="report-weekly-time"></label>
 <p class="muted">日报、周报均在独立栏目保存；每个周期汇总所选项目，不归档到任何项目。</p>
 <label>开始日期<input type="date" id="report-start-date"></label>
-<div class="actions"><button>保存设置</button><button type="button" id="report-copy-enable">复制连接指令</button></div><p id="report-settings-status" role="status"></p>
-<p class="muted">使用记录、任务历史和只读 Git 材料；勾选对话取材后仅读取关联所选项目的本机会话文字，不读取其他项目或网页聊天，不回填授权前历史。未适配的宿主会明确显示缺口。保存配置不会创建后台进程。</p></form></details><script src="/static/reports.js" defer></script>'''
+<div class="actions"><button>保存设置</button><button type="button" id="report-copy-enable" hidden>首次连接计划</button></div><p id="report-settings-status" role="status"></p>
+<p class="muted">使用记录、任务历史和 Git 提交说明（不读取差异正文或工作区文件）；勾选对话取材后仅读取关联所选项目的本机会话文字，不读取其他项目或网页聊天，不回填授权前历史。未适配的宿主会明确显示缺口。保存配置不会创建后台进程。</p></form></details><script src="/static/reports.js" defer></script>'''
 
 
 # Shared saved-record access for literature. No raw-chat/account scan, model or

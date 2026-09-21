@@ -13,8 +13,10 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import research_progress as progress  # noqa: E402
-from llmwiki_registry import register_project  # noqa: E402
+import research_reports as reports  # noqa: E402
+from llmwiki_registry import register_project, unregister_project  # noqa: E402
 from web_server import create_server  # noqa: E402
+from research_schedule import automation_prompt, bind_runtime  # noqa: E402
 
 def screenshot_png():
     def chunk(tag, payload):
@@ -61,10 +63,32 @@ def main():
         output.mkdir(parents=True, exist_ok=True)
         png_path = root / "clipboard.png"
         png_path.write_bytes(base64.b64decode(PNG))
+        # Reproduce a saved capture selection whose project was later unregistered.
+        removed_source = root / "removed-schedule"
+        removed_source.mkdir()
+        removed = register_project(str(removed_source), home=home)["project"]
+        settings = reports.report_settings(home)
+        reports.save_settings({"expected_revision": settings["revision"],
+                               "project_ids": [project["id"], removed["id"]], "capture_hosts": ["codex"],
+                               "daily_time": "18:00", "weekly_weekday": 5, "weekly_time": "18:00"}, home)
+        settings_file = Path(home) / "reports-settings.json"
+        legacy_settings = settings_file.read_bytes()
+        unregister_project(removed["id"], home=home)
+        settings_file.write_bytes(legacy_settings)  # Deliberately simulate an older registry writer.
+        # This is only a temporary receipt; no official automation is created or run.
+        host = root / "host"
+        receipt = host / "automations" / "browser-fixture" / "automation.toml"
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text('id = "browser-fixture"\nkind = "heartbeat"\nstatus = "ACTIVE"\n'
+                           'target_thread_id = "fixture-thread"\nprompt = '
+                           + json.dumps(automation_prompt(home), ensure_ascii=False) + '\n', encoding="utf-8")
+        bind_runtime("browser-fixture", "fixture-thread", home, host_home=host)
+        protected[receipt] = receipt.read_bytes()
         server = create_server(home, port=0)
+        server.daemon_threads = False
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
-        config = {"origin": f"http://127.0.0.1:{server.server_port}", "projectId": project["id"], "otherProjectId": other["id"], "legacyProjectId": legacy["id"], "png": PNG, "pngPath": str(png_path), "output": str(output), "legacyId": old["id"]}
+        config = {"origin": f"http://127.0.0.1:{server.server_port}", "projectId": project["id"], "otherProjectId": other["id"], "legacyProjectId": legacy["id"], "png": PNG, "pngPath": str(png_path), "output": str(output), "legacyId": old["id"], "removedProjectId": removed["id"]}
         try:
             result = subprocess.run([os.environ.get("NODE", "node"), str(Path(__file__).with_name("progress_workbench_browser_test.cjs")), json.dumps(config)], env={**os.environ, "LLMWIKI_HOME": home}, timeout=240, capture_output=True, text=True, encoding="utf-8", errors="replace")
             print(result.stdout)

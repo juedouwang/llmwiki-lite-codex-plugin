@@ -49,6 +49,39 @@ class CaptureRuntimeTests(unittest.TestCase):
     def enable(self):
         runtime.configure_capture(self.p, ['codex'], now='2026-09-19T13:00:00Z')
 
+    def test_capture_drains_multiple_chunks_and_repeat_is_incremental(self):
+        self.enable()
+        path = self.session('large')
+        with path.open('ab') as handle:
+            # Ignored tool payload creates a backlog without expensive message writes.
+            line = json.dumps({'type': 'padding', 'payload': 'x' * 1024}).encode() + b'\n'
+            for _ in range(17000):
+                handle.write(line)
+            handle.write(json.dumps({'timestamp': '2026-09-19T15:00:00Z',
+                'type': 'event_msg', 'payload': {'type': 'user_message',
+                'message': 'tail evidence'}}).encode() + b'\n')
+        result = runtime.capture_project(self.p, self.projects, host_home=self.host)
+        self.assertTrue(result['complete'], result)
+        self.assertGreaterEqual(result['passes'], 3)
+        db = Path(self.p['state_root']) / 'workbench/runtime.sqlite3'
+        with closing(sqlite3.connect(db)) as conn:
+            offsets = [json.loads(r[0])['offset'] for r in conn.execute('select position_json from cursors')]
+            self.assertEqual(offsets, [path.stat().st_size])
+            self.assertTrue(conn.execute("select count(*) from activities where occurred_at='2026-09-19T15:00:00Z'").fetchone()[0])
+        again = runtime.capture_project(self.p, self.projects, host_home=self.host)
+        self.assertEqual(again['written'], 0)
+        self.assertEqual(again['passes'], 1)
+
+    def test_partial_tail_stops_without_looping(self):
+        self.enable()
+        path = self.session('partial')
+        with path.open('ab') as handle:
+            handle.write(b'{"unfinished":')
+        result = runtime.capture_project(self.p, self.projects, host_home=self.host)
+        self.assertFalse(result['complete'])
+        self.assertLessEqual(result['passes'], 2)
+        self.assertTrue(result['gaps'])
+
     def test_disabled_does_not_even_query_index(self):
         with patch.object(runtime, 'indexed_rollouts', side_effect=AssertionError('unauthorized read')):
             result = runtime.capture_project(self.p, self.projects, host_home=self.host)

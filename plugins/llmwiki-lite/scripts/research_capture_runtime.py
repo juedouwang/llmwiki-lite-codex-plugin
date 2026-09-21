@@ -8,6 +8,7 @@ import os
 import re
 from pathlib import Path
 import sqlite3
+from time import perf_counter
 
 from research_capture import (
     RolloutCaptureAdapter, open_store, project_for_cwd, read_consent,
@@ -20,7 +21,7 @@ SUPPORTED_HOSTS = ('codex',)
 
 
 def configure_capture(project, hosts, *, now=None):
-    """Only called when the user explicitly saves capture choices."""
+    """Apply saved capture choices, including defaults inherited by a new project."""
     if not isinstance(hosts, list) or any(h not in SUPPORTED_HOSTS for h in hosts):
         raise ValueError('当前仅支持已验证的本机会话适配器。')
     current = read_consent(project)
@@ -170,13 +171,40 @@ def capture_project(project, projects, *, host_home=None, excluded_sessions=()):
     store = open_store(project['state_root'])
     try:
         adapter = RolloutCaptureAdapter(store, root, projects, session_bindings=session_bindings(project))
-        adapter.rollout_paths = lambda: paths  # Explicit metadata-selected set; never account scan.
-        report = adapter.scan()
-        if report['errors']:
-            gaps.append('部分会话读取失败，未推进其读取位置。')
-        if report['truncated']:
-            gaps.append('部分会话本轮未读完，下次继续。')
-        return {'project_id': project['id'], 'written': report['activities_written'],
-                'gaps': sorted(set(gaps)), 'checked_at': datetime.now(timezone.utc).isoformat()}
+        # Freeze the target sizes: drain the existing backlog, not an endlessly
+        # growing conversation. Each parser read remains bounded to 8 MiB.
+        started = perf_counter()
+        targets = {path: path.stat().st_size for path in paths}
+        pending = list(paths)
+        written = 0
+        passes = 0
+        while pending:
+            adapter.rollout_paths = lambda: pending
+            report = adapter.scan()
+            passes += 1
+            written += report['activities_written']
+            if report['errors']:
+                gaps.append('部分会话读取失败，未推进其读取位置。')
+            files = {item['file']: item for item in report['files']}
+            remaining = []
+            for path in pending:
+                item = files.get(adapter._label(path))
+                if item is None:
+                    gaps.append('部分会话未完成采集。')
+                    continue
+                if item.get('bad_lines'):
+                    gaps.append('部分会话包含无法解析的日志行。')
+                if item['offset_to'] >= targets[path]:
+                    continue
+                if item['offset_to'] <= item['offset_from']:
+                    gaps.append('部分会话末尾尚未完整写入，保留读取位置等待下次采集。')
+                    continue
+                remaining.append(path)
+            pending = remaining
+        return {'project_id': project['id'], 'written': written,
+                'gaps': sorted(set(gaps)), 'complete': not gaps,
+                'passes': passes, 'elapsed_ms': round((perf_counter() - started) * 1000),
+                'checked_at': datetime.now(timezone.utc).isoformat()}
+
     finally:
         store.close()

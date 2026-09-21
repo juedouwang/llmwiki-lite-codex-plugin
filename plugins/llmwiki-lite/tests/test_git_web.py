@@ -109,8 +109,8 @@ class GitWebFixture(unittest.TestCase):
     def head(self, repo=None):
         return self.git("rev-parse", "HEAD", repo=repo).strip()
 
-    def api(self, endpoint, data=None, *, method="POST", status=200, code=None, pid=None):
-        payload, actual = git_web.dispatch(str(self.home), pid or self.pid, method, endpoint, data)
+    def api(self, endpoint, data=None, *, method="POST", status=200, code=None, pid=None, worktree_id=None):
+        payload, actual = git_web.dispatch(str(self.home), pid or self.pid, method, endpoint, data, worktree_id=worktree_id)
         self.assertEqual(actual, status, f"{method} {endpoint}: {payload!r}")
         self.assertEqual(payload.get("ok"), status == 200, payload)
         if code is not None:

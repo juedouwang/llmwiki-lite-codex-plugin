@@ -39,7 +39,8 @@ class GitWebWorktreeTests(GitWebFixture):
             with self.subTest(pid=pid):
                 data = self.api("status", method="GET", pid=pid)
                 self.assertTrue(data["capabilities"]["write"], data)
-                self.assertEqual(data["worktree"], {"path": str(root), "linked": pid == self.lpid, "count": 2})
+                self.assertEqual({k: v for k, v in data["worktree"].items() if k != "id"},
+                                 {"path": str(root), "linked": pid == self.lpid, "count": 2})
                 branch = next(b for b in data["branches"] if b["name"] == other)
                 self.assertFalse(branch["switchable"])
                 self.assertIn("其他工作树", branch["switch_reason"])
@@ -266,3 +267,121 @@ class GitWebWorktreeTests(GitWebFixture):
         self.assertEqual((self.linked / "a.txt").read_text(), "linked uncommitted never uploaded\n")
         self.assertFalse((self.adapter().gitdir / "FETCH_HEAD").exists())
         self.assertFalse((self.adapter(self.lpid).gitdir / "FETCH_HEAD").exists())
+
+    def selected_id(self):
+        return self.adapter().worktree_token(self.linked)
+
+    def test_same_project_navigation_is_read_only_and_lists_owner(self):
+        self.write("a.txt", "main dirty\n")
+        self.write("b.txt", "main staged\n")
+        self.git("add", "b.txt")
+        self.write("a.txt", "linked dirty\n", self.linked)
+        self.git("add", "a.txt", repo=self.linked)
+        indexes = self.index(), self.index(self.lpid)
+        primary = self.api("status", method="GET")
+        selected = self.api("status", {"worktree": self.selected_id()}, method="GET")
+        self.assertEqual(selected["head"]["branch"], "experiment")
+        self.assertEqual(selected["worktree"]["path"], str(self.linked))
+        self.assertEqual([w["path"] for w in selected["worktrees"] if w["current"]], [str(self.linked)])
+        branch = next(b for b in primary["branches"] if b["name"] == "experiment")
+        self.assertEqual(branch["worktree_id"], self.selected_id())
+        self.assertFalse(branch["switchable"])
+        self.preview("switch_branch", {"branch": "experiment"}, status=409, code="dirty_worktree")
+        self.assertEqual(self.index(), indexes[0])
+        self.assertEqual(self.index(self.lpid), indexes[1])
+        self.assertEqual(self.head(), self.initial)
+        self.assertEqual(self.head(self.linked), self.initial)
+        self.assertEqual(self.adapter().project["source_root"], str(self.repo))
+
+    def test_same_project_selected_save_and_diff_never_modify_registered_worktree(self):
+        wid = self.selected_id()
+        self.write("a.txt", "main untouched\n")
+        self.git("add", "a.txt")
+        primary_index = self.index()
+        self.write("a.txt", "linked selected\n", self.linked)
+        self.write("b.txt", "linked staged\n", self.linked)
+        self.git("add", "b.txt", repo=self.linked)
+        staged = self.git("rev-parse", ":b.txt", repo=self.linked)
+        preview = self.preview("save", worktree_id=wid)
+        diff = self.api("diff", {"worktree": wid, "kind": "worktree", "preview_id": preview["preview_id"],
+                                "file_id": self.file_ids(preview, "a.txt")[0]}, method="GET")
+        self.assertIn("linked selected", diff["text"])
+        self.assertNotIn("main untouched", diff["text"])
+        self.api("execute", self.save_data(preview, "a.txt"), worktree_id=wid)
+        self.assertEqual(self.head(), self.initial)
+        self.assertEqual(self.index(), primary_index)
+        self.assertEqual((self.repo / "a.txt").read_text(), "main untouched\n")
+        self.assertEqual(self.git("show", "HEAD:a.txt", repo=self.linked), "linked selected\n")
+        self.assertEqual(self.git("show", "HEAD:b.txt", repo=self.linked), "base b\n")
+        self.assertEqual(self.git("rev-parse", ":b.txt", repo=self.linked), staged)
+
+    def test_same_project_preview_file_ids_and_state_are_worktree_bound(self):
+        wid = self.selected_id()
+        self.write("a.txt", "main dirty\n")
+        self.write("a.txt", "linked dirty\n", self.linked)
+        main = self.preview("save")
+        other = self.preview("save", worktree_id=wid)
+        self.assertNotEqual(self.file_ids(main, "a.txt"), self.file_ids(other, "a.txt"))
+        self.api("execute", self.save_data(main, "a.txt"), worktree_id=wid, status=409, code="preview_expired")
+        self.api("execute", {"preview_id": other["preview_id"], "file_ids": self.file_ids(main, "a.txt"),
+                             "message": "reject cross-tree ids"}, worktree_id=wid, status=400, code="invalid_request")
+        primary = self.adapter()
+        selected = git_web.Repo(str(self.home), self.pid, wid)
+        self.assertEqual(primary.lock().lock_file, selected.lock().lock_file)
+        self.assertNotEqual(primary.state, selected.state)
+        for name in ("fetch", "merge"):
+            primary.write_state(name, {"from": "primary"})
+            self.assertIsNone(selected.read_state(name))
+            selected.write_state(name, {"from": "linked"})
+            self.assertEqual(primary.read_state(name), {"from": "primary"})
+        self.assertEqual(self.head(), self.initial)
+        self.assertEqual(self.head(self.linked), self.initial)
+
+    def test_same_project_rejects_arbitrary_paths_foreign_ids_and_removed_worktrees(self):
+        for value in (str(self.linked), "../other", "x" * 64):
+            self.api("status", {"worktree": value}, method="GET", status=400, code="invalid_worktree")
+        foreign = self.adapter(self.lpid).worktree_token(self.linked)
+        self.api("status", {"worktree": foreign}, method="GET", status=409, code="worktree_unavailable")
+        wid = self.selected_id()
+        self.git("worktree", "remove", str(self.linked))
+        self.api("status", {"worktree": wid}, method="GET", status=409, code="worktree_unavailable")
+        self.api("preview", {"action": "save", "params": {}}, worktree_id=wid, status=409, code="worktree_unavailable")
+        self.assertEqual(self.head(), self.initial)
+
+    def test_same_project_locked_revalidation_keeps_selection_and_rejects_stale_binding(self):
+        wid = self.selected_id()
+        selected = git_web.Repo(str(self.home), self.pid, wid)
+        with selected.lock():
+            selected.revalidate()
+        self.write("a.txt", "linked pending\n", self.linked)
+        preview = self.preview("save", worktree_id=wid)
+        backlink = selected.gitdir / "gitdir"
+        old = backlink.read_bytes()
+        try:
+            backlink.write_text(str(self.root / "elsewhere/.git") + "\n")
+            with selected.lock(), self.assertRaises(git_web.WebGitError) as caught:
+                selected.revalidate()
+            self.assertEqual(caught.exception.code, "worktree_unavailable")
+            self.api("execute", self.save_data(preview, "a.txt"), worktree_id=wid,
+                     status=409, code="worktree_unavailable")
+            menu = self.api("status", method="GET")["worktrees"]
+            self.assertFalse(next(w for w in menu if w["branch"] == "experiment")["available"])
+        finally:
+            backlink.write_bytes(old)
+        self.assertEqual(self.head(), self.initial)
+        self.assertEqual(self.head(self.linked), self.initial)
+
+    def test_same_project_detached_worktree_and_unavailable_option(self):
+        detached = self.root / "detached worktree"
+        self.git("worktree", "add", "--detach", str(detached), self.initial)
+        wid = self.adapter().worktree_token(detached)
+        result = self.api("status", {"worktree": wid}, method="GET")
+        self.assertTrue(result["head"]["detached"])
+        self.preview("save", worktree_id=wid, status=409, code="unsupported_repo")
+        self.git("worktree", "remove", str(detached))
+        # Broken registration is deliberately left in our disposable fixture.
+        selected = self.adapter(self.lpid)
+        (selected.gitdir / "gitdir").write_text(str(self.root / "gone/.git") + "\n")
+        menu = self.api("status", method="GET")
+        self.assertFalse(next(w for w in menu["worktrees"] if w["branch"] == "experiment")["available"])
+        self.assertIsNone(next(b for b in menu["branches"] if b["name"] == "experiment")["worktree_id"])

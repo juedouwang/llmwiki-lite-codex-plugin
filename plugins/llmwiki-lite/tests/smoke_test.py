@@ -348,6 +348,14 @@ def test_web(
         record_name = record_id.split("/", 1)[-1]
         encoded_record = quote(record_name, safe="/")
         require("/records/records/" not in records_text, "record links duplicated the records prefix")
+        require('<link rel="icon" type="image/x-icon" href="/static/workbench.ico?v=1">' in project_text,
+                "shared page must use the desktop workbench icon")
+        icon = (SCRIPTS / "static" / "workbench.ico").read_bytes()
+        require(icon[:4] == b"\x00\x00\x01\x00", "desktop icon must be valid ICO")
+        for icon_url in ("/favicon.ico", "/static/workbench.ico?v=1"):
+            code, body, headers = request(connection, "GET", icon_url)
+            require(code == 200 and body == icon, "favicon must match desktop icon bytes")
+            require(headers.get("Content-Type") == "image/x-icon", "favicon MIME type incorrect")
         code, body, _ = request(connection, "GET", "/static/style.css")
         style_text = body.decode("utf-8")
         require(
@@ -818,8 +826,10 @@ def main() -> int:
     from test_progress import ProgressTests
     from test_progress_workbench import ProgressWorkbenchTests
     from test_project_management import ProjectManagementTests
+    # Includes same-project worktree navigation, isolation and stale-binding rejection.
     from test_git_web_worktrees import GitWebWorktreeTests
     from test_reports import ReportTests, ReportGenerationTests
+    # Includes saving report settings after project unregistration without touching retained files.
     from test_workspace_reports import WorkspaceReportTests
     from test_progress_context import ProgressContextTests
     from test_mcp_validation import MCPValidationTests
@@ -841,6 +851,7 @@ def main() -> int:
     # 归档移动与文件重写、跨午夜事件时间。
     from test_capture_adapters import CaptureAdapterTests
     from test_capture_runtime import CaptureRuntimeTests
+    # Includes reading newly selected projects without rebinding the shared plan.
     from test_research_schedule import ScheduleTests
     from test_research_workflow import WorkflowTests
     from test_literature_recovery import RecoveryTests

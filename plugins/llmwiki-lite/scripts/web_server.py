@@ -269,6 +269,11 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                 if parsed.path == "/health":
                     self.json({"ok": True, "service": "llmwiki-web", "version": plugin_version()})
                     return
+                if parsed.path in {"/favicon.ico", "/static/workbench.ico"}:
+                    raw = (SCRIPT_DIR / "static" / "workbench.ico").read_bytes()
+                    self.headers_out(200, "image/x-icon", len(raw))
+                    self.wfile.write(raw)
+                    return
                 if parsed.path in {"/static/theme.js", "/static/records.js", "/static/code.js", "/static/code.css", "/static/document-editor.css", "/static/document-editor.js", "/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/workbench-navigation.js", "/static/projects.js", "/static/progress.js", "/static/progress.css", "/static/reports.js", "/static/reports.css", "/static/knowledge-maintenance.js", "/static/knowledge-maintenance.css"}:
                     target = SCRIPT_DIR / "static" / parsed.path.rsplit("/", 1)[-1]
                     raw = target.read_bytes()
@@ -654,7 +659,8 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             except (ValueError, UnicodeDecodeError):
                 self.json({"ok": False, "code": "invalid_request", "message": "请求必须是至多 2MiB 的 JSON 对象。"}, 400)
                 return
-            result, code = git_web.dispatch(home, project_id, "POST", endpoint, payload)
+            result, code = git_web.dispatch(home, project_id, "POST", endpoint, payload,
+                                            worktree_id=parse_qs(urlparse(self.path).query).get("worktree", [""])[-1])
             self.json(result, code)
 
         def do_POST(self) -> None:  # noqa: N802

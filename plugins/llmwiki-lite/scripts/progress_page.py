@@ -25,17 +25,17 @@ def page(home: str, project_id: str) -> str:
 <label>优先级 <select id="progress-priority-filter"><option value="">全部优先级</option><option value="high">高优先级</option><option value="medium">中优先级</option><option value="low">低优先级</option></select></label></div>
 <section id="progress-todo" aria-label="待办任务"><div></div></section>
 <section id="progress-done" aria-label="已完成任务" hidden><div></div></section>
-<details id="progress-schedule" open><summary>DDL 排期</summary>
+<details id="progress-schedule" open><summary>任务排期</summary>
 <div class="progress-range"><span id="progress-range-label" class="meta"></span><div class="progress-week-controls">
-<button id="progress-prev" type="button" aria-label="上一段时间">{ui_icon("left")}</button><button id="progress-today" type="button">本周</button><button id="progress-next" type="button" aria-label="下一段时间">{ui_icon("right")}</button>
+<button id="progress-prev" type="button" aria-label="上一段时间">{ui_icon("left")}</button><button id="progress-today" type="button">今天</button><button id="progress-next" type="button" aria-label="下一段时间">{ui_icon("right")}</button>
 <select id="progress-days" aria-label="时间范围"><option value="7">一周</option><option value="14">两周</option><option value="28">四周</option></select></div></div>
-<div id="progress-timeline" aria-label="截止日排期" tabindex="0"></div></details>
+<div id="progress-timeline" aria-label="任务时间跨度" tabindex="0"></div></details>
 <dialog id="progress-dialog"><form id="progress-form">
 <div class="progress-dialog-head"><h2 id="progress-dialog-title">任务</h2><button type="button" id="progress-close" aria-label="关闭任务">×</button></div>
 <label>任务名称<input type="text" name="title" maxlength="240" required autocomplete="off"></label>
 <div class="progress-task-options"><label>优先级<select name="priority"><option value="high">高优先级</option><option value="medium" selected>中优先级</option><option value="low">低优先级</option></select></label>
-<label>截止日 DDL（可选）<input name="ddl" type="date" aria-label="截止日 DDL"></label></div>
-<div class="progress-date-shortcuts" role="group" aria-label="快捷选择截止日"><button type="button" data-ddl="0">今天</button><button type="button" data-ddl="1">明天</button><button type="button" data-ddl="7">一周后</button><button type="button" data-ddl="">清除日期</button></div>
+<div class="progress-deadline-field"><label>截止日期（可选）<input name="ddl" type="date" aria-label="截止日 DDL"></label>
+<div class="progress-date-shortcuts" role="group" aria-label="快捷选择截止日"><button type="button" data-ddl="0">今天</button><button type="button" data-ddl="1">明天</button><button type="button" data-ddl="7">一周后</button><button type="button" data-ddl="">清除日期</button></div></div></div>
 <label for="progress-description">任务描述</label>
 <textarea id="progress-description" name="description" rows="6" maxlength="100000" placeholder="记录进展和下一步；支持 Markdown、Ctrl+V 粘贴截图" spellcheck="false"></textarea>
 <div id="progress-uploads" role="status"></div>

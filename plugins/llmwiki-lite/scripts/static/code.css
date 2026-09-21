@@ -27,6 +27,18 @@
 .code-branch-menu{position:absolute;z-index:15;top:calc(100% + 5px);left:0;width:max-content;max-width:min(360px,calc(calc(100vw / var(--workbench-scale,1.25)) - 40px));min-width:180px;max-height:340px;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px;box-shadow:0 10px 30px #0002}
 .code-branch-menu button{display:flex;width:100%;justify-content:flex-start;text-align:left;overflow-wrap:anywhere}
 .code-branch-menu [aria-current=true]{background:var(--rw-select)}
+/* Directory navigation is separate from checking out a branch. */
+.code-worktree-picker{max-width:min(100%,250px)}
+#code-worktree-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code-app .code-worktree-option{display:block;padding:9px 10px;border-radius:5px;text-decoration:none;color:var(--text);font-size:12px;overflow-wrap:anywhere}
+.code-worktree-option[href]:hover,.code-app .code-worktree-enter:hover{background:var(--rw-hover)}
+.code-worktree-option[aria-disabled=true]{opacity:.55}
+.code-worktree-heading{display:flex;gap:12px;align-items:baseline;justify-content:space-between}
+.code-worktree-heading small{flex-shrink:0}
+.code-app .code-worktree-path{display:block;margin-top:3px;font-size:10px;overflow-wrap:anywhere}
+.code-occupied-branch{padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.code-app .code-worktree-enter{display:block;width:fit-content;margin:0 7px 2px 26px;padding:3px 6px;border-radius:4px;font-size:11px;color:var(--rw-ink);text-decoration:none}
+.code-app .code-worktree-home{font-size:12px;color:var(--rw-ink)}
 .code-changes{margin:0 var(--code-gutter);display:flex;align-items:center;gap:12px;padding:15px 0;border-block:1px solid var(--line)}
 .code-change-icon{display:flex;color:var(--muted)}
 .code-changes>div{flex:1;min-width:0}.code-changes strong{display:block;font-size:13px;font-weight:400}.code-changes small{display:block;margin-top:2px;overflow-wrap:anywhere}

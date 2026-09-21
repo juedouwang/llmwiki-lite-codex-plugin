@@ -53,7 +53,11 @@
       $('report-start-date').value = value.start_date || '';
       configForm.querySelectorAll('[name=report-project]').forEach(e => { e.checked = value.project_ids.includes(e.value); });
       const runtime = value.runtime || {};
-      $('report-connection').textContent = ({paused: '已暂停', pending: '待连接执行端', configured: '已配置宿主计划（不代表已成功执行）'})[value.connection] + ' · 最近成功：' + (runtime.last_success_at || '暂无') + (runtime.last_error ? ' · 最近错误：' + runtime.last_error : '') + (runtime.last_started_at && Date.now() - Date.parse(runtime.last_started_at) > 7200000 ? ' · 尚未收到最近检查' : '');
+      const bound = Boolean(runtime.automation_id && runtime.target_thread_id);
+      $('report-copy-enable').hidden = value.connection === 'configured' || (bound && !value.enabled);
+      $('report-copy-enable').textContent = bound ? '检查计划连接' : '首次连接计划';
+      if ($('report-copy-maintain')) $('report-copy-maintain').hidden = !bound;
+      $('report-connection').textContent = ({paused: '已暂停', pending: bound ? '待恢复计划连接' : '尚未连接共享计划', configured: '共享计划已连接'})[value.connection] + ' · 最近成功：' + (runtime.last_success_at || '暂无') + (runtime.last_error ? ' · 最近错误：' + runtime.last_error : '') + (runtime.last_started_at && Date.now() - Date.parse(runtime.last_started_at) > 7200000 ? ' · 尚未收到最近检查' : '');
     }
     request('/api/reports/settings').then(fill).catch(e => { $('report-settings-status').textContent = e.message; });
     configForm.onsubmit = async event => {
@@ -62,6 +66,9 @@
         $('report-settings-status').textContent = '服务仍是旧版本，请重启本地网页服务；未保存设置，避免恢复旧的项目归档逻辑。';
         return;
       }
+      const scheduleChanged = $('report-daily-time').value !== (config.daily_time || '') ||
+        $('report-weekly-time').value !== (config.weekly_time || '') ||
+        $('report-weekday').value !== String(config.weekly_weekday || '');
       saving = true;
       try {
         fill(await request('/api/reports/settings', {expected_revision: config.revision,
@@ -72,22 +79,30 @@
           daily_time: $('report-daily-time').value || null, weekly_time: $('report-weekly-time').value || null,
           weekly_weekday: Number($('report-weekday').value) || null,
           start_date: $('report-start-date').value || null}));
-        $('report-settings-status').textContent = '已保存。没有启动后台模型或终端。';
+        $('report-settings-status').textContent = !config.enabled ? '已保存，自动整理已暂停。' :
+          config.connection !== 'configured' ? '已保存。请连接或恢复共享计划；后续增减项目无需重复连接。' :
+          scheduleChanged ? '已保存。项目选择会自动采用；执行时刻已更改，请在“计划与取材说明”中复制维护指令，同步现有计划。' :
+          '已保存，下次共享计划运行会自动采用最新项目和取材设置，无需重新连接。';
       } catch (e) { $('report-settings-status').textContent = e.message; }
       finally { saving = false; }
     };
-    $('report-copy-enable').onclick = async () => {
+    const copyConnection = async () => {
       if (!config) return;
+      if (dirty || saving) {
+        $('report-settings-status').textContent = '请先保存当前设置，再复制计划指令。';
+        return;
+      }
       if (!config.workflow_cli || !config.workflow_skill) {
         $('report-settings-status').textContent = '服务仍是旧版本，请重启本地网页服务后连接自动整理。';
         return;
       }
       try {
-        const names = [...configForm.querySelectorAll('[name=report-project]')].filter(e => config.project_ids.includes(e.value)).map(e => e.parentElement.textContent.trim());
-        await navigator.clipboard.writeText(`请启用科研共享计划。配置文件：${config.config_path}，配置版本：${config.revision}，项目：${names.join('、')}。先阅读 ${config.workflow_skill}，使用源码入口 ${config.workflow_cli}，先核验已保存的项目、时间及取材授权，使用官方工具创建或复用每天北京时间18:00跟进（或按已保存时刻配置），再以真实回执绑定同一配置。不要改缓存，不使用后台 exec。未完成首次实际运行前不能声称自动生成已验收。`);
-        $('report-settings-status').textContent = '已复制连接指令，可交给当前宿主助手。';
+        await navigator.clipboard.writeText(`请连接或检查科研共享计划。配置文件：${config.config_path}。先阅读 ${config.workflow_skill}，使用源码入口 ${config.workflow_cli} 核验已保存的项目、时间和取材授权。通过官方工具复用已有计划并按已保存时刻同步日程，仅首次创建，并以真实回执绑定。每次运行读取最新配置，增减项目不需要重新连接。不改安装缓存，不使用后台 exec；未完成实际运行不能声称自动生成已验收。`);
+        $('report-settings-status').textContent = '已复制，请交给助手连接或维护同一共享计划；新注册项目默认参与，取消参与时再保存设置。';
       } catch (e) { $('report-settings-status').textContent = e.message; }
     };
+    $('report-copy-enable').onclick = copyConnection;
+    if ($('report-copy-maintain')) $('report-copy-maintain').onclick = copyConnection;
     return;
   }
   const list = $('research-reports-list');

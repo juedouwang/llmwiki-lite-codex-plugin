@@ -238,6 +238,7 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
     return (
         '<!doctype html><html lang="zh-CN" data-workbench-scale="1.25"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<link rel="icon" type="image/x-icon" href="/static/workbench.ico?v=1">'
         f'<title>{esc(title)} · 野人工作台</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/style.css"></head>'
         f'<body data-workbench-page="{esc(active)}" data-workbench-project="{esc(current_id or "")}" data-workbench-session="{esc(web_session.session_id())}"><a class="skip-link" href="#main-content">跳到内容</a><div class="console-shell">' + sidebar
         + '<button class="console-overlay" id="console-overlay" aria-label="关闭导航"></button>'
