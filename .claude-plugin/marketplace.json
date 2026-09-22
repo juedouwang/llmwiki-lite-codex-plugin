@@ -4,7 +4,7 @@
     "name": "LLM Wiki Agent contributors",
     "url": "https://github.com/juedouwang/llmwiki-lite-codex-plugin"
   },
-  "description": "LLM Wiki Lite 科研助手：七个独立工作流 Skill、确定性 MCP 工具、可选变更 Hook 与 loopback 中文科研知识工作台。",
+  "description": "LLM Wiki Lite 科研助手：八个独立工作流 Skill、确定性 MCP 工具、可选变更 Hook 与 loopback 中文科研知识工作台。",
   "plugins": [
     {
       "name": "llmwiki-lite",

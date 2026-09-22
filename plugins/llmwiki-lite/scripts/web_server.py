@@ -25,6 +25,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import research_notebook as notebook  # noqa: E402
 import research_progress as progress  # noqa: E402
+import daily_tasks  # noqa: E402
 import research_reports as reports  # noqa: E402
 import knowledge_maintenance as knowledge  # noqa: E402
 from llmwiki_core import LLMWikiError, plugin_version  # noqa: E402
@@ -274,7 +275,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     self.headers_out(200, "image/x-icon", len(raw))
                     self.wfile.write(raw)
                     return
-                if parsed.path in {"/static/theme.js", "/static/records.js", "/static/code.js", "/static/code.css", "/static/document-editor.css", "/static/document-editor.js", "/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/workbench-navigation.js", "/static/projects.js", "/static/progress.js", "/static/progress.css", "/static/reports.js", "/static/reports.css", "/static/knowledge-maintenance.js", "/static/knowledge-maintenance.css"}:
+                if parsed.path in {"/static/daily-tasks.js", "/static/daily-tasks.css", "/static/theme.js", "/static/records.js", "/static/code.js", "/static/code.css", "/static/document-editor.css", "/static/document-editor.js", "/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/workbench-navigation.js", "/static/projects.js", "/static/progress.js", "/static/progress.css", "/static/reports.js", "/static/reports.css", "/static/knowledge-maintenance.js", "/static/knowledge-maintenance.css"}:
                     target = SCRIPT_DIR / "static" / parsed.path.rsplit("/", 1)[-1]
                     raw = target.read_bytes()
                     content_type = "text/css" if target.suffix == ".css" else "text/javascript"
@@ -296,6 +297,16 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                         self.json({"ok":False,"error":{"code":exc.code,"message":str(exc)}}, exc.status)
                     except (LLMWikiError, OSError, ValueError, TypeError):
                         self.json({"ok":False,"error":{"code":"INVALID_INPUT","message":"知识更新不可用或请求无效。"}}, 400)
+                    return
+                if parsed.path == "/api/daily-tasks":
+                    try:
+                        self.json(daily_tasks.list_day(home, (params.get("date") or [None])[0]))
+                    except (LLMWikiError, ValueError, TypeError) as exc:
+                        self.json({"ok": False, "error": str(exc)}, 400)
+                    return
+                if parsed.path == "/daily":
+                    from daily_page import page as daily_page
+                    self.html(daily_page(home, context=(params.get("context") or [None])[0], day=(params.get("date") or [None])[0]))
                     return
                 if parsed.path == "/api/reports/settings":
                     self.json(reports.report_settings(home))
@@ -552,6 +563,9 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                         raise LLMWikiError("仅支持默认项目和项目排序。")
                     self.json(update_project_preferences(home=home, **payload))
                     return
+                if path == "/api/daily-tasks":
+                    self.json(daily_tasks.mutate(home, payload, actor="user"))
+                    return
                 if path == "/api/reports/settings":
                     try:
                         self.json(reports.save_settings(payload, home))
@@ -671,7 +685,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             if code_match:
                 self.code_post(unquote(code_match[1]), code_match[2])
                 return
-            if parsed.path.startswith("/api/projects/") or parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
+            if parsed.path == "/api/daily-tasks" or parsed.path.startswith("/api/projects/") or parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
                 self.notebook_post(parsed.path)
                 return
             if parsed.path.startswith("/api/project/"):

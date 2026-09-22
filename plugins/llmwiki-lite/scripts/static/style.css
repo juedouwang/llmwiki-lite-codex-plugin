@@ -196,3 +196,8 @@ input[type=date],textarea{background:var(--panel);color:var(--text);border:1px s
 #project-name-dialog h2,#project-remove-dialog h2{font-size:16px;margin-top:0}
 #project-name-dialog input{width:100%}.project-dialog-status{font-size:12px;color:var(--rw-red)}
 .schedule-help{font-size:12px;line-height:1.8;margin:12px 0}.schedule-help>summary{color:var(--rw-sub);cursor:pointer}
+
+/* Approved incremental navigation: existing scale, shell and footer stay unchanged. */
+.console-navigation .console-group-label{grid-column:1/-1;font-size:11px;color:var(--rw-sub);font-weight:400;padding:0 11px;margin:0 0 8px;letter-spacing:.03em}
+.console-my-work{margin-bottom:30px}.console-my-work>.console-nav-item{margin-bottom:5px}
+.console-project-section .console-project-switcher{margin-bottom:13px}.console-project-label small{display:none}

@@ -5,7 +5,7 @@
   if (!main() || !document.querySelector('.console-shell')) return;
   const entries = new Map(), pending = new Map();
   const key = value => { const u = new URL(value, location.href); return u.pathname + u.search; };
-  const allowed = u => u.origin === location.origin && (u.pathname === '/projects' || u.pathname === '/reports' || /^\/project\/[^/]+(?:\/(?:todos|records|literature|code))?$/.test(u.pathname));
+  const allowed = u => u.origin === location.origin && (u.pathname === '/projects' || u.pathname === '/daily' || u.pathname === '/reports' || /^\/project\/[^/]+(?:\/(?:todos|records|literature|code))?$/.test(u.pathname));
   const signal = (name, entry, extra = {}, cancelable = false) => document.dispatchEvent(new CustomEvent('workbench:' + name, {cancelable, detail: {root: entry.main, ...extra}}));
   const styles = new Set([...document.head.querySelectorAll('link[rel="stylesheet"]')].map(n => n.href));
   let installing = null;
@@ -84,7 +84,7 @@
   }
   async function revalidate(entry) {
     // Git/progress adapters refresh their own real data without rebuilding their DOM.
-    if (entry.main.querySelector('#code-app,#research-progress') || Date.now() - entry.checked < 15000) return;
+    if (entry.main.querySelector('#code-app,#research-progress,#daily-tasks') || Date.now() - entry.checked < 15000) return;
     entry.checked = Date.now();
     try {
       const fresh = await read(entry.url, true);

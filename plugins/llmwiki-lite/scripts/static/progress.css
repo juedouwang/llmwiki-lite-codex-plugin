@@ -68,3 +68,13 @@
 /* Override shared button minimums: keep completion circles round and dates on one line. */
 #research-progress .progress-done-toggle{min-height:0;min-width:0;width:21px;height:21px;flex-shrink:0}
 #research-progress .progress-week-controls button{width:auto;min-width:32px;white-space:nowrap;flex-shrink:0}
+
+/* Daily identity and child detail only; the existing progress interactions stay intact. */
+.progress-daily-meta,.progress-task-metadata{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.progress-daily-meta{margin:5px 0 0}.progress-task-metadata{padding:8px 0;border-bottom:1px solid var(--line)}.progress-task-metadata p{margin:5px 0}
+#research-progress .is-pending{color:var(--rw-purple)}
+#progress-daily-arrangements{margin:14px 0}#progress-daily-arrangements h3{font-size:12px;font-weight:500;margin:0 0 8px}
+.progress-daily-child{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;font-size:12px;color:var(--muted);padding:8px 0;border-bottom:1px solid var(--line)}
+.progress-daily-child button{min-height:0;border:0;background:transparent;padding:0;text-align:left;font-size:12px;overflow-wrap:anywhere;max-width:100%}
+
+.progress-delivery{white-space:pre-wrap}

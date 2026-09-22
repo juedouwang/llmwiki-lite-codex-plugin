@@ -22,6 +22,10 @@
   const recordUrl=id=>`/project/${encodeURIComponent(project)}/records/`+id.replace(/^records\//,'').split('/').map(encodeURIComponent).join('/');
   const description=t=>t.description??[t.effective_context?.checkpoint??t.checkpoint,t.effective_context?.next_step??t.next_step].filter(Boolean).join('\n\n');
   const ddl=t=>t.ddl??(t.end||t.start||'');
+  const pending=t=>t.status!=='done'&&(t.review_state==='pending'||t.status==='pending');
+  const review=t=>t.status==='done'?'已完成':pending(t)?'待你验收':'待完成';
+  const metadata=t=>Object.fromEntries(['parent_id','scheduled_date','review_state','kind'].filter(key=>Object.hasOwn(t,key)).map(key=>[key,t[key]]));
+  let taskMetadata={};
   const sorted=list=>[...list].sort((a,b)=>(rank[a.priority]??1)-(rank[b.priority]??1)||(ddl(a)||'9999-12-31').localeCompare(ddl(b)||'9999-12-31')||a.id.localeCompare(b.id));
   let tasks=[],revision='',records=[],candidates=[],recordsLoaded=false,ready=false,busy=false;
   let editing=null,baseline=null,dialogRevision='',session=0,descriptionTouched=false,conflict=false;
@@ -75,10 +79,15 @@
     const row=node('div','progress-task-row priority-'+(task.priority||'medium'));row.dataset.id=task.id;
     const done=task.status==='done';
     const toggle=button(done?'✓':'',()=>mutate(task,done?'restore':'complete'),'progress-done-toggle'+(done?' is-done':''));
-    toggle.setAttribute('aria-label',(done?'恢复 ':'完成 ')+task.title);toggle.title=done?'恢复到 Todo':'标记为完成';
+    toggle.setAttribute('aria-label',(done?'恢复 ':'完成 ')+task.title);toggle.title=done?'恢复到 Todo':pending(task)?'验收并标记完成':'标记为完成';
     const text=node('div','progress-task-text'),title=button(task.title,()=>openTask(task),'progress-task');
     title.dataset.id=task.id;text.append(title);
     if(description(task))text.append(node('p','progress-description-excerpt',description(task)));
+    const dailyMeta=[];
+    if(task.parent_id)dailyMeta.push('来源：'+(tasks.find(t=>t.id===task.parent_id)?.title||task.parent_title||'原任务不可用'));
+    if(task.scheduled_date)dailyMeta.push('每日安排 '+task.scheduled_date);
+    if(pending(task))dailyMeta.push('待你验收');
+    if(dailyMeta.length)text.append(node('p','progress-daily-meta'+(pending(task)?' is-pending':''),dailyMeta.join(' · ')));
     const date=node('span','progress-ddl'+(!done&&ddl(task)&&ddl(task)<today()?' is-overdue':''),ddl(task)?'DDL '+ddl(task):'未排期');
     const select=node('select','progress-inline-priority');select.setAttribute('aria-label',task.title+'的优先级');
     for(const [value,label] of Object.entries(priorities)){const o=node('option','',label);o.value=value;select.append(o);}select.value=task.priority||'medium';
@@ -106,19 +115,44 @@
     const header=node('div','progress-grid-row progress-grid-head');header.append(node('span','progress-name','任务'));
     for(let i=0;i<days;i++){const date=add(start,i);header.append(node('span','progress-day'+(date===current?' is-today':''),['日','一','二','三','四','五','六'][from(date).getDay()]+' '+Number(date.slice(8))));}grid.append(header);
     // Show the remaining span, not a stored start date. Overdue work stays visible today.
-    const scheduled=todo.filter(t=>ddl(t)).map(task=>({task,due:ddl(task),from:current,to:ddl(task)<current?current:ddl(task)}));
+    // Daily children are the same task IDs, shown on their explicit day (never moved by viewing).
+    const scheduled=todo.filter(t=>t.scheduled_date||ddl(t)).map(task=>task.scheduled_date?
+      {task,due:task.scheduled_date,from:task.scheduled_date,to:task.scheduled_date,daily:true}:
+      {task,due:ddl(task),from:current,to:ddl(task)<current?current:ddl(task)});
     for(const item of scheduled.filter(t=>t.to>=start&&t.from<=end)){
       const {task,due}=item,overdue=due<current;
       const row=node('div','progress-grid-row'),name=button(task.title,()=>openTask(task),'progress-calendar-title');name.title=task.title;row.append(name);
-      const track=node('div','progress-track'),bar=button(overdue?'已逾期':due===current?'今天截止':shortDate(due)+' 截止',()=>openTask(task),'progress-bar priority-'+(task.priority||'medium'));
+      const track=node('div','progress-track'),bar=button(item.daily?shortDate(due)+' 每日安排'+(pending(task)?' · 待你验收':''):overdue?'已逾期':due===current?'今天截止':shortDate(due)+' 截止',()=>openTask(task),'progress-bar priority-'+(task.priority||'medium'));
       bar.style.gridColumn=`${Math.max(0,delta(item.from,start))+1} / ${Math.min(days-1,delta(item.to,start))+2}`;
       bar.classList.toggle('is-overdue',overdue);bar.classList.toggle('is-clipped-start',item.from<start);bar.classList.toggle('is-clipped-end',item.to>end);
-      bar.title=task.title+' · '+(overdue?'截止 '+due+'，已逾期 '+delta(current,due)+' 天':current+' — '+due)+' · '+priorities[task.priority||'medium'];
+      bar.dataset.taskId=task.id;
+      bar.title=task.title+' · '+(item.daily?'每日安排 '+due+' · '+review(task):overdue?'截止 '+due+'，已逾期 '+delta(current,due)+' 天':current+' — '+due)+' · '+priorities[task.priority||'medium'];
       bar.setAttribute('aria-label',bar.title);track.append(bar);row.append(track);grid.append(row);
     }
     timeline.append(grid);if(grid.children.length===1)timeline.append(node('p','progress-empty','这段时间没有已排期任务。未排期任务仍保留在 Todo。'));
     const outside=scheduled.filter(t=>t.to<start||t.from>end);
     if(outside.length)timeline.append(button(`${outside.length} 项任务在此范围外 · 回到今天`,()=>{start=today();render();},'progress-outside'));
+  }
+  function dailyInfo(task){
+    const box=$('#progress-task-metadata');box.replaceChildren();
+    const children=tasks.filter(t=>task.id&&t.parent_id===task.id).sort((a,b)=>(a.scheduled_date||'').localeCompare(b.scheduled_date||'')||a.id.localeCompare(b.id));
+    const hasDelivery=Boolean(task.delivery_summary||task.completion_record||task.acceptance_record);
+    box.hidden=!(task.parent_id||task.scheduled_date||pending(task)||task.review_state==='accepted'||hasDelivery);
+    if(!box.hidden){
+      box.append(node('p','','任务归属：当前项目 · '+(task.parent_id?'每日子任务':'独立待办')));
+      if(task.scheduled_date){const line=node('p','','每日日期：'+task.scheduled_date+' · '),link=node('a','','查看当天待办');link.href='/daily?'+new URLSearchParams({date:task.scheduled_date,context:project});line.append(link);box.append(line);}
+      if(task.parent_id){const parent=tasks.find(t=>t.id===task.parent_id),line=node('p','','来源任务：'),link=node('a','',parent?.title||task.parent_title||'查看来源任务');link.href=`/project/${encodeURIComponent(project)}/todos?task=${encodeURIComponent(task.parent_id)}`;line.append(link);box.append(line);}
+      box.append(node('p',pending(task)?'is-pending':'','验收状态：'+review(task)));
+      if(task.delivery_summary)box.append(node('p','progress-delivery','助手交付：'+task.delivery_summary));
+      for(const [label,record] of [['交付记录',task.completion_record],['验收记录',task.acceptance_record]]){
+        if(!record?.id)continue;const line=node('p','progress-delivery',label+'：'),link=node('a','',record.title||record.id);link.href=recordUrl(record.id);line.append(link);box.append(line);
+      }
+    }
+    const detail=$('#progress-daily-arrangements');detail.hidden=!children.length;
+    detail.querySelector('div').replaceChildren(...children.map(child=>{
+      const row=node('div','progress-daily-child'),open=button(child.title,()=>{if(unsaved()){error('请先保存或取消当前修改。');return;}openTask(child);});
+      open.dataset.taskId=child.id;row.append(node('span','',child.scheduled_date||'未安排日期'),open,node('span',pending(child)?'is-pending':'',review(child)));return row;
+    }));
   }
   function legacyInfo(task){
     const detail=$('#progress-legacy'),keys=['checkpoint','next_step','start','end','status','context_mode','effective_context','auto_context','assistant_context'];
@@ -133,10 +167,11 @@
   function openTask(task=null){
     if(!form||!active())return;if(dialog.open){if(unsaved())return;closeTask(true);}
     session++;clearUploads();editing=task?.id||null;descriptionTouched=false;conflict=false;dialogRevision=revision;error('');
+    taskMetadata=metadata(task||{});dailyInfo(task||{});
     baseline={title:task?.title||'',description:task?description(task):'',priority:task?.priority||'medium',ddl:task?ddl(task):'',record_id:task?.record_id||''};
     fields.forEach(k=>{if(k!=='record_id')input(k).value=baseline[k];});fillRecords(baseline.record_id);
     $('#progress-dialog-title').textContent=editing?'编辑任务':'新建任务';$('#progress-delete').hidden=!editing;$('#progress-complete').hidden=!editing;
-    $('#progress-complete').textContent=task?.status==='done'?'恢复到 Todo':'完成任务';$('#progress-reload').hidden=true;
+    $('#progress-complete').textContent=task?.status==='done'?'恢复到 Todo':task&&pending(task)?'验收并完成':'完成任务';$('#progress-reload').hidden=true;
     form.querySelector('[type=submit]').disabled=false;legacyInfo(task||{});dialog.showModal();input('title').focus();updatePreview();
     const token=session;ensureRecords().then(()=>{if(active()&&token===session&&dialog.open)fillRecords(input('record_id').value);}).catch(e=>error(e.message));
   }
@@ -154,7 +189,7 @@
     const shortcuts=[...form.querySelectorAll('[data-ddl]')];shortcuts.forEach(b=>{b.disabled=true;});
     form.setAttribute('aria-busy','true');
     const current=values(),patch=Object.fromEntries(fields.filter(k=>!editing||current[k]!==baseline[k]||(k==='description'&&descriptionTouched)).map(k=>[k,current[k]]));
-    try{await persist({action:editing?'update':'create',...(editing?{id:editing}:{}),task:patch},dialogRevision);closeTask(true);}
+    try{await persist({action:editing?'update':'create',...(editing?{id:editing}:{}),task:{...taskMetadata,...patch}},dialogRevision);closeTask(true);}
     catch(e){error(e.message);if(e.status===409)setConflict();}
     finally{submit.disabled=conflict;fields.forEach(k=>{input(k).disabled=false;});shortcuts.forEach(b=>{b.disabled=false;});form.removeAttribute('aria-busy');}
   }
@@ -167,7 +202,7 @@
       const next={title:latest.title,description:description(latest),priority:latest.priority||'medium',ddl:ddl(latest),record_id:latest.record_id||''},collisions=[];
       fields.forEach(k=>{if(current[k]===old[k])current[k]=next[k];else if(next[k]!==old[k]&&current[k]!==next[k])collisions.push(`${fieldLabels[k]}（服务器）：${next[k]||'空'}`);});
       baseline=next;fields.forEach(k=>{if(k!=='record_id')input(k).value=current[k];});fillRecords(current.record_id);dialogRevision=revision;conflict=false;$('#progress-reload').hidden=true;form.querySelector('[type=submit]').disabled=false;
-      legacyInfo(latest);updatePreview();error(collisions.length?'双方修改了相同字段，当前填写保留，请核对后保存。\n'+collisions.join('\n'):'已合并服务器更新，当前填写保留，请检查后保存。');
+      taskMetadata=metadata(latest);dailyInfo(latest);legacyInfo(latest);updatePreview();error(collisions.length?'双方修改了相同字段，当前填写保留，请核对后保存。\n'+collisions.join('\n'):'已合并服务器更新，当前填写保留，请检查后保存。');
     }catch(e){error(e.message);}
   }
   async function updatePreview(){
@@ -216,11 +251,11 @@
   function stopTimer(){if(timer){clearInterval(timer);timer=null;}}
   async function refresh(){if(inflight||busy||document.hidden||!active())return;inflight=true;try{await load();}catch(e){if(active())notice('科研进度刷新失败：'+e.message);}finally{inflight=false;}}
   function startTimer(){if(!timer&&active()&&!document.hidden)timer=setInterval(refresh,5000);}
-  function hashTask(){if(!root||dialog.open)return;const id=location.hash.match(/^#task-([a-f0-9]{32})$/)?.[1],task=tasks.find(t=>t.id===id);if(task)openTask(task);}
+  function hashTask(){if(!root||!active()||dialog.open)return;const id=new URLSearchParams(location.search).get('task')||location.hash.match(/^#task-([a-f0-9]{32})$/)?.[1];if(!/^[a-f0-9]{32}$/.test(id||''))return;const task=tasks.find(t=>t.id===id);if(task)openTask(task);}
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stopTimer();else if(active()){refresh();startTimer();}},{signal:lifecycle.signal});
   document.addEventListener('workbench:before-leave',event=>{if(owns(event)&&active()&&unsaved()){event.preventDefault();if(dialog?.open)error('尚未保存，请先保存或取消当前修改。');else notice('请等待当前操作完成。');}},{signal:lifecycle.signal});
   document.addEventListener('workbench:leave',event=>{if(owns(event)){stopTimer();if(dialog?.open)closeTask(true);$('#progress-import-dialog')?.close();}},{signal:lifecycle.signal});
-  document.addEventListener('workbench:enter',event=>{if(owns(event)&&active()){refresh();startTimer();}},{signal:lifecycle.signal});
+  document.addEventListener('workbench:enter',event=>{if(owns(event)&&active()){refresh().then(hashTask);startTimer();}},{signal:lifecycle.signal});
   document.addEventListener('workbench:dispose',event=>{if(owns(event)){stopTimer();clearTimeout(previewTimer);previewSequence++;session++;clearUploads();lifecycle.abort();}},{signal:lifecycle.signal});
   window.addEventListener('beforeunload',event=>{if(active()&&unsaved()){event.preventDefault();event.returnValue='';}},{signal:lifecycle.signal});
   window.addEventListener('hashchange',hashTask,{signal:lifecycle.signal});

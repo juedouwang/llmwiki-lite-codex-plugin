@@ -65,6 +65,45 @@ python llmwiki-lite-codex-plugin/plugins/llmwiki-lite/opencode/install.py
 
 网页只监听 loopback，不修改源项目，也不提供任意 Markdown 正文编辑器；科研记录和日报/周报提供连续 Markdown 文档编辑入口。文献原文始终只读；系统不会自动翻译 PDF，也不会把不确定的阅读记录强行关联到论文。
 
+## 任务规划 Skill 与一次性 CLI
+
+使用 `llmwiki-task-planning` Skill，例如：“读取现有进度，安排这个项目本周剩余日期的任务，每天保留检查时间，写清产出和验收标准。”范围明确且已授权即可直接安排，不需要重复确认。Skill 先查已有父目标、每日任务、逾期项与待验收项，避免重复创建；所有相对日期按用户当前本地日期转成明确日期，本周已过去的天默认不回填。
+
+优先调用 `llmwiki_daily_tasks_get(home?, day?)` 与 `llmwiki_task_write(home?, payload)`。MCP 不可用时，从仓库根运行无后台、无新窗口、仅标准库的一次性 CLI：
+
+```text
+python -B plugins/llmwiki-lite/scripts/task_cli.py projects
+python -B plugins/llmwiki-lite/scripts/task_cli.py progress --project-id "<PROJECT_ID>"
+python -B plugins/llmwiki-lite/scripts/task_cli.py list --date "<LOCAL_TODAY>"
+python -B plugins/llmwiki-lite/scripts/task_cli.py write --args-file "<PAYLOAD_JSON_FILE>"
+python -B plugins/llmwiki-lite/scripts/task_cli.py write --args-file -
+```
+
+`--home "<HOME>"` 可加在子命令前或后；省略时沿用 `LLMWIKI_HOME`/默认配置。`list` 不带 `--date` 时取后端本地今天；用户时区不同则传明确日期。`projects` 返回注册 ID；`progress` 读取指定项目任务摘要，不分析文件或推断完成。`list` 的 `tasks/overdue/completed` 都是带项目和父目标信息的公开任务，写入 revision 必须取最新 `revisions[project_id]`。
+
+`write` 的文件或 stdin 是一个 **UTF-8 payload JSON 对象**，不包裹 MCP 的 `{home,payload}`。例如：
+
+```json
+{
+  "project_id": "__workspace__",
+  "action": "create",
+  "revision": "<REVISION>",
+  "task": {
+    "title": "整理本周待讨论问题",
+    "scheduled_date": "<LOCAL_TODAY>",
+    "description": "交付带证据的问题清单；验收：每项明确背景与待决策点。"
+  }
+}
+```
+
+以上尖括号是必须替换的说明占位：`<LOCAL_TODAY>` 是执行当下核对的用户本地 `YYYY-MM-DD`；`<PROJECT_ID>` 是注册表精确 ID（不接受显示名/路径）；`<REVISION>` 是刚读取的项目 revision，此例用 `revisions["__workspace__"]`，初始值若为空字符串就保留为空；`<HOME>` 和 `<PAYLOAD_JSON_FILE>` 是实际目录/JSON 文件。不得照示例日期硬编码。临时任务使用 `__workspace__`，不必注册项目。
+
+- `plan` 一次原子创建父目标和每日子任务，用稳定 `request_id` 实现同 key 幂等；`create/update/delete/restore` 操作单项。遇到 revision 冲突先重读，不自动覆盖或重试。
+- **交付与验收分离**：`submit` 带真实 `id` 与 `summary`，验收状态转为 `review_state="pending"` 并关联科研记录，等待用户验收；不代表 `done`。CLI 写入固定 `actor="agent"`，拒绝 `accept/complete`、伪造 actor 或直接设为 done；`restore` 原样交给后端校验，当前恢复已完成任务仍须用户在网页操作。
+- CLI 成功时 stdout 输出 JSON；失败时 stderr 输出 JSON，退出码 `1` 为后端/IO 错误，`2` 为输入错误。后端 API 未就绪时只报告未写入，不绕过接口改存储。规划推理仅由当前宿主模型完成，程序不调用模型或后台执行器。
+
+完整 MCP/CLI JSON、日期替换和防重复规则见 [任务规划 Skill](plugins/llmwiki-lite/skills/llmwiki-task-planning/SKILL.md)。针对性验证：`python -B -m unittest discover -s plugins/llmwiki-lite/tests -p test_task_cli.py`（所有写入测试使用临时注册表和目录，不触碰用户任务）。
+
 ## 跨平台实现
 
 - 三个平台共用同一套 `skills/`、`scripts/` 和网页端；

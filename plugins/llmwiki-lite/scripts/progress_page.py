@@ -32,6 +32,8 @@ def page(home: str, project_id: str) -> str:
 <div id="progress-timeline" aria-label="任务时间跨度" tabindex="0"></div></details>
 <dialog id="progress-dialog"><form id="progress-form">
 <div class="progress-dialog-head"><h2 id="progress-dialog-title">任务</h2><button type="button" id="progress-close" aria-label="关闭任务">×</button></div>
+<div id="progress-task-metadata" class="progress-task-metadata" hidden></div>
+<section id="progress-daily-arrangements" hidden><h3>每日安排</h3><div></div></section>
 <label>任务名称<input type="text" name="title" maxlength="240" required autocomplete="off"></label>
 <div class="progress-task-options"><label>优先级<select name="priority"><option value="high">高优先级</option><option value="medium" selected>中优先级</option><option value="low">低优先级</option></select></label>
 <div class="progress-deadline-field"><label>截止日期（可选）<input name="ddl" type="date" aria-label="截止日 DDL"></label>

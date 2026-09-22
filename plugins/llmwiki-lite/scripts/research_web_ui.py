@@ -32,6 +32,8 @@ _ICON_PATHS = {
     "refresh": '<path d="M3 11a9 9 0 0 1 15.4-6.4L21 7M21 3v4h-4M21 13a9 9 0 0 1-15.4 6.4L3 17M7 17H3v4"/>',
     "git": '<path d="M15 6a9 9 0 0 0-9 9V3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>',
     "reports": '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+    "daily": '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
+    "reports-stack": '<path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/>',
     "folder": '<path d="M3.5 8V6.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V8Z"/><path d="M3.5 9h17"/>',
     "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>',
     "notebook": '<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/>',
@@ -181,19 +183,23 @@ def _console_nav_item(
 
 
 def _console_breadcrumbs(title: str, project: dict[str, Any] | None, active: str) -> str:
-    labels = {"home": "项目", "overview": "知识库", "records": "科研记录", "todos": "科研进度", "search": "搜索", "settings": "设置", "literature": "文献", "pages": title, "reports": "日报与周报", "code": "代码"}
+    labels = {"home": "项目", "daily": "每日待办", "overview": "知识库", "records": "科研记录", "todos": "科研进度", "search": "搜索", "settings": "设置", "literature": "文献", "pages": title, "reports": "日报与周报", "code": "代码"}
     label = labels.get(active, title)
-    prefix = f'<a href="{purl(str(project["id"]))}">{esc(project["name"])}</a><span aria-hidden="true">/</span>' if project and active in {"overview", "literature", "records", "pages", "todos", "code", "reports"} else ""
+    prefix = f'<a href="{purl(str(project["id"]))}">{esc(project["name"])}</a><span aria-hidden="true">/</span>' if project and active in {"overview", "literature", "records", "pages", "todos", "code"} else ""
+    if active in {"daily", "reports"}:
+        prefix = '<span>我的工作</span><span aria-hidden="true">/</span>'
     return f'<nav class="console-breadcrumbs" aria-label="当前位置">{prefix}<span>{esc(label)}</span></nav>'
 
 
-def layout(title: str, body: str, query: str = "", project_id: str | None = None, active: str = "", home: str | None = None, report_query: dict[str, str] | None = None) -> str:
+def layout(title: str, body: str, query: str = "", project_id: str | None = None, active: str = "", home: str | None = None, report_query: dict[str, str] | None = None, daily_date: str | None = None) -> str:
     projects, current_id, project = _layout_context(home, project_id)
     context_query = "?" + urlencode({"context": current_id or ""})
     # Switching project keeps the section, never a different project's document id.
     suffix = {"records": "/records", "literature": "/literature", "code": "/code",
               "todos": "/todos", "overview": "", "pages": ""}.get(active, "/todos")
     def project_href(item: dict[str, Any]) -> str:
+        if active == "daily":
+            return "/daily?" + urlencode({"date": daily_date or datetime.now().date().isoformat(), "context": str(item["id"])})
         if active == "reports":
             return "/reports?" + urlencode({**(report_query or {}), "context": str(item["id"])})
         return purl(str(item["id"])) + suffix
@@ -207,29 +213,33 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
         f'<span class="console-project-label"><small>当前项目</small><b title="{esc(project["name"]) if project else "选择项目"}">{esc(project["name"]) if project else "选择项目"}</b></span><span class="switcher-chevron">{ui_icon("switch")}</span></summary>'
         f'<div class="console-project-menu">{project_menu}</div></details>'
     )
+    work_section = (
+        '<section class="console-my-work" aria-label="我的工作"><h2 class="console-group-label">我的工作</h2>'
+        + _console_nav_item("/daily" + context_query, "每日待办", "daily", "daily", active)
+        + _console_nav_item("/reports" + context_query, "日报与周报", "reports-stack", "reports", active)
+        + '</section>'
+    )
     project_section = ""
     if project:
         pid = str(project["id"])
         project_section = (
-            '<div class="console-project-section">' + project_picker
+            '<section class="console-project-section" aria-label="项目"><h2 class="console-group-label">项目</h2>' + project_picker
             + _console_nav_item(f"{purl(pid)}/todos", "科研进度", "tasks", "todos", active)
             + _console_nav_item(f"{purl(pid)}/records", "科研记录", "notebook", "records", active)
-            + _console_nav_item("/reports?" + urlencode({"context": pid}), "日报与周报", "reports", "reports", active)
             + _console_nav_item(purl(pid), "知识库", "book", "overview", "overview" if active == "pages" else active)
             + _console_nav_item(f"{purl(pid)}/literature", "文献", "papers", "literature", active)
             + _console_nav_item(f"{purl(pid)}/code", "代码", "git", "code", active)
-            + '</div>'
+            + '</section>'
         )
     if not project_section:
-        reports_url = "/reports" if project_id is None else "/reports?" + urlencode({"context": project_id})
-        project_section = (project_picker if projects else "") + _console_nav_item(reports_url, "日报与周报", "reports", "reports", active)
+        project_section = '<section class="console-project-section" aria-label="项目"><h2 class="console-group-label">项目</h2>' + project_picker + '</section>'
     sidebar = (
         '<aside class="console-sidebar" id="console-sidebar" aria-label="侧栏">'
         f'<div class="console-sidebar-heading"><a class="console-sidebar-brand" href="/projects{esc(context_query)}" aria-label="野人工作台：项目总览">'
         + ui_icon("workbench") + '<span>野人工作台</span></a>'
         f'<button class="sidebar-close" aria-label="关闭导航菜单" onclick="toggleConsoleSidebar(false)">{ui_icon("close")}</button></div>'
         '<nav class="console-navigation" aria-label="主导航">'
-        + project_section
+        + work_section + project_section
         + '</nav><div class="console-sidebar-footer">'
         + '<span class="console-avatar" aria-hidden="true">野</span><span class="console-profile-label">本地</span>'
         + '<details class="theme-menu"><summary class="rw-icon-button" aria-label="外观" title="外观">' + ui_icon("monitor") + '</summary><div class="theme-options" aria-label="外观模式">' + theme_choices() + '</div></details>'

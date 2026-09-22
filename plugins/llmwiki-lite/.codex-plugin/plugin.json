@@ -24,7 +24,7 @@
   "interface": {
     "displayName": "LLM Wiki Lite 科研助手",
     "shortDescription": "让 AI 助手理解科研项目并维护实用的中文 Markdown Wiki 与本地研究工作台。",
-    "longDescription": "通过七个独立 Skill 指导 AI 助手完成项目注册、研究理解、证据核验、增量维护、文献推荐下载精读、明确触发的科研过程记录和网页浏览；MCP 只承担文件读取、检索、快照、状态、科研记录追加/读取和安全写入等机械劳动，网页端提供中文研究项目、文献中心、PDF 原文阅读、中文辅助阅读对照、科研记录时间线以及方法、实验、结果、结论和计划视图。",
+    "longDescription": "通过八个独立 Skill 指导 AI 助手完成项目注册、研究理解、证据核验、增量维护、文献推荐下载精读、明确触发的科研过程记录、网页浏览和目标拆解排期；MCP 只承担文件读取、检索、快照、状态、科研记录追加/读取和安全写入等机械劳动，网页端提供中文研究项目、文献中心、PDF 原文阅读、中文辅助阅读对照、科研记录时间线以及方法、实验、结果、结论和计划视图。",
     "developerName": "LLM Wiki Lite contributors",
     "category": "Productivity",
     "capabilities": [

@@ -15,9 +15,9 @@ const os=require('node:os');
     assert.ok(Math.abs((await page.locator('.console-sidebar').boundingBox()).width-207.5)<1,'166px prototype rail renders at 125%');
     assert.equal(await page.locator('.console-project-label small').innerText(),'当前项目');
     await page.waitForFunction(()=>document.querySelectorAll('.progress-day').length===7);
-    // The approved workbench has exactly six project sections; tools stay in the footer.
+    // The approved incremental workbench separates global work from the original project columns.
     const navItems=await page.locator('.console-nav-item').count();
-    assert.deepEqual(await page.locator('.console-navigation .console-nav-item').allTextContents(), ['科研进度','科研记录','日报与周报','知识库','文献','代码']);
+    assert.deepEqual(await page.locator('.console-navigation .console-nav-item').allTextContents(), ['每日待办','日报与周报','科研进度','科研记录','知识库','文献','代码']);
     assert.equal(await page.locator('.console-navigation a[href="'+base+'/code"] svg circle').count(),2,'Git icon matches approved two-endpoint prototype');
     for (const [route, active] of [[base+'/todos','科研进度'],[base+'/records','科研记录'],['/reports','日报与周报'],[base,'知识库'],[base+'/literature','文献'],[base+'/code','代码']]) {
       await go(route);
@@ -36,7 +36,7 @@ const os=require('node:os');
     await page.waitForFunction(expected=>document.body.dataset.workbenchProject===expected,targetBase.split('/').pop());
     assert.equal(await page.locator('.console-project-label b').innerText(),targetName);
     assert.deepEqual(await page.locator('.console-navigation .console-nav-item').evaluateAll(items=>items.map(a=>a.getAttribute('href'))),
-      [targetBase+'/todos',targetBase+'/records','/reports?context='+targetBase.split('/').pop(),targetBase,targetBase+'/literature',targetBase+'/code']);
+      ['/daily?context='+targetBase.split('/').pop(),'/reports?context='+targetBase.split('/').pop(),targetBase+'/todos',targetBase+'/records',targetBase,targetBase+'/literature',targetBase+'/code']);
     await go(base+'/todos');
     // Approved prototype footer: local avatar/label and icon-only accessible settings;
     // project overview remains on the brand, not a second footer navigation row.

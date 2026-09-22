@@ -31,9 +31,22 @@ class NotebookConflict(LLMWikiError):
 
 
 def safe_file(root: Path, relative: str) -> Path:
+    def containment_key(path: Path) -> Path:
+        # Concurrent creation can make Windows resolve() retain \\?\ on only
+        # one side. Normalize the namespace for comparison, never for I/O.
+        text = str(path)
+        if os.name == "nt":
+            if text[:8].upper() == "\\\\?\\UNC\\":
+                return Path("\\\\" + text[8:])
+            if re.match(r"\\\\\?\\[A-Za-z]:\\", text):
+                return Path(text[4:])
+        return path
+
     root = root.resolve()
     candidate = root / relative
-    candidate.resolve().relative_to(root)
+    # The lexical walk below must also remain anchored to this exact root.
+    candidate.relative_to(root)
+    containment_key(candidate.resolve()).relative_to(containment_key(root))
     current = candidate
     while current != root:
         if current.is_symlink() or (

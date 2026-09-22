@@ -1,0 +1,35 @@
+/* Only the new daily surface. Keep the shared 125% scale and theme variables. */
+#daily-tasks{min-width:0}#daily-tasks [hidden]{display:none!important}
+#daily-tasks button:focus-visible,#daily-tasks a:focus-visible,#daily-tasks input:focus-visible,#daily-tasks textarea:focus-visible,#daily-tasks select:focus-visible{outline:2px solid var(--rw-purple);outline-offset:3px}
+.daily-datebar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:26px 0 20px}
+#daily-tasks .daily-datebar input{width:132px;min-width:0;font-size:12px;border:0;background:transparent;font-weight:500;padding:6px 4px;margin:0}
+#daily-tasks .daily-datebar .button{min-height:29px;padding:5px 7px;font-size:12px;border-color:transparent}
+#daily-tasks .daily-datebar .daily-today{border:1px solid var(--rw-line);margin-left:3px}
+.daily-dayname,.daily-summary{font-size:12px;color:var(--rw-sub)}.daily-summary{margin:0 0 22px}
+.daily-list-heading{display:flex;align-items:center;justify-content:space-between;margin:24px 0 5px;font-size:12px;color:var(--rw-sub)}.daily-list-heading strong{color:var(--rw-ink);font-weight:500}
+.daily-task{display:flex;align-items:flex-start;gap:11px;border-bottom:1px solid var(--rw-line);padding:18px 0}
+#daily-tasks .daily-task input[type=checkbox]{width:16px;height:16px;flex:none;margin:4px 0 0;cursor:pointer}
+.daily-task-main{flex:1;min-width:0}
+#daily-tasks .daily-task-title{border:0;padding:0;min-height:0;background:transparent;display:block;text-align:left;font-size:13px;line-height:1.65;font-weight:500;overflow-wrap:anywhere}
+#daily-tasks .daily-task-title:hover{background:transparent;text-decoration:underline;text-underline-offset:3px}
+.daily-task-meta{font-size:11px;color:var(--rw-sub);display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:5px;overflow-wrap:anywhere}
+.daily-task-meta a{color:var(--rw-sub)}.daily-task-meta .daily-review{color:var(--rw-purple)}
+#daily-tasks .daily-done .daily-task-title{font-weight:400;text-decoration:line-through;color:var(--rw-sub)}
+.daily-fold{margin-top:22px;border:0;padding:0}.daily-fold>summary{font-size:12px;color:var(--rw-sub);padding:8px 0;cursor:pointer;list-style:revert}.daily-fold>summary::after{display:none}.daily-fold .daily-task{padding:13px 0}
+#daily-tasks .daily-reschedule{padding:3px 6px;min-height:26px;font-size:11px;flex:none;align-self:center}
+.daily-empty{padding:40px 0;text-align:center;color:var(--rw-sub);font-size:13px}.daily-empty button{display:block;margin:16px auto 0}
+.daily-form-sheet{background:var(--rw-paper);padding:0;max-width:550px;margin:0 auto;min-width:0}.daily-form-sheet h1{margin-bottom:26px}
+#daily-tasks .daily-form-sheet input,#daily-tasks .daily-form-sheet textarea,#daily-tasks .daily-form-sheet select{box-sizing:border-box;width:100%;max-width:100%;min-width:0;font-size:13px}
+.daily-form-sheet textarea{resize:vertical;min-height:100px}.daily-form-sheet label{display:block;font-size:12px;font-weight:500;margin:17px 0 7px}
+.daily-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 15px;min-width:0}.daily-form-grid>div{min-width:0}
+.daily-actions{display:flex;justify-content:flex-end;align-items:center;gap:9px;flex-wrap:wrap;margin-top:25px}.daily-actions>span{flex:1}
+#daily-tasks .daily-back{border:0;padding:0;min-height:20px;font-size:12px;color:var(--rw-sub);margin:0 0 20px;display:flex;align-items:center;gap:4px}
+.daily-hint{font-size:12px;color:var(--rw-sub);margin:14px 0;line-height:1.8;overflow-wrap:anywhere}#daily-error,.daily-danger{color:var(--danger)}#daily-error{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+#daily-message{font-size:12px;background:var(--soft);padding:10px 12px;border-radius:6px;margin:0 0 16px;overflow-wrap:anywhere}#daily-retry,#daily-reload{font-size:12px}
+@media(max-width:600px){.daily-form-grid{grid-template-columns:minmax(0,1fr)}.daily-task{gap:8px}.daily-task:has(.daily-reschedule){flex-wrap:wrap}.daily-reschedule{margin-left:24px}.daily-actions{gap:7px}.daily-actions>span{display:none}.daily-datebar{gap:3px}}
+
+.daily-source-icon{width:11px;height:11px;margin-left:3px;vertical-align:-1px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}.daily-delivery-info{border-left:2px solid var(--rw-purple);padding:2px 0 2px 11px;margin:12px 0;color:var(--rw-sub);font-size:12px;line-height:1.7}.daily-delivery-info p{margin:3px 0}.daily-delivery-info a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+
+.daily-delivery-summary,.daily-record-summary{white-space:pre-wrap;overflow-wrap:anywhere}.daily-record-summary{display:block}
+
+.daily-duration{font-size:11px;line-height:1.65;color:var(--rw-sub);white-space:nowrap;flex:none;padding-top:2px}

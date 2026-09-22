@@ -592,7 +592,8 @@ def test_mcp(
     )
     names = {x["name"] for x in responses[1]["result"]["tools"]}
     require(
-        len(names) == 36
+        len(names) == 38
+        and {"llmwiki_daily_tasks_get", "llmwiki_task_write"}.issubset(names)
         and "llmwiki_web_start" in names
         and "llmwiki_search" in names
         and {"llmwiki_knowledge_plan", "llmwiki_knowledge_sources", "llmwiki_knowledge_finish"}.issubset(names)
@@ -823,6 +824,9 @@ def main() -> int:
     from test_continuous_documents import ContinuousDocuments
     from test_desktop_launcher import DesktopLauncherTests
     from test_notebook_removal import NotebookRemovalTests
+    from test_daily_tasks import DailyTasksTests
+    from test_daily_tasks_http import DailyHTTPTests
+    from test_task_cli import CLIContractTests, CLIBackendTests
     from test_progress import ProgressTests
     from test_progress_workbench import ProgressWorkbenchTests
     from test_project_management import ProjectManagementTests
@@ -870,7 +874,7 @@ def main() -> int:
         ReportTests,
         ReportGenerationTests, WorkspaceReportTests,
         NotebookTests, NotebookRemovalTests, ContinuousDocuments, DesktopLauncherTests,
-        ProgressTests, ProgressWorkbenchTests, ProjectManagementTests, GitWebWorktreeTests,
+        DailyTasksTests, DailyHTTPTests, CLIContractTests, CLIBackendTests, ProgressTests, ProgressWorkbenchTests, ProjectManagementTests, GitWebWorktreeTests,
         ProgressContextTests,
         MCPValidationTests,
         CatalogTests, LiteratureWebTests, CollectionTests, LiteratureScheduleTests,

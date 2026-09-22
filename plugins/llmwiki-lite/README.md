@@ -63,7 +63,7 @@ llmwiki-lite/
 
 `.mcp.json` 与 `hooks/hooks.json` 使用同一段跨平台启动代码：Codex 通过插件根目录 / `${PLUGIN_ROOT}` 解析脚本，Claude Code 通过 `${CLAUDE_PLUGIN_ROOT}` 解析，opencode 由安装脚本写入绝对路径。
 
-七个 Skill 可以独立触发：
+八个 Skill 可以独立触发：
 
 1. `llmwiki-projects`：注册项目和管理存储位置；
 2. `llmwiki-understand`：理解研究或软件项目并建立少量有用 Wiki；
@@ -72,6 +72,7 @@ llmwiki-lite/
 5. `llmwiki-literature`：调研推荐论文，在用户选定后下载原文、生成中文精读并进入文献中心；
 6. `llmwiki-research-record`：在用户明确要求后，把讨论整理为阶段性科研记录；
 7. `llmwiki-web`：启动中文科研知识工作台。
+8. `llmwiki-task-planning`：将科研目标拆成按日期执行的每日任务，并通过共享接口提交交付、等待用户验收。
 
 ## 中文输出约定
 
