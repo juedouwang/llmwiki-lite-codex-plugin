@@ -1,6 +1,6 @@
 {
   "name": "llmwiki-lite",
-  "version": "0.3.3+codex.20260922093137",
+  "version": "0.3.4+codex.20260923113420",
   "description": "A lightweight LLM-led research and project knowledge plugin for Codex, Claude Code, and opencode: useful Markdown Wikis, explicit research records, literature reading, and a Chinese-first local research cockpit.",
   "author": {
     "name": "LLM Wiki Agent contributors",
