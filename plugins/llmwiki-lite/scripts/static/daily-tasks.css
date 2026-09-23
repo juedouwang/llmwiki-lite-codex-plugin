@@ -10,13 +10,15 @@
 .daily-task{display:flex;align-items:flex-start;gap:11px;border-bottom:1px solid var(--rw-line);padding:18px 0}
 #daily-tasks .daily-task input[type=checkbox]{width:16px;height:16px;flex:none;margin:4px 0 0;cursor:pointer}
 .daily-task-main{flex:1;min-width:0}
+.daily-task-trailing{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex:none;margin:1px 0 0 12px;min-height:26px}
 #daily-tasks .daily-task-title{border:0;padding:0;min-height:0;background:transparent;display:block;text-align:left;font-size:13px;line-height:1.65;font-weight:500;overflow-wrap:anywhere}
 #daily-tasks .daily-task-title:hover{background:transparent;text-decoration:underline;text-underline-offset:3px}
 .daily-task-meta{font-size:11px;color:var(--rw-sub);display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:5px;overflow-wrap:anywhere}
 .daily-task-meta a{color:var(--rw-sub)}.daily-task-meta .daily-review{color:var(--rw-purple)}
 #daily-tasks .daily-done .daily-task-title{font-weight:400;text-decoration:line-through;color:var(--rw-sub)}
 .daily-fold{margin-top:22px;border:0;padding:0}.daily-fold>summary{font-size:12px;color:var(--rw-sub);padding:8px 0;cursor:pointer;list-style:revert}.daily-fold>summary::after{display:none}.daily-fold .daily-task{padding:13px 0}
-#daily-tasks .daily-reschedule{padding:3px 6px;min-height:26px;font-size:11px;flex:none;align-self:center}
+#daily-tasks .daily-reschedule{padding:3px 8px;min-height:26px;font-size:11px;flex:none;white-space:nowrap;color:var(--rw-sub);border-color:transparent;border-radius:6px}
+#daily-tasks .daily-reschedule:hover{background:var(--soft);color:var(--rw-ink)}
 .daily-empty{padding:40px 0;text-align:center;color:var(--rw-sub);font-size:13px}.daily-empty button{display:block;margin:16px auto 0}
 .daily-form-sheet{background:var(--rw-paper);padding:0;max-width:550px;margin:0 auto;min-width:0}.daily-form-sheet h1{margin-bottom:26px}
 #daily-tasks .daily-form-sheet input,#daily-tasks .daily-form-sheet textarea,#daily-tasks .daily-form-sheet select{box-sizing:border-box;width:100%;max-width:100%;min-width:0;font-size:13px}
@@ -26,10 +28,10 @@
 #daily-tasks .daily-back{border:0;padding:0;min-height:20px;font-size:12px;color:var(--rw-sub);margin:0 0 20px;display:flex;align-items:center;gap:4px}
 .daily-hint{font-size:12px;color:var(--rw-sub);margin:14px 0;line-height:1.8;overflow-wrap:anywhere}#daily-error,.daily-danger{color:var(--danger)}#daily-error{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
 #daily-message{font-size:12px;background:var(--soft);padding:10px 12px;border-radius:6px;margin:0 0 16px;overflow-wrap:anywhere}#daily-retry,#daily-reload{font-size:12px}
-@media(max-width:600px){.daily-form-grid{grid-template-columns:minmax(0,1fr)}.daily-task{gap:8px}.daily-task:has(.daily-reschedule){flex-wrap:wrap}.daily-reschedule{margin-left:24px}.daily-actions{gap:7px}.daily-actions>span{display:none}.daily-datebar{gap:3px}}
+@media(max-width:600px){.daily-form-grid{grid-template-columns:minmax(0,1fr)}.daily-task{display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px}.daily-task-main{grid-column:2}.daily-task-trailing{grid-column:2;justify-content:flex-start;margin:1px 0 0}.daily-actions{gap:7px}.daily-actions>span{display:none}.daily-datebar{gap:3px}}
 
 .daily-source-icon{width:11px;height:11px;margin-left:3px;vertical-align:-1px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}.daily-delivery-info{border-left:2px solid var(--rw-purple);padding:2px 0 2px 11px;margin:12px 0;color:var(--rw-sub);font-size:12px;line-height:1.7}.daily-delivery-info p{margin:3px 0}.daily-delivery-info a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 
 .daily-delivery-summary,.daily-record-summary{white-space:pre-wrap;overflow-wrap:anywhere}.daily-record-summary{display:block}
 
-.daily-duration{font-size:11px;line-height:1.65;color:var(--rw-sub);white-space:nowrap;flex:none;padding-top:2px}
+.daily-duration{font-size:11px;line-height:1.65;color:var(--rw-sub);white-space:nowrap;flex:none}

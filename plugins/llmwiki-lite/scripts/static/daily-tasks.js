@@ -84,8 +84,12 @@
     if (task.review_state === 'rejected') meta.append(node('span', 'daily-review', '退回修改'));
     if (overdue) meta.append(node('span', '', '原定 ' + task.scheduled_date));
     main.append(meta); item.append(check, main);
-    if (task.estimated_minutes) item.append(node('span', 'daily-duration', task.estimated_minutes + ' 分钟'));
-    if (overdue) item.append(button('安排到这天', () => mutate('update', task, {scheduled_date:day}), 'daily-reschedule'));
+    if (task.estimated_minutes || overdue) {
+      const trailing = node('div', 'daily-task-trailing');
+      if (task.estimated_minutes) trailing.append(node('span', 'daily-duration', task.estimated_minutes + ' 分钟'));
+      if (overdue) trailing.append(button('安排到这天', () => mutate('update', task, {scheduled_date:day}), 'daily-reschedule'));
+      item.append(trailing);
+    }
     return item;
   }
   function render() {
@@ -166,7 +170,7 @@
     if (action !== 'delete' && action !== 'create' && action !== 'reject' && !patch && changed()) { error('请先保存当前填写，再验收或恢复待办。'); return; }
     const selectedProject = field('project_id').value;
     const sourceProject = task ? owner(task) : selectedProject;
-    const moving = Boolean(task && selectedProject !== sourceProject);
+    const moving = Boolean(task && action === 'update' && selectedProject !== sourceProject);
     if (moving && task.parent_id) { error('科研进度子任务不能更换关联项目。'); return; }
     const projectId = moving ? selectedProject : sourceProject;
     let revision;
@@ -177,7 +181,27 @@
     try {
       const payload = {action: moving && action === 'update' ? 'move' : action, project_id:projectId, revision, ...(task ? {id:task.id} : {}), ...(patch && action !== 'reject' ? {task:patch} : {}), ...(action === 'reject' ? {reason:patch?.reason} : {})};
       if (moving && action === 'update') Object.assign(payload, {from_project_id: sourceProject, source_revision: revision, target_revision: revisionFor(null, projectId)});
-      await request(payload);
+      try { await request(payload); }
+      catch (e) {
+        // The revision covers every task in a project. Another task may have
+        // changed since this page loaded; refresh and safely retry a checkbox
+        // action once only when this task's completion state is still the same.
+        if (e.status !== 409 || editorOpen() || !task || !['accept', 'restore'].includes(action)) throw e;
+        try { await load(true); }
+        catch (readError) { message('任务版本已变化，最新列表读取失败：' + readError.message, true); return; }
+        if (!active()) return;
+        const latest = [...data.tasks, ...data.overdue, ...data.completed]
+          .find(item => item.id === task.id && owner(item) === sourceProject);
+        if (!latest) { message('任务已改期或删除，当前日期列表已更新。'); return; }
+        if (done(latest) !== done(task)) { message('任务状态已由其他操作更新，列表已同步。'); return; }
+        try { await request({...payload, revision:revisionFor(latest, sourceProject)}); }
+        catch (retryError) {
+          if (retryError.status !== 409) throw retryError;
+          try { await load(true); message('任务再次发生变化，列表已更新，请确认最新状态。'); }
+          catch (readError) { message('任务再次发生变化，最新列表读取失败：' + readError.message, true); }
+          return;
+        }
+      }
       if (!active()) return;
       if (editorOpen()) closeEditor(true);
       message('');
@@ -189,8 +213,10 @@
         error(e.message);
         if (e.status === 409) { conflict = true; $('#daily-reload').hidden = false; }
       } else {
-        message(e.status === 409 ? '任务已变化，请核对最新列表后再操作。' : e.message, true);
-        if (e.status === 409) await load(true).catch(() => {});
+        if (e.status === 409) {
+          try { await load(true); message('任务已变化，列表已更新，请核对后再操作。'); }
+          catch (readError) { message('任务已变化，最新列表读取失败：' + readError.message, true); }
+        } else message(e.message, true);
       }
     } finally {
       busy = false; controls.forEach(([control, disabled]) => { control.disabled = disabled; });
