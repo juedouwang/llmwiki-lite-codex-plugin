@@ -826,6 +826,8 @@ def main() -> int:
     from test_notebook_removal import NotebookRemovalTests
     from test_daily_tasks import DailyTasksTests
     from test_daily_tasks_http import DailyHTTPTests
+    from test_hook_change import HookChangeTests
+    from test_research_result_hook import ResearchResultHookTests
     from test_task_cli import CLIContractTests, CLIBackendTests
     from test_progress import ProgressTests
     from test_progress_workbench import ProgressWorkbenchTests
@@ -874,7 +876,7 @@ def main() -> int:
         ReportTests,
         ReportGenerationTests, WorkspaceReportTests,
         NotebookTests, NotebookRemovalTests, ContinuousDocuments, DesktopLauncherTests,
-        DailyTasksTests, DailyHTTPTests, CLIContractTests, CLIBackendTests, ProgressTests, ProgressWorkbenchTests, ProjectManagementTests, GitWebWorktreeTests,
+        DailyTasksTests, DailyHTTPTests, HookChangeTests, ResearchResultHookTests, CLIContractTests, CLIBackendTests, ProgressTests, ProgressWorkbenchTests, ProjectManagementTests, GitWebWorktreeTests,
         ProgressContextTests,
         MCPValidationTests,
         CatalogTests, LiteratureWebTests, CollectionTests, LiteratureScheduleTests,

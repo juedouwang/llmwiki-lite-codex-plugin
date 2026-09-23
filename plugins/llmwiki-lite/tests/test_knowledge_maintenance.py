@@ -36,6 +36,56 @@ class KnowledgeFixture(unittest.TestCase):
             "def compute():\n    return 42\n", encoding="utf-8"
         )
 
+    def test_event_hints_are_consumed_and_source_scan_remains_authoritative(self):
+        events = Path(self.p["state_root"]) / "events.jsonl"
+        (self.source / "other.py").write_text("value = 2\n", encoding="utf-8")
+        with events.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"kind": "file-change-hint", "paths": ["other.py"]}) + "\n")
+        run = self.plan()
+        changes = self.read(run)
+        self.assertEqual(changes[0]["locator"], "source:other.py")
+        saved = km.state(self.p)
+        self.assertEqual(saved["event_cursor"], events.stat().st_size)
+        self.assertEqual(km.event_hints(self.p, saved["event_cursor"])[0], set())
+        # A new unhinted file is still detected; events never substitute evidence.
+        km.knowledge_finish(run, "reviewed", reviewed_source_ids=[i["source_id"] for i in changes],
+                            actions=[], home=self.home)
+        (self.source / "unhinted.py").write_text("value = 3\n", encoding="utf-8")
+        next_run = self.plan()
+        self.assertIn("source:unhinted.py", [i["locator"] for i in self.read(next_run)])
+
+    def test_three_knowledge_pages_write_from_verified_source(self):
+        run = self.plan()
+        changes = self.read(run)
+        self.read(run, "catalog")
+        source = next(item for item in changes if item["locator"] == "source:main.py")
+        refs = [{**{k: source[k] for k in ("source_id", "locator", "revision")},
+                 "excerpt": "return 42"}]
+        pages = {"project-architecture": "# 项目架构\nmain.py 提供 compute 入口。",
+                 "current-understanding": "# 当前认识\n测试夹具仅说明 compute 返回 42，不等于实验结论。",
+                 "key-concepts": "# 关键术语\ncompute：示例计算函数。"}
+        actions = [{"action_id": uuid4().hex, "mode": "create",
+                    "page_path": f"knowledge/{slug}.md", "base_sha256": None,
+                    "content": body, "reason": "由测试源码中 compute 函数生成的有限示例。",
+                    "evidence_refs": refs} for slug, body in pages.items()]
+        result = km.knowledge_finish(run, "reviewed", reviewed_source_ids=[source["source_id"]],
+                                     actions=actions, home=self.home)
+        self.assertEqual(result["created"], 3)
+        for slug, body in pages.items():
+            self.assertIn(body, (self.wiki / "knowledge" / (slug + ".md")).read_text(encoding="utf-8"))
+
+    def test_event_cursor_waits_for_complete_line(self):
+        events = Path(self.p["state_root"]) / "events.jsonl"
+        with events.open("ab") as handle:
+            handle.write(b'{"kind":"file-change-hint","paths":["main.py"]}')
+        hints, cursor = km.event_hints(self.p, 0)
+        self.assertEqual((hints, cursor), (set(), 0))
+        with events.open("ab") as handle:
+            handle.write(b"\n")
+        hints, cursor = km.event_hints(self.p, 0)
+        self.assertEqual(hints, {"source:main.py"})
+        self.assertEqual(cursor, events.stat().st_size)
+
     def plan(self):
         return km.knowledge_plan("manual", self.p["id"], home=self.home)["run_id"]
 

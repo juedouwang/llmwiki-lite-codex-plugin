@@ -1,15 +1,30 @@
 ---
 name: llmwiki-research-record
-description: "Record an explicitly requested research discussion as a durable, concise Markdown process record: stage understanding, evidence, decisions, open questions, and next steps. Use when the user says 记录刚才的讨论、保存阶段性理解、记录科研过程、记录科研决策、生成今天的研究记录, or asks to review prior research records. Do not automatically save every conversation."
+description: "Record a valuable, complete research result as a durable, concise Markdown process record: stage understanding, evidence, decisions, open questions, and next steps. Use for explicit record requests and for completed research work that is worth preserving; never save ordinary chat, failed work, or every conversation."
 ---
 
 # LLM Wiki Research Record
 
-This Skill adds a small, explicit research-process journal to the current LLM Wiki project. You perform the interpretation and writing; MCP only validates fields and appends/reads Markdown files.
+This Skill adds a small research-process journal to the current LLM Wiki project; explicit requests are written directly, and complete valuable results may be handed to the asynchronous Stop Hook. You perform the interpretation and writing; MCP only validates fields and appends/reads Markdown files.
+
+## 异步自动收口
+
+当当前对话本身已经形成了**完整且有科研价值的结果**，即使用户没有另外说“记录”，也可以在最终回复末尾追加一个隐藏的异步收口标记。不要为普通解释、闲聊、仅提出计划、失败/中断工作或没有新认识的回复追加。标记必须放在最终回复最后，使用 HTML 注释，不展示给用户：
+
+```text
+<!-- llmwiki-research-result
+{"version":1,"title":"具体标题","discussion_context":"本次工作解决了什么问题","understanding":"阶段性理解","evidence":["实际证据或路径"],"conclusion":"当前结论","decisions":[],"open_questions":[],"next_steps":[],"related_files":[],"related_pages":[],"tags":["阶段性理解"],"task_id":"可选的每日待办 ID","summary":"有 task_id 时用于提交待验收交付的摘要"}
+-->
+```
+
+若会话工作目录不在项目下，先明确所选的已注册项目，并在标记中填写其 `project_id`；不要从聊天正文猜项目或跨项目写入。
+
+`task_id` 为空时，只要本轮工作完整且有价值，异步 Hook 追加一条独立科研记录，不要求先创建待办；有 `task_id` 时，附上真实 `summary`、`evidence`、`remaining`、`changed_paths`（无剩余问题可留空），异步 Hook 只提交交付摘要，把任务置为 `review_state=pending`，并保留“助手完成 ≠ 用户验收”的边界，不会自动改成 `done`。Hook 失败时不应影响最终回复；同一收口标记重复触发必须幂等。异步只意味着不阻塞宿主响应，不保证会话立即结束时后台进程一定完成；重要结果可通过科研记录页面核对，必要时使用显式记录工具补写。
+
 
 ## When to trigger
 
-Use this Skill when the user explicitly asks to:
+Use this Skill when the user explicitly asks to, or when the current conversation has just produced a complete and valuable research result:
 
 - 记录刚才的讨论；
 - 保存这次阶段性理解；
@@ -17,7 +32,7 @@ Use this Skill when the user explicitly asks to:
 - 记录当前研究进展；
 - 查看、检索或回顾之前的科研记录。
 
-Do **not** save every conversation automatically. A record must be created only after an explicit user request.
+Do **not** save every conversation automatically. Direct MCP record creation still requires an explicit user request; the hidden marker is reserved for a complete, valuable result that the assistant intentionally chooses to preserve.
 
 ## Resolve the project
 

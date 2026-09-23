@@ -48,11 +48,11 @@ def page(home: str, context: str | None = None, day: str | None = None) -> str:
 <input id="daily-scheduled-date" name="scheduled_date" type="date" min="0001-01-01" max="9999-12-31" required></div>
 <div><label for="daily-project">关联项目</label><select id="daily-project" name="project_id"><option value="__workspace__">不关联项目</option></select></div></div>
 <label for="daily-estimated-minutes">预计用时（分钟，可选）</label><input id="daily-estimated-minutes" name="estimated_minutes" type="number" min="1" max="1440" step="1" placeholder="例如 60">
-<label for="daily-description">补充说明（可选）</label><textarea id="daily-description" name="description" rows="5" maxlength="100000" placeholder="做到什么程度算完成"></textarea>
+<label for="daily-description">描述（可选）</label><textarea id="daily-description" name="description" rows="5" maxlength="100000" placeholder="做到什么程度算完成"></textarea>
 <p id="daily-error" role="alert" hidden></p><button id="daily-reload" type="button" hidden>读取最新版本，保留当前填写</button>
 <p class="daily-hint">助手执行不等于完成，由你验收后勾选。项目仅表示待办归属，不限制每日列表。</p>
 <div class="daily-actions"><button id="daily-delete" class="daily-danger" type="button" hidden>删除待办</button>
-<button id="daily-accept" type="button" hidden>确认完成</button><span></span><button id="daily-cancel" type="button">取消</button>
+<button id="daily-reject" type="button" hidden>退回修改</button><button id="daily-accept" type="button" hidden>确认完成</button><span></span><button id="daily-cancel" type="button">取消</button>
 <button id="daily-save" type="submit" class="primary">添加待办</button></div>
 </form></section></section>
 <script src="/static/document-editor.js" defer></script><script src="/static/daily-tasks.js" defer></script>'''

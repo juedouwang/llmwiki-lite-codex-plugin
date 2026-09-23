@@ -208,7 +208,7 @@ class ProgressContextTests(unittest.TestCase):
         self.assertEqual(new_lines[:len(old_lines)], old_lines)
         self.assertEqual(len(new_lines), len(old_lines) + 1)
         event = json.loads(new_lines[-1])
-        self.assertEqual(set(event), {"timestamp", "kind", "tool", "paths"})
+        self.assertEqual(set(event), {"timestamp", "kind", "tool", "paths", "project_root", "session_id", "task_id"})
         self.assertEqual(event["kind"], "file-change-hint")
         self.assertEqual(event["tool"], "Edit")
         self.assertEqual(event["paths"], ["experiment.py"])
@@ -269,7 +269,7 @@ class ProgressContextTests(unittest.TestCase):
             server.server_close()
             worker.join()
 
-    def test_project_list_links_top_task_without_nesting(self):
+    def test_project_list_only_selects_context_without_task_subtitles(self):
         created = self.create(title="列表入口任务")
         progress.update(self.project, {"action": "create", "revision": created["revision"],
                                        "task": {"title": "未开始", "status": "planned"}})
@@ -285,8 +285,9 @@ class ProgressContextTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join()
-        self.assertIn("列表入口任务", body)
-        self.assertIn("project-row-task", body)
+        self.assertNotIn("列表入口任务", body)
+        self.assertNotIn("project-row-task", body)
+        self.assertIn('href="/projects?context=', body)
         self.assertNotIn("<a class=\"project-row\"", body)
         self.assertNotIn("未开始", body)
 

@@ -280,10 +280,40 @@ class DailyTasksTests(unittest.TestCase):
         submitted = self.call("submit", id=task["id"], summary="用户自行提交", actor="user")["task"]
         self.assertEqual(submitted["status"], "active")
         self.assertEqual(submitted["completion_record"]["actor"], "user")
-        self.call("submit", id=task["id"], summary="修订交付内容")
+        with self.assertRaises(LLMWikiError):
+            self.call("submit", id=task["id"], summary="修订交付内容")
+        self.assertEqual(len(self.records()), 1)
+        rejected = self.call("reject", id=task["id"], reason="缺少跨场景验证")["task"]
+        self.assertEqual((rejected["status"], rejected["review_state"]), ("active", "rejected"))
         self.assertEqual(len(self.records()), 2)
         self.call("update", id=task["id"], task={"status": "blocked"})
         self.assertEqual(self.call("submit", id=task["id"], summary="新的交付")["task"]["status"], "active")
+
+    def test_reject_requires_user_and_keeps_each_delivery_cycle(self):
+        task = self.create(status="active")
+        first = self.call("submit", id=task["id"], summary="第一次交付", actor="agent")["task"]
+        original = first["completion_record_id"]
+        for actor, reason in (("agent", "不行"), ("user", "   ")):
+            with self.assertRaises(LLMWikiError):
+                self.call("reject", id=task["id"], reason=reason, actor=actor)
+        revision = self.loaded()["revision"]
+        payload = {"project_id": self.pid, "action": "reject", "id": task["id"],
+                   "revision": revision, "reason": "需补上失败样本"}
+        rejected = daily.mutate(self.home, payload)["task"]
+        self.assertEqual((rejected["status"], rejected["review_state"]), ("active", "rejected"))
+        self.assertEqual(rejected["completion_record_id"], original)
+        self.assertTrue(rejected["rejection_record_id"])
+        self.assertEqual(len(self.records()), 2)
+        self.assertEqual(daily.mutate(self.home, payload)["task"]["rejection_record_id"], rejected["rejection_record_id"])
+        self.assertEqual(len(self.records()), 2)
+        second = self.call("submit", id=task["id"], summary="补上失败样本", actor="agent")["task"]
+        self.assertEqual(second["review_state"], "pending")
+        self.assertNotEqual(second["completion_record_id"], original)
+        accepted = self.call("accept", id=task["id"])["task"]
+        self.assertEqual((accepted["status"], accepted["review_state"]), ("done", "accepted"))
+        self.assertEqual(len(self.records()), 4)
+        self.assertEqual(len(accepted["history"]), 5)
+        self.assertEqual(accepted["history"][-1]["review_state"], "accepted")
 
     def test_legacy_complete_and_patch_done_use_shared_receipts(self):
         original = write_record(self.project["source_root"], "人工原记录", "用户写的内容", state_root=self.project["state_root"])["record"]["id"]

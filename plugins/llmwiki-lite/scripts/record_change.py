@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,6 +57,13 @@ def values(tool_input: dict[str, Any]) -> list[str]:
             out.append(raw)
         elif isinstance(raw, list):
             out.extend(x for x in raw if isinstance(x, str))
+    # Patch tools carry paths in their patch body, not in a file_path field.
+    for key in ("patch", "command"):
+        patch = tool_input.get(key)
+        if not isinstance(patch, str) or "*** Begin Patch" not in patch:
+            continue
+        out.extend(re.findall(r"^\*\*\* (?:Add|Update|Delete|Move to) File: (.+)$", patch,
+                              flags=re.MULTILINE))
     return out[:MAX_PATHS]
 
 
@@ -128,7 +136,7 @@ def relative_paths(value: dict[str, Any], source: Path, cwd: Path) -> list[str]:
     return out
 
 
-def append(state: Path, value: dict[str, Any], paths: list[str]) -> None:
+def append(state: Path, value: dict[str, Any], paths: list[str], source: Path) -> None:
     if not (state / "config.json").is_file():
         return
     state.mkdir(parents=True, exist_ok=True)
@@ -137,6 +145,9 @@ def append(state: Path, value: dict[str, Any], paths: list[str]) -> None:
         "kind": "file-change-hint",
         "tool": value.get("tool_name"),
         "paths": paths,
+        "project_root": str(source),
+        "session_id": str(value.get("session_id") or "")[:240],
+        "task_id": str(value.get("task_id") or "")[:80],
     }
     with (state / "events.jsonl").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(
@@ -177,7 +188,7 @@ def main() -> int:
         source, state = selected
         paths = relative_paths(value, source, cwd)
         if paths:
-            append(state, value, paths)
+            append(state, value, paths, source)
     except Exception:
         return 0
     return 0

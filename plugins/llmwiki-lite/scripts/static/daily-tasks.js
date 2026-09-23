@@ -7,7 +7,7 @@
   const owns = event => event.detail?.root === page, $ = selector => root.querySelector(selector);
   const day = root.dataset.date, endpoint = '/api/daily-tasks', form = $('#daily-form');
   const field = name => form.elements.namedItem(name), fields = ['title', 'scheduled_date', 'description', 'project_id', 'estimated_minutes'];
-  const labels = {title:'要做什么', scheduled_date:'安排日期', description:'补充说明', estimated_minutes:'预计用时'};
+  const labels = {title:'要做什么', scheduled_date:'安排日期', description:'描述', project_id:'关联项目', estimated_minutes:'预计用时'};
   const node = (tag, cls = '', text) => { const n = document.createElement(tag); n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const button = (text, run, cls = '') => { const n = node('button', cls, text); n.type = 'button'; n.addEventListener('click', run); return n; };
   const done = task => task.status === 'done';
@@ -31,6 +31,35 @@
     if (!window.ResearchDocument?.request) throw new Error('请求组件未载入，请刷新重试。');
     return window.ResearchDocument.request(payload === undefined ? endpoint + '?date=' + encodeURIComponent(day) : endpoint, payload);
   }
+  async function uploadImage(file, projectId) {
+    if (!file || !/^image\/(png|jpeg|gif|webp)$/i.test(file.type)) throw new Error('仅支持 PNG、JPEG、GIF、WebP 截图。');
+    if (file.size > 10 * 1024 * 1024) throw new Error('截图不能超过 10 MB。');
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(new Error('读取截图失败，请重试。'));
+      reader.readAsDataURL(file);
+    });
+    const result = await window.ResearchDocument.request('/api/daily-tasks/upload', {project_id: projectId, data, mime: file.type});
+    const base = projectId === '__workspace__' ? '/reports/asset/records/assets/' : `/project/${encodeURIComponent(projectId)}/asset/records/assets/`;
+    return `${base}${encodeURIComponent(result.image)}`;
+  }
+  async function pasteImage(event) {
+    const files = [...(event.clipboardData?.items || [])].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    event.preventDefault();
+    if (busy) return;
+    const textarea = field('description'), start = textarea.selectionStart, end = textarea.selectionEnd, before = textarea.value.slice(0, start), after = textarea.value.slice(end);
+    textarea.disabled = true;
+    try {
+      const links = [];
+      for (const file of files) links.push(`![截图](${await uploadImage(file, field('project_id').value)})`);
+      textarea.value = before + links.join('\n') + after;
+      const pos = before.length + links.join('\n').length; textarea.setSelectionRange(pos, pos);
+      textarea.dispatchEvent(new Event('input', {bubbles:true}));
+    } catch (e) { error(e.message); }
+    finally { textarea.disabled = false; }
+  }
   function revisionFor(task, projectId = owner(task)) {
     const revision = task?.revision ?? data.revisions[projectId];
     if (typeof revision !== 'string') throw new Error('未取得任务版本，请重新读取列表后重试。');
@@ -52,6 +81,7 @@
     meta.append(node('span', '', owner(task) === '__workspace__' ? '不关联项目' : task.project_name || owner(task)), node('span', '', '·'));
     source(task, meta);
     if (pending(task)) meta.append(node('span', 'daily-review', '待你验收'));
+    if (task.review_state === 'rejected') meta.append(node('span', 'daily-review', '退回修改'));
     if (overdue) meta.append(node('span', '', '原定 ' + task.scheduled_date));
     main.append(meta); item.append(check, main);
     if (task.estimated_minutes) item.append(node('span', 'daily-duration', task.estimated_minutes + ' 分钟'));
@@ -89,17 +119,18 @@
     if (!list.some(project => project.id === selected)) list.push({id:selected, name:editing?.project_name || '原项目（保留归属）'});
     field('project_id').replaceChildren(...list.map(project => { const option = node('option', '', project.name); option.value = project.id; return option; }));
     field('project_id').value = selected;
-    // Moving an existing task to another owner is deliberately not a client-side copy/delete.
-    field('project_id').disabled = !!editing;
+    // 普通每日待办可以迁移到另一个项目；科研进度子任务必须留在原项目。
+    field('project_id').disabled = !!(editing?.parent_id);
   }
   function showInfo(task) {
     const info = $('#daily-task-info'); info.hidden = !task;
-    info.textContent = task ? `${task.scheduled_date} · ${done(task) ? '已完成' : pending(task) ? '待你验收' : '待完成'}` : '';
+    info.textContent = task ? `${task.scheduled_date} · ${done(task) ? '已完成' : pending(task) ? '待你验收' : task.review_state === 'rejected' ? '退回修改' : '待完成'}` : '';
     const sourceBox = $('#daily-task-source'); sourceBox.replaceChildren(); if (task) source(task, sourceBox);
-    const delivery = $('#daily-delivery-info'); delivery.replaceChildren(); delivery.hidden = !task || !(task.delivery_summary || task.completion_record || task.acceptance_record);
+    const delivery = $('#daily-delivery-info'); delivery.replaceChildren(); delivery.hidden = !task || !(task.delivery_summary || task.completion_record || task.rejection_reason || task.rejection_record || task.acceptance_record);
     if (!delivery.hidden) {
       if (task.delivery_summary) delivery.append(node('p', 'daily-delivery-summary', '助手交付：' + task.delivery_summary));
-      for (const [label, record] of [['交付记录', task.completion_record], ['验收记录', task.acceptance_record]]) {
+      if (task.rejection_reason) delivery.append(node('p', 'daily-delivery-summary', '退回意见：' + task.rejection_reason));
+      for (const [label, record] of [['交付记录', task.completion_record], ['退回记录', task.rejection_record], ['验收记录', task.acceptance_record]]) {
         if (!record?.id) continue;
         const line = node('p', 'daily-delivery-record', label + '：');
         const href = recordUrl(task, record);
@@ -115,9 +146,11 @@
     editing = task; conflict = false;
     baseline = {title:task?.title || '', scheduled_date:task?.scheduled_date || day, description:task?.description || '', project_id:owner(task), estimated_minutes:String(task?.estimated_minutes ?? '')};
     fillProjects(baseline.project_id); fields.forEach(key => { field(key).value = baseline[key]; });
+    if (task?.parent_id) { $('#daily-task-source').append(node('span', 'daily-hint', ' · 科研进度子任务不能更换关联项目')); }
     $('#daily-editor-title').textContent = task ? '待办详情' : '新建待办';
     $('#daily-save').textContent = task ? '保存修改' : '添加待办'; $('#daily-save').disabled = false;
     $('#daily-delete').hidden = $('#daily-accept').hidden = !task;
+    $('#daily-reject').hidden = !task || !pending(task);
     $('#daily-accept').textContent = done(task || {}) ? '取消完成' : '确认完成';
     $('#daily-reload').hidden = true; error(''); showInfo(task);
     $('#daily-list-view').hidden = true; $('#daily-edit-view').hidden = false; field('title').focus();
@@ -130,15 +163,21 @@
   }
   async function mutate(action, task = null, patch, baseRevision) {
     if (busy || !ready) return;
-    if (action !== 'delete' && action !== 'create' && !patch && changed()) { error('请先保存当前填写，再验收或恢复待办。'); return; }
-    const projectId = task ? owner(task) : field('project_id').value;
+    if (action !== 'delete' && action !== 'create' && action !== 'reject' && !patch && changed()) { error('请先保存当前填写，再验收或恢复待办。'); return; }
+    const selectedProject = field('project_id').value;
+    const sourceProject = task ? owner(task) : selectedProject;
+    const moving = Boolean(task && selectedProject !== sourceProject);
+    if (moving && task.parent_id) { error('科研进度子任务不能更换关联项目。'); return; }
+    const projectId = moving ? selectedProject : sourceProject;
     let revision;
-    try { revision = baseRevision ?? revisionFor(task, projectId); } catch (e) { editorOpen() ? error(e.message) : message(e.message, true); return; }
+    try { revision = baseRevision ?? revisionFor(task, sourceProject); } catch (e) { editorOpen() ? error(e.message) : message(e.message, true); return; }
     busy = true; ++sequence;
     const controls = [...root.querySelectorAll('button,input,textarea,select')].map(control => [control, control.disabled]);
     controls.forEach(([control]) => { control.disabled = true; }); root.setAttribute('aria-busy', 'true'); error('');
     try {
-      await request({action, project_id:projectId, revision, ...(task ? {id:task.id} : {}), ...(patch ? {task:patch} : {})});
+      const payload = {action: moving && action === 'update' ? 'move' : action, project_id:projectId, revision, ...(task ? {id:task.id} : {}), ...(patch && action !== 'reject' ? {task:patch} : {}), ...(action === 'reject' ? {reason:patch?.reason} : {})};
+      if (moving && action === 'update') Object.assign(payload, {from_project_id: sourceProject, source_revision: revision, target_revision: revisionFor(null, projectId)});
+      await request(payload);
       if (!active()) return;
       if (editorOpen()) closeEditor(true);
       message('');
@@ -186,16 +225,19 @@
   $('#daily-cancel').addEventListener('click', () => closeEditor());
   $('#daily-retry').addEventListener('click', async () => { message(''); await refresh(); });
   $('#daily-reload').addEventListener('click', reloadDraft);
+  field('description').addEventListener('paste', pasteImage);
   field('project_id').addEventListener('change', () => { if (!editing) { try { draftRevision = revisionFor(null, field('project_id').value); } catch (e) { error(e.message); } } });
   form.addEventListener('submit', event => {
     event.preventDefault(); if (conflict || busy || !form.reportValidity()) return;
     if (!field('title').value.trim()) { error('请填写具体的待办名称。'); field('title').focus(); return; }
-    const current = values(), patch = Object.fromEntries(['title','scheduled_date','description','estimated_minutes'].filter(key => !editing || current[key] !== baseline[key]).map(key => [key, current[key]]));
+    const current = values(), moving = Boolean(editing && current.project_id !== baseline.project_id);
+    const patch = Object.fromEntries(['title','scheduled_date','description','estimated_minutes'].filter(key => !editing || current[key] !== baseline[key]).map(key => [key, current[key]]));
     if (Object.hasOwn(patch, 'estimated_minutes')) patch.estimated_minutes = patch.estimated_minutes === '' ? null : Number(patch.estimated_minutes);
     if (editing && Object.hasOwn(editing, 'parent_id')) patch.parent_id = editing.parent_id;
     void mutate(editing ? 'update' : 'create', editing, patch, draftRevision);
   });
   $('#daily-accept').addEventListener('click', () => { if (editing) void mutate(done(editing) ? 'restore' : 'accept', editing, undefined, draftRevision); });
+  $('#daily-reject').addEventListener('click', () => { if (!editing || !pending(editing)) return; const reason = prompt('请写明退回意见'); if (reason?.trim()) void mutate('reject', editing, {reason:reason.trim()}, draftRevision); });
   $('#daily-delete').addEventListener('click', () => {
     if (!busy && editing && confirm('确定删除此待办？当前未保存的填写将被放弃，不会删除关联项目或记录。')) void mutate('delete', editing, undefined, draftRevision);
   });

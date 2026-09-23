@@ -39,13 +39,14 @@ MAX_PLAN_REQUESTS = 500
 DAILY_DEFAULTS = {
     "parent_id": "", "scheduled_date": "", "review_state": "none",
     "delivery_summary": "", "completion_record_id": "", "acceptance_record_id": "",
+    "rejection_reason": "", "rejection_record_id": "",
     "kind": "task", "estimated_minutes": None,
 }
 DAILY_FIELDS = tuple(DAILY_DEFAULTS)
-RECEIPT_FIELDS = ("completion_cycle", "delivery_receipt", "acceptance_receipt")
+RECEIPT_FIELDS = ("completion_cycle", "delivery_receipt", "acceptance_receipt", "rejection_receipt")
 PROTECTED_FIELDS = (
     "review_state", "delivery_summary", "completion_record_id", "acceptance_record_id",
-    "completed_at", "resume_status", *RECEIPT_FIELDS,
+    "completed_at", "resume_status", "rejection_reason", "rejection_record_id", *RECEIPT_FIELDS,
 )
 
 
@@ -123,13 +124,13 @@ def validate(value: dict) -> dict:
                 task[key] = minutes
             else:
                 task[key] = _text(value[key], MAX_DESCRIPTION if key == "delivery_summary" else 240)
-    if task.get("review_state", "none") not in {"none", "pending", "accepted"}:
+    if task.get("review_state", "none") not in {"none", "pending", "accepted", "rejected"}:
         raise LLMWikiError("验收状态无效。")
     if task.get("kind", "task") not in {"goal", "task"}:
         raise LLMWikiError("任务类型无效。")
     if task.get("parent_id") and not TASK_ID.fullmatch(task["parent_id"]):
         raise LLMWikiError("父目标 ID 无效。")
-    for key in ("completion_record_id", "acceptance_record_id"):
+    for key in ("completion_record_id", "acceptance_record_id", "rejection_record_id"):
         if key in task:
             task[key] = _link(task[key])
     if "scheduled_date" in task:
@@ -371,9 +372,9 @@ def sort_todo(tasks: list[dict]) -> list[dict]:
 def public_task(task: dict, auto: dict | None = None) -> dict:
     item = {key: task.get(key, "") for key in FIELDS}
     item.update({key: task.get(key, default) for key, default in DAILY_DEFAULTS.items()})
-    for name in ("completion_record", "acceptance_record"):
+    for name in ("completion_record", "rejection_record", "acceptance_record"):
         record_id = task.get(name + "_id", "")
-        receipt = next((task.get(key) for key in ("delivery_receipt", "acceptance_receipt")
+        receipt = next((task.get(key) for key in ("delivery_receipt", "rejection_receipt", "acceptance_receipt")
                         if (task.get(key) or {}).get("record_id") == record_id), None)
         item[name] = ({"id": record_id, **{key: receipt.get(key, "") for key in
                                          ("title", "summary", "actor", "recorded_at")}} if receipt else None)
@@ -538,12 +539,13 @@ def _relations(tasks: list[dict]) -> None:
                 raise LLMWikiError("子任务日期须在父目标起止日期内。")
         review = task.get("review_state", "none")
         if (review == "pending" and task["status"] == "done"
-                or review == "accepted" and task["status"] != "done"):
+                or review == "accepted" and task["status"] != "done"
+                or review == "rejected" and task["status"] == "done"):
             raise LLMWikiError("任务状态与验收状态不一致。")
         cycle = task.get("completion_cycle", 0)
         if type(cycle) is not int or cycle < 0:
             raise LLMWikiError("完成留痕元数据无效。")
-        for key in ("delivery_receipt", "acceptance_receipt"):
+        for key in ("delivery_receipt", "acceptance_receipt", "rejection_receipt"):
             receipt = task.get(key)
             if receipt is None:
                 continue
@@ -592,16 +594,18 @@ def _queue_receipt(task: dict, kind: str, actor: str, revision: str, now: str,
     sequence = old.get("sequence", 0) + 1
     cycle = task.get("completion_cycle", 0)
     identity = [task["id"], cycle, kind, sequence, actor, summary,
-                task.get("completion_record_id", "") if kind == "acceptance" else ""]
+                task.get("completion_record_id", "") if kind in {"acceptance", "rejection"} else ""]
     key = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
     placeholder = "records/receipt-" + key + ".md"
     receipt = {"key": key, "sequence": sequence, "cycle": cycle, "actor": actor,
                "revision": revision, "record_id": placeholder}
     task[kind + "_receipt"] = receipt
-    label = "任务交付" if kind == "delivery" else "用户验收"
+    label = {"delivery": "任务交付", "acceptance": "用户验收", "rejection": "退回修改"}[kind]
     if kind == "delivery":
         understanding = (f"{'助手' if actor == 'agent' else '用户'}提交了任务交付，尚待用户验收。"
                          "此记录仅保存提交者陈述，不验证或推断科研结论。\n\n交付摘要：\n" + summary)
+    elif kind == "rejection":
+        understanding = "用户退回本轮交付，任务重新进入执行中；原交付记录保留。\n\n退回意见：\n" + summary
     else:
         understanding = "用户明确确认此任务完成。此记录仅留存用户操作，不验证或推断科研结论。"
         if summary:
@@ -619,13 +623,24 @@ def _submit(task: dict, summary: str, actor: str, revision: str, now: str, jobs:
         raise LLMWikiError("提交交付须填写非空 summary。")
     if task["status"] == "done":
         raise LLMWikiError("已完成任务须由用户恢复后重新提交。")
-    if task.get("review_state") == "pending" and task.get("delivery_summary") == summary:
-        return
+    if task.get("review_state") == "pending":
+        if task.get("delivery_summary") == summary:
+            return
+        raise LLMWikiError("任务正在待审批，请用户先验收或退回修改。")
     receipt = _queue_receipt(task, "delivery", actor, revision, now, jobs, summary)
     task.update(review_state="pending", delivery_summary=summary,
                 completion_record_id=receipt["record_id"], acceptance_record_id="")
     if task["status"] not in {"planned", "active"}:
         task["status"] = "active"
+
+
+def _reject(task: dict, reason: str, actor: str, revision: str, now: str, jobs: list[dict]) -> None:
+    if actor != "user" or task.get("review_state") != "pending" or not reason:
+        raise LLMWikiError("只有用户可以填写退回意见并退回待审批任务。")
+    receipt = _queue_receipt(task, "rejection", actor, revision, now, jobs, reason)
+    task.update(review_state="rejected", status="active", rejection_reason=reason,
+                rejection_record_id=receipt["record_id"], completed_at=None)
+    task["completion_cycle"] = task.get("completion_cycle", 0) + 1
 
 
 def _accept(task: dict, actor: str, revision: str, now: str, jobs: list[dict]) -> None:
@@ -652,6 +667,8 @@ def _restore(task: dict, status: str) -> None:
     task["completion_cycle"] = task.get("completion_cycle", 0) + 1
     task["status"] = status
     task["review_state"] = "none"
+    task["rejection_reason"] = ""
+    task["rejection_record_id"] = ""
     task["completed_at"] = None
 
 
@@ -763,10 +780,11 @@ def update(project: dict, payload: dict, actor: str = "user") -> dict:
     if not isinstance(payload.get("revision"), str):
         raise LLMWikiError("任务操作须包含 revision 字符串。")
     incoming = _incoming(payload)
-    if actor == "agent" and (action in {"accept", "complete", "restore"} or incoming.get("status") == "done"
+    if actor == "agent" and (action in {"accept", "complete", "restore", "reject"} or incoming.get("status") == "done"
                               or action == "import" and payload.get("completed")):
         raise LLMWikiError("助手只能提交交付，不能验收或恢复已完成任务。")
     summary = _text(payload.get("summary", ""), MAX_DESCRIPTION) if action == "submit" else ""
+    reason = _text(payload.get("reason", ""), 4000) if action == "reject" else ""
     with LOCK, _file_lock(project, "research-progress"):
         path, data, revision = _read(project)
         original = deepcopy(data)
@@ -783,10 +801,11 @@ def update(project: dict, payload: dict, actor: str = "user") -> dict:
             _guard(incoming, task, actor)
         if payload.get("revision") != revision:
             # Only exact successful receipt retries may use their original revision.
-            receipt = (task or {}).get("delivery_receipt" if action == "submit" else "acceptance_receipt", {})
+            receipt = (task or {}).get("delivery_receipt" if action == "submit" else "rejection_receipt" if action == "reject" else "acceptance_receipt", {})
             retry = (task is not None and not incoming and receipt.get("revision") == payload.get("revision")
                      and receipt.get("actor") == actor and (
                          action == "submit" and task.get("review_state") == "pending" and summary == task.get("delivery_summary")
+                         or action == "reject" and task.get("review_state") == "rejected" and reason == task.get("rejection_reason")
                          or action in {"accept", "complete"} and task.get("review_state") == "accepted"))
             if retry:
                 return _response(project, data, revision, task["id"])
@@ -803,7 +822,7 @@ def update(project: dict, payload: dict, actor: str = "user") -> dict:
                 _accept(task, actor, revision, now, jobs)
             _event(task, now)
             data["tasks"].append(task)
-        elif action in {"update", "complete", "accept", "submit", "restore", "delete"}:
+        elif action in {"update", "complete", "accept", "reject", "submit", "restore", "delete"}:
             if task is None:
                 raise LLMWikiError("未找到任务。")
             before = deepcopy(task)
@@ -813,6 +832,10 @@ def update(project: dict, payload: dict, actor: str = "user") -> dict:
                 if incoming:
                     raise LLMWikiError("submit 使用顶层 summary，不接受 task 修改。")
                 _submit(task, summary, actor, revision, now, jobs)
+            elif action == "reject":
+                if incoming:
+                    raise LLMWikiError("reject 使用顶层 reason，不接受 task 修改。")
+                _reject(task, reason, actor, revision, now, jobs)
             elif action in {"accept", "complete"}:
                 if incoming:
                     raise LLMWikiError("accept / complete 不接受 task 修改。")
@@ -877,7 +900,7 @@ def update(project: dict, payload: dict, actor: str = "user") -> dict:
             target = next(item for item in data["tasks"] if item["id"] == job["task_id"])
             # Replace only engine-owned references, never matching user prose.
             for item in (target, target["history"][-1]):
-                for field in ("completion_record_id", "acceptance_record_id"):
+                for field in ("completion_record_id", "acceptance_record_id", "rejection_record_id"):
                     if item.get(field) == job["placeholder"]:
                         item[field] = record_id
                 receipt = item[job["kind"] + "_receipt"]

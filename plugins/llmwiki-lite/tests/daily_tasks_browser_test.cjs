@@ -46,11 +46,30 @@ const path=require('node:path');
   const recordResponse = await page.request.get(cfg.origin + recordLink);
   assert.equal(recordResponse.status(), 200);
   assert.match(await recordResponse.text(), /样例准备完毕/);
+  // A user rejects the assistant delivery; the same daily item stays active.
+  page.removeAllListeners('dialog'); page.on('dialog', d=>d.accept('需要补充失败样本'));
+  await page.locator('#daily-reject').click();
+  await page.waitForFunction(()=>!document.querySelector('#daily-todo').textContent.includes('待你验收'));
+  const rejected=(await api()).tasks.find(t=>t.id===cfg.child);
+  await page.getByRole('button',{name:'准备样例',exact:true}).click();
+  assert.match(await page.locator('#daily-delivery-info').innerText(),/需要补充失败样本/);
+  await page.screenshot({path:path.join(cfg.evidence,'daily-rejected.png'),fullPage:true});
+  assert.equal(rejected.review_state,'rejected');
+  assert.equal(rejected.status,'active');
+  assert.ok(rejected.rejection_record_id);
+  const resubmit=await context.request.post(cfg.origin+'/api/daily-tasks',{data:{project_id:cfg.pid,
+    action:'submit',id:cfg.child,revision:(await api()).revisions[cfg.pid],summary:'补充失败样本，重新交付验收'},
+    headers:{'X-Notebook-Request':'1','Origin':cfg.origin}});
+  assert.equal(resubmit.status(),200);
+  await page.goto(cfg.origin+daily);
+  await page.getByRole('button',{name:'准备样例',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#daily-delivery-info').textContent.includes('补充失败样本'));
   await page.locator('#daily-accept').click();
   await page.waitForFunction(()=>document.querySelector('#daily-completed').textContent.includes('准备样例'));
   const done=(await api()).completed.find(t=>t.id===cfg.child);
   assert.equal(done.review_state,'accepted');
   assert.ok(done.completion_record_id);
+  await page.screenshot({path:path.join(cfg.evidence,'daily-accepted.png'),fullPage:true});
   // Deletion affects the single workspace item, not any project or receipt.
   await page.getByRole('button',{name:'临时联系设备（已沟通）',exact:true}).click();
   await page.locator('#daily-delete').click();
@@ -68,8 +87,8 @@ const path=require('node:path');
   await page.goto(cfg.origin+`/project/${cfg.pid}/todos?task=${cfg.child}`);
   await page.waitForFunction(()=>document.querySelector('#progress-dialog').open);
   assert.equal(await page.locator('#progress-form [name=title]').inputValue(),'准备样例');
-  assert.match(await page.locator('#progress-task-metadata').innerText(),/样例准备完毕/);
-  assert.equal(await page.locator('#progress-task-metadata a[href*="records"]').count(),2);
+  assert.match(await page.locator('#progress-task-metadata').innerText(),/补充失败样本/);
+  assert.equal(await page.locator('#progress-task-metadata a[href*="records"]').count(),3);
   await page.locator('#progress-close').click();
   await page.locator('[data-workbench-nav=daily]').click();
   await page.waitForSelector('#daily-tasks');
@@ -100,6 +119,6 @@ const path=require('node:path');
   await page.setViewportSize({width:1440,height:1050});
   await page.screenshot({path:path.join(cfg.evidence,'daily-dark.png'),fullPage:true});
   assert.deepEqual(errors,[]);
-  console.log('Daily browser: shared IDs, pending/accept, temporary task CRUD, reschedule, date, parent drilldown, SPA, unsaved guard, responsive PASS; evidence '+cfg.evidence);
+  console.log('Daily browser: shared IDs, pending/reject/resubmit/accept, temporary task CRUD, reschedule, date, parent drilldown, SPA, unsaved guard, responsive PASS; evidence '+cfg.evidence);
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

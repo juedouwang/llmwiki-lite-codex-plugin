@@ -392,8 +392,9 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     self.wfile.write(raw)
                     return
                 if parsed.path == "/":
-                    pid = web_session.current_project() or list_projects(home)["landing_project_id"]
-                    redirect(self, purl(pid) + "/todos" if pid else "/projects")
+                    # 工作台的默认入口是跨项目的“每日待办”，不受上一次项目/栏目
+                    # 上下文影响；项目页面由用户明确选择后再进入。
+                    redirect(self, "/daily")
                     return
                 if parsed.path == "/projects":
                     self.html(home_page(home, params))
@@ -563,6 +564,10 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                         raise LLMWikiError("仅支持默认项目和项目排序。")
                     self.json(update_project_preferences(home=home, **payload))
                     return
+                if path == "/api/daily-tasks/upload":
+                    project = daily_tasks._owner(home, payload.get("project_id"))
+                    self.json(notebook.upload(project, payload))
+                    return
                 if path == "/api/daily-tasks":
                     self.json(daily_tasks.mutate(home, payload, actor="user"))
                     return
@@ -685,7 +690,7 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
             if code_match:
                 self.code_post(unquote(code_match[1]), code_match[2])
                 return
-            if parsed.path == "/api/daily-tasks" or parsed.path.startswith("/api/projects/") or parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
+            if parsed.path in {"/api/daily-tasks", "/api/daily-tasks/upload"} or parsed.path.startswith("/api/projects/") or parsed.path == "/api/reports" or parsed.path.startswith("/api/reports/"):
                 self.notebook_post(parsed.path)
                 return
             if parsed.path.startswith("/api/project/"):

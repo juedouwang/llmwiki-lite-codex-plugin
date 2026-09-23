@@ -196,8 +196,10 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
     context_query = "?" + urlencode({"context": current_id or ""})
     # Switching project keeps the section, never a different project's document id.
     suffix = {"records": "/records", "literature": "/literature", "code": "/code",
-              "todos": "/todos", "overview": "", "pages": ""}.get(active, "/todos")
+              "todos": "/todos", "overview": "", "pages": ""}.get(active, "")
     def project_href(item: dict[str, Any]) -> str:
+        if active == "home":
+            return "/projects?" + urlencode({"context": str(item["id"])})
         if active == "daily":
             return "/daily?" + urlencode({"date": daily_date or datetime.now().date().isoformat(), "context": str(item["id"])})
         if active == "reports":
@@ -366,36 +368,29 @@ def project_management_controls() -> str:
 
 
 def home_page(home: str, params: dict[str, list[str]]) -> str:
-    from research_progress import active_tasks
-
     listed = list_projects(home)
     projects = listed["projects"]
+    selected = web_session.current_project()
     rows = []
     for project in projects:
         state = project_status(project)
         count = int(state.get("wiki_page_count", 0))
         pid = str(project["id"])
-        try:
-            current = active_tasks(project, limit=1)
-        except (LLMWikiError, OSError, ValueError):
-            current = []
-        task_html = (
-            f'<a class="project-row-task" href="{purl(pid)}/todos#task-{esc(current[0]["id"])}">{esc(current[0]["title"])}</a>'
-            if current else ""
-        )
+        current_marker = ' aria-current="true"' if pid == selected else ''
         rows.append(
-            f'<div class="project-row" data-project-id="{esc(pid)}" data-project-name="{esc(project["name"])}"><div class="project-row-heading">'
+            f'<div class="project-row{" is-current" if pid == selected else ""}" data-project-id="{esc(pid)}" data-project-name="{esc(project["name"])}"><div class="project-row-heading">'
             f'<button type="button" class="project-drag-handle row-icon" aria-label="拖动排序：{esc(project["name"])}" title="拖动排序；聚焦后按上下方向键" aria-describedby="project-order-hint">{ui_icon("folder")}</button>'
-            f'<a class="project-row-main" href="{purl(pid)}/todos"><span class="row-title">{esc(project["name"])}</span>'
+            # 项目浏览页只更换项目上下文；选择具体栏目由用户决定。
+            f'<a class="project-row-main" href="/projects?context={quote(pid)}"{current_marker}><span class="row-title">{esc(project["name"])}</span>'
             f'<span class="meta">{count} 篇知识页</span><span class="row-arrow">{ui_icon("arrow")}</span></a>'
-            f'<button type="button" class="project-default" aria-pressed="{str(listed["web_default_project_id"] == pid).lower()}" aria-label="设为启动项目：{esc(project["name"])}" title="设为启动项目，再次点击取消">{ui_icon("star")}</button>'
+            f'<button type="button" class="project-default" aria-pressed="{str(listed["web_default_project_id"] == pid).lower()}" aria-label="设为默认项目：{esc(project["name"])}" title="设为默认项目，再次点击取消">{ui_icon("star")}</button>'
             f'<button type="button" class="project-more rw-icon-button" aria-label="更多操作：{esc(project["name"])}" aria-haspopup="menu" title="更多操作">{ui_icon("more")}</button>'
-            f'</div>{task_html}</div>'
+            f'</div></div>'
         )
     content = '<div class="project-list">' + "".join(rows) + '</div>' if rows else '<div class="empty"><h2>添加你的第一个项目</h2><p>关联本地项目，开始整理文献与研究记录。</p><a class="button primary" href="/settings#register-project">添加项目</a></div>'
     body = notice(params) + page_header("项目", '<a class="button" href="/settings#register-project">＋ 添加项目</a>') + content
     body = (f'<section id="project-manager" data-default-project="{esc(listed["web_default_project_id"] or "")}">' + body
-            + '<p class="meta" id="project-order-hint">拖动文件夹调整顺序；星标指定启动项目，未指定时进入第一项。</p>'
+            + '<p class="meta" id="project-order-hint">拖动文件夹调整顺序；星标指定默认项目（不改变每日待办首页）。</p>'
             + project_management_controls()
             + '<p id="project-preferences-status" class="meta" role="status" aria-live="polite"></p></section>'
             + '<script src="/static/projects.js" defer></script>')

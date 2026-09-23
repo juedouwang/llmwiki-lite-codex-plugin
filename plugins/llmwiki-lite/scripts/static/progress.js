@@ -136,7 +136,7 @@
   function dailyInfo(task){
     const box=$('#progress-task-metadata');box.replaceChildren();
     const children=tasks.filter(t=>task.id&&t.parent_id===task.id).sort((a,b)=>(a.scheduled_date||'').localeCompare(b.scheduled_date||'')||a.id.localeCompare(b.id));
-    const hasDelivery=Boolean(task.delivery_summary||task.completion_record||task.acceptance_record);
+    const hasDelivery=Boolean(task.delivery_summary||task.completion_record||task.rejection_record||task.acceptance_record);
     box.hidden=!(task.parent_id||task.scheduled_date||pending(task)||task.review_state==='accepted'||hasDelivery);
     if(!box.hidden){
       box.append(node('p','','任务归属：当前项目 · '+(task.parent_id?'每日子任务':'独立待办')));
@@ -144,7 +144,8 @@
       if(task.parent_id){const parent=tasks.find(t=>t.id===task.parent_id),line=node('p','','来源任务：'),link=node('a','',parent?.title||task.parent_title||'查看来源任务');link.href=`/project/${encodeURIComponent(project)}/todos?task=${encodeURIComponent(task.parent_id)}`;line.append(link);box.append(line);}
       box.append(node('p',pending(task)?'is-pending':'','验收状态：'+review(task)));
       if(task.delivery_summary)box.append(node('p','progress-delivery','助手交付：'+task.delivery_summary));
-      for(const [label,record] of [['交付记录',task.completion_record],['验收记录',task.acceptance_record]]){
+      if(task.rejection_reason)box.append(node('p','progress-delivery','退回意见：'+task.rejection_reason));
+      for(const [label,record] of [['交付记录',task.completion_record],['退回记录',task.rejection_record],['验收记录',task.acceptance_record]]){
         if(!record?.id)continue;const line=node('p','progress-delivery',label+'：'),link=node('a','',record.title||record.id);link.href=recordUrl(record.id);line.append(link);box.append(line);
       }
     }

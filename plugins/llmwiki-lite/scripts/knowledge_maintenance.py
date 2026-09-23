@@ -115,6 +115,7 @@ def state(project):
             "failure_fingerprint": None,
             "failure_count": 0,
             "sources": {},
+            "event_cursor": 0,
             "page_sources": {},
             "proposal_index": {},
             "recheck_pages": [],
@@ -504,6 +505,48 @@ def _allowed(settings, pid):
     )
 
 
+def event_hints(project, cursor):
+    """Consume bounded complete JSONL lines as *priority hints*, not scientific evidence.
+
+    The revision scanner remains authoritative and compensates for truncation,
+    malformed events, missed hooks, or a failed maintenance run.
+    """
+    target = Path(project["state_root"]) / "events.jsonl"
+    try:
+        size = target.stat().st_size
+        offset = cursor if isinstance(cursor, int) and 0 <= cursor <= size else 0
+        hints = set()
+        with target.open("rb") as stream:
+            stream.seek(offset)
+            for _ in range(512):
+                start = stream.tell()
+                line = stream.readline(65537)
+                if not line:
+                    break
+                if not line.endswith(b"\n") or len(line) > 65536:
+                    stream.seek(start)
+                    break
+                offset = stream.tell()
+                try:
+                    event = json.loads(line)
+                except (UnicodeDecodeError, ValueError):
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                if event.get("kind") == "file-change-hint":
+                    paths = event.get("paths")
+                    if isinstance(paths, list):
+                        hints.update("source:" + p for p in paths[:100]
+                                     if isinstance(p, str) and p and len(p) <= 500)
+                elif event.get("kind") == "research-result-captured":
+                    record = event.get("record_id")
+                    if isinstance(record, str) and record.startswith("records/"):
+                        hints.add("record:" + record)
+        return hints, offset
+    except OSError:
+        return set(), cursor if isinstance(cursor, int) and cursor >= 0 else 0
+
+
 def knowledge_plan(trigger, project_id=None, home=None):
     if trigger not in {"manual", "scheduled"} or (
         trigger == "manual" and not project_id
@@ -559,8 +602,10 @@ def knowledge_plan(trigger, project_id=None, home=None):
                     proposal = read_json(path(project, f"proposals/{pid}.json"))
                     if _staleness(project, proposal):
                         _mark_stale(project, saved, proposal)
+            hints, cursor = event_hints(project, saved.get("event_cursor", 0))
             if (
                 trigger == "scheduled"
+                and not hints
                 and saved["last_daily_slot"] == slot
                 and not saved["pending_source_count"]
                 and not saved["recheck_pages"]
@@ -568,6 +613,8 @@ def knowledge_plan(trigger, project_id=None, home=None):
                 save_state(project, saved)
                 continue
             items, gaps = scan(project, saved["sources"])
+            # A complete source scan is the fallback when a hook event was missed.
+            saved["event_cursor"] = cursor
             pages = catalog(project)
             for page in pages:
                 related = saved["page_sources"].setdefault(
@@ -592,9 +639,11 @@ def knowledge_plan(trigger, project_id=None, home=None):
                 key=lambda i: (
                     0
                     if i["locator"] in recheck
-                    else 2
+                    else 1
+                    if i["locator"] in hints
+                    else 3
                     if i["revision"] == "deleted"
-                    else 1,
+                    else 2,
                     i["locator"],
                 )
             )

@@ -67,11 +67,11 @@ class ProjectManagementTests(preferences.ProjectPreferencesTests):
         )
         update_project_preferences(home=self.home, default_project_id=self.a["id"])
         url, _ = self.page(browser, origin, "/")
-        self.assertTrue(url.endswith(f"/project/{self.z['id']}/todos"))
+        self.assertTrue(url.endswith("/daily"))
         self.assertEqual(load_settings(self.home)["current_project_id"], self.z["id"])
         # An independent browser uses the default, not another browser's selection.
         url, _ = self.page(self.browser(), origin, "/")
-        self.assertTrue(url.endswith(f"/project/{self.a['id']}/todos"))
+        self.assertTrue(url.endswith("/daily"))
 
     def test_server_restart_ignores_previous_epoch_and_uses_default(self):
         origin, browser = self.launch(), self.browser()
@@ -80,7 +80,38 @@ class ProjectManagementTests(preferences.ProjectPreferencesTests):
         # A second server handler models a new process epoch; same host cookie persists.
         restarted = self.launch()
         url, _ = self.page(browser, restarted, "/")
-        self.assertTrue(url.endswith(f"/project/{self.a['id']}/todos"))
+        self.assertTrue(url.endswith("/daily"))
+
+    def test_project_picker_preserves_section_only_when_explicitly_in_it(self):
+        origin, browser = self.launch(), self.browser()
+        for path, expected in [("/projects", "home"), ("/daily", "?"),
+                               (f"/project/{self.a['id']}", ""),
+                               (f"/project/{self.a['id']}/todos", "/todos")]:
+            _, html = self.page(browser, origin, path)
+            menu = html.split('<div class="console-project-menu">', 1)[1].split('</div>', 1)[0]
+            target = f'/project/{self.z["id"]}'
+            if expected == "home":
+                self.assertIn(f'href="/projects?context={self.z["id"]}"', menu)
+            elif expected == "?":
+                self.assertIn(f'/daily?date=', menu)
+                self.assertIn(f'context={self.z["id"]}', menu)
+            else:
+                self.assertIn(f'href="{target}{expected}"', menu)
+
+    def test_project_browser_selection_changes_context_without_changing_column(self):
+        origin, browser = self.launch(), self.browser()
+        _, page = self.page(browser, origin, "/projects?context=" + self.a["id"])
+        self.assertIn(f'href="/projects?context={self.z["id"]}"', page)
+        self.assertNotIn('project-row-task', page)
+        self.assertIn('data-workbench-page="home"', page)
+        url, selected = self.page(browser, origin, "/projects?context=" + self.z["id"])
+        self.assertEqual(url, origin + "/projects?context=" + self.z["id"])
+        self.assertIn('data-workbench-page="home"', selected)
+        self.assertIn(f'data-workbench-project="{self.z["id"]}"', selected)
+        self.assertIn(f'href="/project/{self.z["id"]}/records"', selected)
+        self.assertIn(f'console-sidebar-brand" href="/projects?context={self.z["id"]}"', selected)
+        _, records = self.page(browser, origin, f'/project/{self.a["id"]}/records')
+        self.assertIn(f'href="/project/{self.z["id"]}/records"', records)
 
     def test_explicit_global_context_and_empty_report_context(self):
         origin, browser = self.launch(), self.browser()

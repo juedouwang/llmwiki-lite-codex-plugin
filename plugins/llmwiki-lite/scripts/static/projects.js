@@ -1,4 +1,4 @@
-/* Explicit startup preference and folder-handle ordering; never changes source files. */
+/* Explicit default-project preference and folder-handle ordering; never changes source files. */
 (() => {
   'use strict';
   const root = document.getElementById('project-manager');
@@ -120,7 +120,7 @@
       if (action === 'rename') {
         const name = result.project.name;
         targetRow.dataset.projectName = name; targetRow.querySelector('.row-title').textContent = name;
-        for (const [selector, prefix] of [['.project-drag-handle','拖动排序：'],['.project-default','设为启动项目：'],['.project-more','更多操作：']]) {
+        for (const [selector, prefix] of [['.project-drag-handle','拖动排序：'],['.project-default','设为默认项目：'],['.project-more','更多操作：']]) {
           targetRow.querySelector(selector).setAttribute('aria-label', prefix + name);
         }
       } else { targetRow.remove(); }

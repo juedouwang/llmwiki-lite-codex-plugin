@@ -24,7 +24,6 @@
 .resume-block{margin:0 0 24px}.resume-block h2{font-size:15px;margin:0 0 12px}.resume-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}.resume-item{border:1px solid var(--line);border-radius:6px;padding:12px}.resume-item p{margin:4px 0}.resume-title{font-weight:600}.resume-note{display:inline-block;margin-top:4px;font-size:12px}
 .project-row{display:flex;flex-direction:column;gap:4px;min-width:0}
 .project-row-main{display:flex;align-items:center;gap:12px;min-width:0;width:100%}
-.project-row-task{display:block;max-width:100%;padding:0 4px 8px 36px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* Git graph visualization */
 .graph-controls{display:flex;gap:12px;align-items:center;margin-bottom:20px;padding:12px;background:var(--soft);border-radius:8px}.graph-controls label{margin:0;display:flex;align-items:center;gap:8px}.graph-controls select{width:auto;min-width:150px}.graph-container{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:auto;margin-bottom:20px}.commit-detail{background:var(--soft);border-radius:8px;padding:16px;margin-top:20px}.commit-detail h3{margin:0 0 12px;font-size:15px}.commit-detail p{margin:8px 0;font-size:13px}
@@ -98,7 +97,7 @@ body{font:14px/1.55 var(--font-ui)}
 #project-preferences-status{min-height:1.5em;font-size:11px}
 @media(max-width:480px){.project-row-heading{gap:4px}.project-row-heading .meta{display:none}}
 
-.project-row-task{align-self:stretch;text-align:left}
+.project-row.is-current{background:var(--soft)}
 
 /* Approved workbench prototype: shared flat lists and controls, not card skins. */
 .rw-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:33px;padding:6px 10px;border-radius:6px;font-size:12px;line-height:1.55;border:0}

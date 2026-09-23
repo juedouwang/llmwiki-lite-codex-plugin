@@ -89,16 +89,23 @@ class ProjectPreferencesTests(unittest.TestCase):
             with urllib.request.urlopen(request) as response:
                 return json.load(response)
         try:
-            self.assertEqual(get("/")[0], origin + f'/project/{self.a["id"]}/todos')
+            self.assertEqual(get("/")[0], origin + "/daily")
             url, page = get("/projects")
             self.assertEqual(url, origin + "/projects")
             self.assertIn(f'console-sidebar-brand" href="/projects?context={self.a["id"]}"', page)
             self.assertIn('project-drag-handle', page)
+            self.assertIn(f'project-row-main" href="/projects?context={self.a["id"]}"', page)
+            # Both selection controls remain on the project browser; neither opens a column.
+            menu = page.split('<div class="console-project-menu">', 1)[1].split("</div>", 1)[0]
+            self.assertIn(f'href="/projects?context={self.z["id"]}"', menu)
+            self.assertNotIn("/todos", menu)
+            self.assertEqual(get(f'/projects?context={self.z["id"]}')[0], origin + f'/projects?context={self.z["id"]}')
+            self.assertNotIn('project-row-task', page)
             with self.assertRaises(urllib.error.HTTPError) as error:
                 post({"default_project_id": self.z["id"]}, same_origin=False)
             self.assertEqual(error.exception.code, 403)
             post({"default_project_id": self.z["id"]})
-            self.assertEqual(get("/")[0], origin + f'/project/{self.z["id"]}/todos')
+            self.assertEqual(get("/")[0], origin + "/daily")
             before = load_settings(self.home)
             with self.assertRaises(urllib.error.HTTPError) as error:
                 post({"current_project_id": self.a["id"]})
@@ -106,7 +113,7 @@ class ProjectPreferencesTests(unittest.TestCase):
             self.assertEqual(load_settings(self.home), before)
             unregister_project(self.a["id"], home=self.home)
             unregister_project(self.z["id"], home=self.home)
-            self.assertEqual(get("/")[0], origin + "/projects")
+            self.assertEqual(get("/")[0], origin + "/daily")
         finally:
             server.shutdown()
             server.server_close()

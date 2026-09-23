@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "llmwiki-lite",
   "displayName": "LLM Wiki Lite 科研助手",
-  "version": "0.3.3",
+  "version": "0.3.3+codex.20260922093137",
   "description": "Lightweight LLM-led research and project knowledge assistant: useful Markdown Wikis, literature reading, explicit research records, and a Chinese-first local research cockpit.",
   "author": {
     "name": "LLM Wiki Agent contributors",

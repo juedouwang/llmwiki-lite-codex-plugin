@@ -80,6 +80,29 @@ class DailyHTTPTests(unittest.TestCase):
         self.assertTrue(done['completion_record_id'])
         self.assertEqual(self.get('/api/daily-tasks?date=2026-09-23')['tasks'][0]['title'], '运行基线')
 
+    def test_web_reject_then_agent_resubmit_then_user_accept(self):
+        day = '2026-09-22'
+        created = self.post('/api/daily-tasks', {'project_id': self.pid, 'action': 'create',
+                           'revision': self.revision(), 'task': {'title': '验证边界', 'scheduled_date': day}})['task']
+        self.agent({'project_id': self.pid, 'action': 'submit', 'revision': self.revision(),
+                    'id': created['id'], 'summary': '首轮验证'})
+        with self.assertRaises(urllib.error.HTTPError) as invalid:
+            self.post('/api/daily-tasks', {'project_id': self.pid, 'action': 'reject',
+                      'revision': self.revision(), 'id': created['id'], 'reason': ''})
+        self.assertEqual(invalid.exception.code, 400)
+        rejected = self.post('/api/daily-tasks', {'project_id': self.pid, 'action': 'reject',
+                             'revision': self.revision(), 'id': created['id'], 'reason': '需补充失败样本'})['task']
+        self.assertEqual((rejected['status'], rejected['review_state']), ('active', 'rejected'))
+        self.assertTrue(rejected['rejection_record_id'])
+        self.agent({'project_id': self.pid, 'action': 'submit', 'revision': self.revision(),
+                    'id': created['id'], 'summary': '补充失败样本并复测'})
+        pending = self.get('/api/daily-tasks?date=' + day)['tasks'][0]
+        self.assertEqual(pending['review_state'], 'pending')
+        self.assertNotEqual(pending['completion_record_id'], rejected['completion_record_id'])
+        self.post('/api/daily-tasks', {'project_id': self.pid, 'action': 'accept',
+                  'revision': self.revision(), 'id': created['id']})
+        self.assertEqual(self.get('/api/daily-tasks?date=' + day)['completed'][0]['status'], 'done')
+
     def test_csrf_revision_and_agent_cannot_accept(self):
         create = {'project_id': self.pid, 'action': 'create', 'revision': self.revision(), 'task': {'title': '手动任务', 'scheduled_date': '2026-09-22'}}
         with self.assertRaises(urllib.error.HTTPError) as rejected:

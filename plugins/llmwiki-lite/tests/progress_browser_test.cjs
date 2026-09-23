@@ -81,35 +81,22 @@ const path=require('node:path');
     },extra||{});
 
     /* ---------------------------------------------------------------- A-06 ---
-     * Multi-project entry points: A's list row points at its rank-1 task, the progress
-     * page shows the top three, and B neither borrows A's context nor dresses a
-     * not-started task up as "what you were doing". */
+     * Project browser only selects context; continuation belongs in progress. */
     const seeded=await summary(cfg.projectId);
     const expected=resumeOrder(seeded.tasks);
     assert.ok(expected.length>=4,`夹具需要至少四个进行中任务，实际 ${expected.length}`);
     const initialDone=seeded.tasks.filter(t=>t.status==='done').length;
 
     await page.goto(origin+'/projects');
-    const rowA=page.locator('.project-row').filter({has:page.locator(`a.project-row-main[href="${base}/todos"]`)});
+    const rowA=page.locator(`.project-row[data-project-id="${cfg.projectId}"]`);
     assert.equal(await rowA.count(),1,'项目列表缺少 A 的行');
-    assert.equal(await rowA.locator('.project-row-task').count(),1,'A 有进行中任务时应有一条最近任务入口');
-    assert.equal((await rowA.locator('.project-row-task').innerText()).trim(),expected[0].title,'列表摘要必须指向排序第一的任务');
-    assert.ok((await rowA.locator('.project-row-task').getAttribute('href')).endsWith(`${base}/todos#task-${expected[0].id}`),'列表摘要应直达该任务');
-    // A nested anchor cannot exist in a parsed DOM: the parser hoists the inner <a> out.
-    // The invariant therefore has to be checked against the served markup.
-    const listHtml=await (await context.request.get(origin+'/projects')).text();
-    const mainLink=/<a class="project-row-main"[\s\S]*?<\/a>/.exec(listHtml);
-    assert.ok(mainLink,'项目列表缺少项目主链接');
-    assert.ok(!/class="project-row-task"/.test(mainLink[0]),'项目列表不得出现嵌套链接');
-    const rowB=page.locator('.project-row').filter({has:page.locator(`a.project-row-main[href="${other}/todos"]`)});
+    assert.equal(await page.locator('.project-row-task').count(),0,'项目浏览页不显示有时有、有时没有的任务副标题');
+    await rowA.locator('.project-row-main').click();
+    await page.waitForURL(origin+'/projects?context='+cfg.projectId);
+    assert.equal(await page.locator('body').getAttribute('data-workbench-page'),'home');
+    assert.equal(await page.locator('body').getAttribute('data-workbench-project'),cfg.projectId);
+    const rowB=page.locator(`.project-row[data-project-id="${other.split('/').pop()}"]`);
     assert.equal(await rowB.count(),1,'项目列表缺少 B 的行');
-    assert.equal(await rowB.locator('.project-row-task').count(),0,'只有未开始任务的项目不应显示最近任务');
-
-    await rowA.locator('.project-row-task').click();
-    await page.locator(`#progress-dialog[open]`).waitFor();
-    assert.equal(await page.locator('#progress-form [name=title]').inputValue(),expected[0].title,'点击列表摘要应打开对应任务');
-    await page.locator('#progress-close').click();
-    await page.locator('#progress-dialog').waitFor({state:'hidden'});
 
     await todos();
     await page.locator('#progress-resume .progress-resume-item').first().waitFor();
