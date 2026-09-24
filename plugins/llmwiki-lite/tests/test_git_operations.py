@@ -10,12 +10,9 @@ AT-41: Concurrency lock protection
 AT-42: Hook safety verification
 """
 
-import json
-import os
 import subprocess
 import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
 
@@ -23,22 +20,15 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PLUGIN_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from git_service import (
+from git_service import (  # noqa: E402
     detect_git_executable,
-    get_git_version,
     get_head_info,
     get_status,
     compute_state_token,
     create_plan,
-    RepositoryLock,
-    generate_repo_id,
-    get_repository_paths
+    RepositoryLock
 )
-from git_recovery import (
-    create_recovery_point,
-    get_recovery_root
-)
-from git_operations import (
+from git_operations import (  # noqa: E402
     init_repository,
     clone_repository,
     stage_files,
@@ -52,7 +42,6 @@ from git_operations import (
     add_remote,
     remove_remote,
     fetch_remote,
-    push_to_remote,
     set_author,
     GitOperationError,
     GitBranchExistsError,

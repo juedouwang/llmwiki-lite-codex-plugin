@@ -16,7 +16,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
     for(const selector of ['[data-workbench-nav="code"] svg','#code-branches summary svg','#code-merge svg','#code-create-from svg']){
       assert.equal(await page.locator(selector+' circle').count(),2,selector+' matches approved two-endpoint glyph');
     }
-    assert.ok((await page.locator('[data-workbench-nav="code"] svg path').getAttribute('d')).includes('M18 9a9 9 0 0 1-9 9'),'branch matches approved git-branch curve');
+    assert.equal(await page.locator('[data-workbench-nav="code"] svg path').getAttribute('d'),'M15 6a9 9 0 0 0-9 9V3','branch matches approved Lucide git-branch (workbench-task-refinements verification)');
     assert.equal(await page.locator('#code-merge svg path').getAttribute('d'),'M6 21V9a9 9 0 0 0 9 9');
     assert.ok((await page.locator('#code-create-from svg path').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('d')))).includes('M21 18h-6'),'branch-plus keeps its separate plus');
     assert.deepEqual(await page.locator('#code-branches summary svg').first().locator('circle').evaluateAll(nodes=>nodes.map(n=>[n.getAttribute('cx'),n.getAttribute('cy')])),[['18','6'],['6','18']]);

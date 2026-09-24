@@ -6,11 +6,9 @@ AT-43: 重命名/删除与二进制冲突处理
 AT-44: 合并中止与重启恢复
 """
 
-import json
 import os
 import subprocess
 import tempfile
-import time
 import unittest
 from pathlib import Path
 
@@ -21,34 +19,20 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PLUGIN_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from git_service import (
+from git_service import (  # noqa: E402
     detect_git_executable,
     get_head_info,
-    get_status,
-    RepositoryLock,
-    generate_repo_id,
-    _run_git_command
+    get_status
 )
-from git_recovery import (
-    create_recovery_point,
-    get_recovery_root
+from git_operations import (  # noqa: E402
+    init_repository
 )
-from git_operations import (
-    init_repository,
-    stage_files,
-    commit_changes,
-    create_branch,
-    switch_branch,
-    GitOperationError,
-    GitDirtyWorktreeError
-)
-from git_merge import (
+from git_merge import (  # noqa: E402
     MergeType,
     ConflictType,
     MergeStatus,
     analyze_merge,
     start_merge,
-    detect_conflicts,
     resolve_conflict,
     complete_merge,
     abort_merge,
@@ -455,7 +439,7 @@ class GitMergeTests(unittest.TestCase):
         )
 
         assert receipt.result["status"] == "completed"
-        m3_oid = receipt.result["merge_commit_oid"]
+        assert receipt.result["merge_commit_oid"]
         parents = receipt.result["parents"]
 
         # Verify parents
@@ -619,7 +603,7 @@ class GitMergeTests(unittest.TestCase):
         )
 
         assert receipt.result["status"] == "completed"
-        merge_oid = receipt.result["merge_commit_oid"]
+        assert receipt.result["merge_commit_oid"]
         parents = receipt.result["parents"]
 
         # Verify merge commit created
@@ -863,7 +847,7 @@ class GitMergeTests(unittest.TestCase):
             [self.git_exe, "rev-parse", "HEAD"],
             cwd=repo_dir, check=True, capture_output=True, text=True
         )
-        initial_oid = result.stdout.strip()
+        assert result.stdout.strip()
 
         # Create feature branch with new commit
         subprocess.run([self.git_exe, "checkout", "-b", "feature"], cwd=repo_dir, check=True, capture_output=True)

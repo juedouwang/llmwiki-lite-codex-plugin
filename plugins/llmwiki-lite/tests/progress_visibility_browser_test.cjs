@@ -39,7 +39,8 @@ async function until(condition, timeout=10000) {
     await page.bringToFront();
     await page.waitForFunction(()=>!document.hidden&&document.hasFocus(),null,{timeout:10000});
     await page.locator('#progress-dialog[open]').waitFor();
-    const input=page.locator('#progress-form [name=next_step]');
+    // The unified description replaced the separate next-step field; it is the unsaved input to protect.
+    const input=page.locator('#progress-form [name=description]');
     await input.click();
     await input.fill('这句还没写完，明天继续');
     await input.focus();

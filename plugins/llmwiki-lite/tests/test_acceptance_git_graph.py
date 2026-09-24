@@ -6,7 +6,6 @@ AT-26: Pagination support
 AT-27: Branch switching
 """
 
-import json
 import subprocess
 import sys
 import tempfile
@@ -17,8 +16,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PLUGIN_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from git_graph import build_graph, assign_lanes, load_commit_graph
-from git_service import detect_git_executable, is_git_repository
+from git_graph import build_graph, assign_lanes  # noqa: E402
+from git_service import detect_git_executable, is_git_repository  # noqa: E402
 
 
 class GitGraphAcceptanceTests(unittest.TestCase):

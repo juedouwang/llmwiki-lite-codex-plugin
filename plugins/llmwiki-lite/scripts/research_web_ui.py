@@ -385,7 +385,8 @@ def home_page(home: str, params: dict[str, list[str]]) -> str:
             f'<button type="button" class="project-drag-handle row-icon" aria-label="拖动排序：{esc(project["name"])}" title="拖动排序；聚焦后按上下方向键" aria-describedby="project-order-hint">{ui_icon("folder")}</button>'
             # 项目浏览页只更换项目上下文；选择具体栏目由用户决定。
             f'<a class="project-row-main" href="/projects?context={quote(pid)}"{current_marker}><span class="row-title">{esc(project["name"])}</span>'
-            f'<span class="meta">{count} 篇知识页</span><span class="row-arrow">{ui_icon("arrow")}</span></a>'
+            # The row selects the working project (it does not navigate), so mark the choice instead of an arrow.
+            f'<span class="meta">{count} 篇知识页</span>{"<span class=project-current>当前</span>" if pid == selected else ""}</a>'
             f'<button type="button" class="project-default" aria-pressed="{str(listed["web_default_project_id"] == pid).lower()}" aria-label="设为默认项目：{esc(project["name"])}" title="设为默认项目，再次点击取消">{ui_icon("star")}</button>'
             f'<button type="button" class="project-more rw-icon-button" aria-label="更多操作：{esc(project["name"])}" aria-haspopup="menu" title="更多操作">{ui_icon("more")}</button>'
             f'</div></div>'

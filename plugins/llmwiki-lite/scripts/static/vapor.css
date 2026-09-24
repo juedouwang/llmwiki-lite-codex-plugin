@@ -78,7 +78,7 @@
 :root[data-theme=vapor] :is(.rw-list-row,.project-row,.knowledge-row,.search-result,.daily-task):hover{background:rgba(1,205,254,.05)}
 
 /* Floating surfaces read as retro windows: a neon strip on top and a soft glow. */
-:root[data-theme=vapor] :is(dialog,.theme-options,.console-project-menu,.project-context-menu,.action-menu-items,.records-filter .filter-bar){
+:root[data-theme=vapor] :is(dialog,.theme-options,.console-project-menu,.project-context-menu,.action-menu-items,.records-filter .filter-bar,.literature-more-menu){
   background:#1f1144;border-color:rgba(255,113,206,.45);box-shadow:0 0 0 1px rgba(1,205,254,.18),0 12px 40px rgba(8,0,30,.55),0 0 34px rgba(255,113,206,.18)}
 :root[data-theme=vapor] dialog::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,var(--vw-pink),var(--vw-purple),var(--vw-cyan))}
 :root[data-theme=vapor] dialog::backdrop{background:rgba(18,4,40,.62);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}

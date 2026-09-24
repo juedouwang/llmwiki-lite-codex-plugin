@@ -3,7 +3,6 @@
 Covers AT-20 to AT-23, AT-40 to AT-42.
 """
 
-import json
 import os
 import shutil
 import subprocess
@@ -11,7 +10,6 @@ import tempfile
 import unittest
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Optional
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
@@ -22,7 +20,6 @@ from git_service import (
     get_git_version,
     is_git_repository,
     get_repository_paths,
-    get_object_format,
     generate_repo_id,
     generate_worktree_id,
     get_git_identity,
@@ -38,10 +35,6 @@ from git_service import (
     get_commit_info,
     get_diff,
     check_ref_format,
-    GitError,
-    GitNotFoundError,
-    GitVersionError,
-    GitRepositoryError,
     GitLockError,
     MIN_GIT_VERSION
 )
@@ -413,7 +406,7 @@ class TestGitFixtureF1(unittest.TestCase):
         lock_dir.mkdir(exist_ok=True)
 
         # Use context manager
-        with RepositoryLock(lock_dir, "test-repo-456", timeout=1.0) as lock:
+        with RepositoryLock(lock_dir, "test-repo-456", timeout=1.0):
             # Lock should be held
             lock_file = lock_dir / "test-repo-456.lock"
             self.assertTrue(lock_file.exists())

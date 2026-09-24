@@ -12,23 +12,15 @@ Security requirements (S-20, S-21):
 Acceptance tests: AT-32 through AT-37
 """
 
-import hashlib
-import json
-import os
-import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 # Import from git_service
 from git_service import (
     GitError,
-    GitRepository,
-    GitWorktree,
-    GitHead,
     GitPlan,
     RepositoryLock,
     _run_git_command,
@@ -36,19 +28,13 @@ from git_service import (
     get_status,
     check_ref_format,
     compute_state_token,
-    create_plan,
     validate_plan_state,
     generate_operation_id
 )
 
 # Import from git_recovery
 from git_recovery import (
-    RecoveryError,
-    RecoveryPoint,
-    create_recovery_point,
-    check_ignored_conflicts,
-    reconcile_operation,
-    load_recovery_point
+    create_recovery_point
 )
 
 
@@ -226,7 +212,7 @@ def clone_repository(
 
         cmd.extend([source_url, str(target_dir)])
 
-        result = _run_git_command(
+        _run_git_command(
             git_exe,
             cmd,
             cwd=target_dir.parent,
@@ -475,7 +461,7 @@ def commit_changes(
             if author_name and author_email:
                 cmd.extend(['--author', f'{author_name} <{author_email}>'])
 
-            result = _run_git_command(
+            _run_git_command(
                 git_exe,
                 cmd,
                 cwd=worktree_root,
@@ -645,14 +631,13 @@ def switch_branch(
             )
 
         try:
-            # Verify target branch exists
-            result = _run_git_command(
+            # Verify target branch exists (raises if it does not)
+            _run_git_command(
                 git_exe,
                 ['rev-parse', '--verify', f'refs/heads/{branch_name}'],
                 cwd=worktree_root,
                 timeout=5.0
             )
-            target_oid = result.stdout.strip()
 
             # Switch branch
             _run_git_command(
@@ -1063,7 +1048,7 @@ def push_to_remote(
             if force:
                 cmd.append('--force')
 
-            result = _run_git_command(
+            _run_git_command(
                 git_exe,
                 cmd,
                 cwd=worktree_root,
@@ -1082,7 +1067,7 @@ def push_to_remote(
                 raise GitAuthRequiredError(f"Authentication required for remote '{remote_name}'")
             if 'rejected' in stderr and not force:
                 raise GitOperationError(
-                    f"Push rejected. Remote has changes not present locally. "
+                    "Push rejected. Remote has changes not present locally. "
                     "Fetch and merge first, or use force=True (dangerous)."
                 )
             raise GitOperationError(f"Failed to push: {e}")

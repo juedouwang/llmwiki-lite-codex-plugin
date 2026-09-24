@@ -18,33 +18,23 @@ Acceptance tests: AT-38, AT-39, AT-43, AT-44
 Fixtures: GIT-F1, GIT-F5
 """
 
-import hashlib
 import json
-import os
 import re
-import shutil
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import from git_service
 from git_service import (
-    GitError,
-    GitRepository,
-    GitWorktree,
-    GitHead,
-    GitPlan,
     RepositoryLock,
     _run_git_command,
     get_head_info,
     get_status,
-    check_ref_format,
     compute_state_token,
     create_plan,
-    validate_plan_state,
     generate_operation_id
 )
 
@@ -52,19 +42,12 @@ from git_service import (
 from git_operations import (
     GitOperationError,
     GitDirtyWorktreeError,
-    GitRefNotFoundError,
-    OperationReceipt,
-    execute_with_recovery
+    OperationReceipt
 )
 
 # Import from git_recovery
 from git_recovery import (
-    RecoveryError,
-    RecoveryPoint,
-    create_recovery_point,
-    check_ignored_conflicts,
-    reconcile_operation,
-    load_recovery_point
+    create_recovery_point
 )
 
 
@@ -939,7 +922,7 @@ def resolve_conflict(
                 cwd=worktree_root
             )
         else:
-            raise GitOperationError(f"Cannot resolve to ours: file does not exist in our side")
+            raise GitOperationError("Cannot resolve to ours: file does not exist in our side")
 
     elif resolution == "theirs":
         if conflict.theirs_oid:
@@ -950,7 +933,7 @@ def resolve_conflict(
                 cwd=worktree_root
             )
         else:
-            raise GitOperationError(f"Cannot resolve to theirs: file does not exist in their side")
+            raise GitOperationError("Cannot resolve to theirs: file does not exist in their side")
 
     elif resolution == "delete":
         # Explicitly delete

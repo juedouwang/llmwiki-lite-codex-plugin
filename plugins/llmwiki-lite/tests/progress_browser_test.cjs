@@ -80,7 +80,7 @@ const path=require('node:path');
     const autoArgs=(task,extra)=>Object.assign({
       project_root:cfg.projectRoot,state_root:cfg.stateRoot,task_id:task.id,
       checkpoint:'自动整理：夜间样本已补齐',next_step:'自动整理：跑消融实验',
-      source_record_id:cfg.recordRelPath,base_revision:task.context_revision,
+      source_record_id:cfg.recordId,base_revision:task.context_revision,
     },extra||{});
 
     /* ---------------------------------------------------------------- A-06 ---
@@ -155,7 +155,9 @@ const path=require('node:path');
     assert.equal(await page.locator('#progress-todo .progress-task').first().innerText(),cycle,'高优先级在前');
     await page.locator('#progress-priority-filter').selectOption('high');assert.equal(await page.locator('#progress-todo .progress-task-row').count(),1);
     await page.locator('#progress-priority-filter').selectOption('');
-    assert.equal(await page.locator('#progress-timeline .progress-marker[title="'+cycle+' · DDL '+cycleDDL+'"]').count(),1);
+    // The timeline draws one bar per task (today → DDL), identified by task ID.
+    const cycleBar=page.locator('#progress-timeline .progress-bar[data-task-id="'+beforeCycle.id+'"]');
+    assert.equal(await cycleBar.count(),1);assert.ok((await cycleBar.getAttribute('title')).includes(cycleDDL));
     const firstBegin=Date.now();
     await row(cycle).locator('.progress-done-toggle').click();await row(cycle).waitFor({state:'detached'});
     await openDone();await doneRow(cycle).waitFor();
@@ -165,7 +167,7 @@ const path=require('node:path');
     assert.equal(first.status,'done');assert.ok(Date.parse(firstTime)>=firstBegin-1000&&Date.parse(firstTime)<=Date.now());
     assert.deepEqual(await resumeTitles(),resumeOrder((await summary(cfg.projectId)).tasks).slice(0,3).map(t=>t.title));
     assert.ok(!(await page.locator('#progress-resume').innerText()).includes(cycle));
-    assert.equal(await row(cycle).count(),0);assert.equal(await page.locator('#progress-timeline .progress-marker[title^="'+cycle+' ·"]').count(),0);
+    assert.equal(await row(cycle).count(),0);assert.equal(await cycleBar.count(),0,'Done tasks leave the timeline');
     await doneRow(cycle).locator('.progress-task').click();await assertHistory(first);
     assert.equal(await page.locator('#progress-complete').innerText(),'恢复到 Todo');await close();
     // The backend stamps seconds: separate the two deliberate completion actions.
@@ -320,7 +322,7 @@ const path=require('node:path');
     const ownerLegacy=JSON.parse(await page.locator('#progress-legacy pre').innerText());
     assert.equal(ownerLegacy.auto_context.next_step,'新的自动下一步');
     assert.equal(ownerLegacy.auto_context.generated_at,autoV2.payload.generated_at);
-    assert.equal(ownerLegacy.auto_context.source_record_id,cfg.recordRelPath);
+    assert.equal(ownerLegacy.auto_context.source_record_id,cfg.recordId);
     assert.equal(await page.locator('#progress-legacy input, #progress-legacy textarea, #progress-legacy [contenteditable=true]').count(),0);
     const manualDescription='手写研究安排：保留自己的判断，不接受自动覆盖。';
     await description.fill(manualDescription);await save();
@@ -358,11 +360,11 @@ const path=require('node:path');
     assert.equal(await page.locator('#progress-form [type=submit]').isEnabled(),true);await save();
     const saved=await savedTask(autoTask);assert.equal(saved.description,typed);assert.equal(saved.description_source,'manual');
     for(const key of ['checkpoint','next_step','context_mode'])assert.deepEqual(saved[key],autoTarget[key]);
-    assert.equal(saved.auto_context.generated_at,written.payload.generated_at);assert.equal(saved.auto_context.source_record_id,cfg.recordRelPath);
+    assert.equal(saved.auto_context.generated_at,written.payload.generated_at);assert.equal(saved.auto_context.source_record_id,cfg.recordId);
     await open(autoTask);assert.equal(await description.inputValue(),typed);await expand('#progress-legacy');
     const liveContext=JSON.parse(await page.locator('#progress-legacy pre').innerText());assert.deepEqual(liveContext.auto_context,saved.auto_context);
     // Daily files contain separately addressable entries; keep the exact entry ID.
-    assert.equal((await context.request.get(origin+base+'/'+saved.auto_context.source_record_id)).status(),200,'MCP 来源日档必须可打开');
+    assert.equal((await context.request.get(origin+base+'/'+saved.auto_context.source_record_id.split('/').map(encodeURIComponent).join('/'))).status(),200,'MCP 来源日档必须可打开');
     await page.locator('#progress-form [name=record_id] option[value="'+cfg.recordId+'"]').waitFor({state:'attached'});
     await page.locator('#progress-form [name=record_id]').selectOption(cfg.recordId);
     const recordLink=await page.locator('#progress-source a').getAttribute('href');assert.equal(recordLink,base+'/'+cfg.recordId.split('/').map(encodeURIComponent).join('/'));

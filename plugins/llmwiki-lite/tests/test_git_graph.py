@@ -3,7 +3,6 @@
 Covers AT-24 to AT-27.
 """
 
-import json
 import os
 import shutil
 import subprocess
@@ -11,12 +10,11 @@ import tempfile
 import unittest
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Optional
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from git_service import detect_git_executable, GitRepositoryError
+from git_service import detect_git_executable
 from git_graph import (
     load_commit_graph,
     assign_lanes,
@@ -24,8 +22,7 @@ from git_graph import (
     generate_snapshot_id,
     save_snapshot,
     load_snapshot,
-    GraphSnapshot,
-    CommitNode
+    GraphSnapshot
 )
 
 

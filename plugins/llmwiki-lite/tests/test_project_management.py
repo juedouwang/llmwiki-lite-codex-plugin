@@ -93,7 +93,7 @@ class ProjectManagementTests(preferences.ProjectPreferencesTests):
             if expected == "home":
                 self.assertIn(f'href="/projects?context={self.z["id"]}"', menu)
             elif expected == "?":
-                self.assertIn(f'/daily?date=', menu)
+                self.assertIn('/daily?date=', menu)
                 self.assertIn(f'context={self.z["id"]}', menu)
             else:
                 self.assertIn(f'href="{target}{expected}"', menu)

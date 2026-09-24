@@ -18,18 +18,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 # Import from git_service
 from git_service import (
     GitError,
-    GitRepository,
-    GitWorktree,
-    GitHead,
     _run_git_command,
-    get_head_info,
-    get_repository_paths,
-    generate_repo_id
+    get_head_info
 )
 
 
@@ -339,7 +334,7 @@ def create_recovery_point(
                     timeout=5.0
                 )
                 recovery_point.recovery_ref = ref_name
-            except subprocess.SubprocessError as e:
+            except subprocess.SubprocessError:
                 # Non-fatal, continue
                 pass
 
@@ -354,7 +349,7 @@ def create_recovery_point(
         recovery_point.verified_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         _save_recovery_manifest(recovery_dir, recovery_point, completed=True)
 
-    except Exception as e:
+    except Exception:
         # Cleanup on failure
         try:
             shutil.rmtree(recovery_dir, ignore_errors=True)
@@ -469,7 +464,6 @@ def _backup_worktree_files(
                 xy = parts[1]
                 path = ' '.join(parts[8:])
 
-                index_status = xy[0] if xy[0] != '.' else ''
                 worktree_status = xy[1] if xy[1] != '.' else ''
 
                 file_path = worktree_root / path

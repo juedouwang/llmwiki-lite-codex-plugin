@@ -8,9 +8,6 @@ Covers AT-28 through AT-31:
 """
 
 import hashlib
-import json
-import os
-import shutil
 import sys
 import tempfile
 import unittest
@@ -20,7 +17,7 @@ from pathlib import Path
 scripts_dir = Path(__file__).parent.parent / "plugins" / "llmwiki-lite" / "scripts"
 sys.path.insert(0, str(scripts_dir))
 
-from git_recovery import (
+from git_recovery import (  # noqa: E402
     create_recovery_point,
     load_recovery_point,
     restore_from_recovery_point,
@@ -30,14 +27,12 @@ from git_recovery import (
     get_recovery_root,
     RecoveryError,
     RecoveryLimitExceeded,
-    RecoveryConflictError,
     ReconcileStatus
 )
 
-from git_service import (
+from git_service import (  # noqa: E402
     detect_git_executable,
     get_git_version,
-    is_git_repository,
     get_repository_paths,
     generate_repo_id,
     generate_worktree_id,
@@ -452,7 +447,7 @@ class TestGitRecovery(unittest.TestCase):
             cwd=self.repo_dir,
             timeout=5.0
         )
-        initial_head = result.stdout.strip()
+        self.assertTrue(result.stdout.strip())
 
         # Suppose operation expected to create a commit with certain oid
         expected_head = "0" * 40  # Fake oid

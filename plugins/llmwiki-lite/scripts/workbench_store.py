@@ -21,8 +21,7 @@ import os
 import hashlib
 import uuid
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, Tuple
 from contextlib import contextmanager
 
 
@@ -599,11 +598,12 @@ class WorkbenchStore:
         Claim next available job with atomic lease.
 
         Returns job data with lease_token, or None if no job available.
+        A leased job whose lease has expired (its runner died) can be claimed
+        again; the new token makes the old runner's completion fail.
         """
-        now_dt = datetime.now(timezone.utc)
-        now = now_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        lease_until_dt = now_dt + timedelta(seconds=lease_duration_seconds)
-        lease_until = lease_until_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = self._get_now()
+        lease_until = (datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                       + timedelta(seconds=lease_duration_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         lease_token = new_id()
         lease_token_hash = compute_sha256(lease_token.encode("utf-8"))
@@ -614,13 +614,14 @@ class WorkbenchStore:
                 """
                 SELECT id, project_id, kind, job_key, input_json, input_hash, due_at, attempt
                 FROM jobs
-                WHERE (state = 'queued' OR state = 'retry_wait')
-                  AND due_at <= ?
-                  AND (lease_until IS NULL OR lease_until < ?)
+                WHERE ((state = 'queued' OR state = 'retry_wait')
+                       AND due_at <= ?
+                       AND (lease_until IS NULL OR lease_until < ?))
+                   OR (state = 'leased' AND lease_until < ?)
                 ORDER BY due_at, created_at, id
                 LIMIT 1
                 """,
-                (now, now)
+                (now, now, now)
             )
             row = cursor.fetchone()
 

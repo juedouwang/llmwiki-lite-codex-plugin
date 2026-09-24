@@ -14,7 +14,6 @@ import sys
 import sqlite3
 import tempfile
 import unittest
-from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 # Add scripts to path
@@ -22,12 +21,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from workbench_store import (
     WorkbenchStore,
-    RevisionConflictError,
     SchemaVersionError,
     canonical_json,
-    compute_sha256,
-    success_response,
-    error_response,
     SCHEMA_VERSION
 )
 
@@ -79,7 +74,7 @@ class TestWorkbenchStoreInit(unittest.TestCase):
             time.sleep(0.1)
             try:
                 self.temp_dir.cleanup()
-            except:
+            except OSError:
                 pass  # Best effort cleanup
 
     def test_initialize_new_database(self):
@@ -461,7 +456,7 @@ class TestUnauthorizedOperations(unittest.TestCase):
             time.sleep(0.1)
             try:
                 self.temp_dir.cleanup()
-            except:
+            except OSError:
                 pass  # Best effort cleanup
 
     def test_unauthorized_project_activity(self):

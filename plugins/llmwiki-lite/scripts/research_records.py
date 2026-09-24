@@ -124,15 +124,14 @@ def _yaml_scalar(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+# Older entries wrote this placeholder for empty sections; new entries omit them.
 EMPTY_SECTION = "\uff08\u672a\u586b\u5199\uff09"
 
 
 def _section(title: str, value: str | list[str], level: int = 3) -> str:
-    if isinstance(value, list):
-        body = "\n".join(f"- {item}" for item in value) or EMPTY_SECTION
-    else:
-        body = value or EMPTY_SECTION
-    return f"{'#' * level} {title}\n\n{body}\n"
+    """One filled section; empty ones are left out rather than templated."""
+    body = "\n".join(f"- {item}" for item in value) if isinstance(value, list) else value
+    return f"{'#' * level} {title}\n\n{body}\n" if body else ""
 
 
 def _slug(value: str) -> str:
@@ -213,6 +212,15 @@ def _entry_content(
     tags: list[str],
 ) -> str:
     parsed = _beijing(recorded_at)
+    sections = [
+        _section(SECTION_TITLES["context"], discussion_context),
+        _section(SECTION_TITLES["understanding"], understanding),
+        _section(SECTION_TITLES["evidence"], evidence),
+        _section(SECTION_TITLES["conclusion"], conclusion),
+        _section(SECTION_TITLES["decisions"], decisions),
+        _section(SECTION_TITLES["open_questions"], open_questions),
+        _section(SECTION_TITLES["next_steps"], next_steps),
+    ]
     lines = [
         f"## {parsed:%H:%M}\uFF5C{title}",
         _entry_metadata(
@@ -225,13 +233,7 @@ def _entry_content(
             related_pages=related_pages,
         ),
         "",
-        _section(SECTION_TITLES["context"], discussion_context),
-        _section(SECTION_TITLES["understanding"], understanding),
-        _section(SECTION_TITLES["evidence"], evidence),
-        _section(SECTION_TITLES["conclusion"], conclusion),
-        _section(SECTION_TITLES["decisions"], decisions),
-        _section(SECTION_TITLES["open_questions"], open_questions),
-        _section(SECTION_TITLES["next_steps"], next_steps),
+        *filter(None, sections),
     ]
     return "\n".join(lines).rstrip() + "\n"
 

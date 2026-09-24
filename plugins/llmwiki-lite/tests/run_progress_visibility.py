@@ -42,7 +42,10 @@ def main():
                 str(chrome), f"--user-data-dir={profile}", "--remote-debugging-port=0",
                 "--remote-debugging-address=127.0.0.1", "--no-first-run",
                 "--no-default-browser-check", "--disable-background-networking",
-                "--disable-sync", "--window-size=1200,850", "about:blank",
+                "--disable-sync", "--window-size=1200,850",
+                # Visibility must come from switching tabs, not from other desktop windows covering Chrome.
+                "--disable-features=CalculateNativeWinOcclusion", "--disable-backgrounding-occluded-windows",
+                "about:blank",
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             port_file = profile / "DevToolsActivePort"
             deadline = time.monotonic() + 15

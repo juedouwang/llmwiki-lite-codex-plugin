@@ -1,4 +1,4 @@
-const {chromium}=require('playwright');
+const {chromium}=require(process.env.LLMWIKI_PLAYWRIGHT || 'playwright');
 const assert=require('node:assert/strict');
 const path=require('node:path'),fs=require('node:fs'),os=require('node:os');
 (async()=>{
