@@ -417,7 +417,7 @@
       const point = position.get(node.oid);
       svg.append(svgElement('circle', {
         cx: point.x, cy: point.y, r: 8, fill: 'var(--panel)', stroke: color(node.lane), 'stroke-width': 1,
-        'data-selected-oid': node.oid, style: state.detailOpen && state.selected === node.oid ? '' : 'display:none',
+        'data-selected-oid': node.oid, visibility: state.detailOpen && state.selected === node.oid ? 'visible' : 'hidden', // attribute, not inline style: CSP blocks style=""
       }));
       svg.append(svgElement('circle', {cx: point.x, cy: point.y, r: 4.5, fill: color(node.lane), stroke: 'var(--panel)', 'stroke-width': 1.5}));
       const row = button(null, () => selectCommit(node.oid), null, 'code-commit');
@@ -514,7 +514,7 @@
   }
   function renderGraphSelection() {
     for (const circle of $('graph').querySelectorAll('[data-selected-oid]')) {
-      circle.style.display = state.detailOpen && state.selected === circle.dataset.selectedOid ? '' : 'none';
+      circle.setAttribute('visibility', state.detailOpen && state.selected === circle.dataset.selectedOid ? 'visible' : 'hidden');
     }
     for (const row of $('graph').querySelectorAll('[data-oid]')) {
       row.setAttribute('aria-pressed', String(state.detailOpen && state.selected === row.dataset.oid));

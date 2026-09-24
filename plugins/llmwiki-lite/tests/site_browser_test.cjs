@@ -124,7 +124,8 @@ const os=require('node:os');
     // Inspect server HTML, not only hydrated DOM: no first-paint checkpoint/next-step double column.
     const progressHTML=await (await page.request.get(origin+base+'/todos')).text();
     const resumeHTML=progressHTML.match(/<section id="progress-resume"[\s\S]*?<\/section>/)?.[0];
-    assert.ok(resumeHTML);assert.ok(resumeHTML.includes(taskDescription));
+    // The resume excerpt is one line of plain text; the full Markdown stays in the task dialog.
+    assert.ok(resumeHTML);assert.ok(resumeHTML.includes('昨晚完成基线，尚未跑夜间数据 下一步：检查日志，然后补夜间样本'));assert.ok(!resumeHTML.includes('**'));
     assert.equal((resumeHTML.match(/<p(?:\s[^>]*)?>/g)||[]).length,1,'one SSR description for the imported task');
     await page.reload();await page.locator('#progress-resume').waitFor();
     assert.match(await page.locator('#progress-resume').innerText(),/昨晚完成基线[\s\S]*检查日志/);

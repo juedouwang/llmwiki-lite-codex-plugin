@@ -10,6 +10,7 @@
   const pid = root.dataset.project, base = `/project/${encodeURIComponent(pid)}/literature`, api = `/api/project/${encodeURIComponent(pid)}/literature/`;
   const key = `literature:${pid}`, message = root.querySelector('#literature-message');
   const uid = () => crypto.randomUUID().replaceAll('-', '');
+  const stamp=t=>{const d=new Date(t);return t&&!Number.isNaN(d.getTime())?d.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):(t||'');};
   async function post(action, data) {
     writes++;
     try {
@@ -99,7 +100,7 @@
     if(!active()||!details?.open)return;
     try {const response=await fetch(api+'collection');const value=await response.json();if(!response.ok)throw new Error(value.error?.message||'状态不可用');
       const labels={disabled:'文献自动收录已关闭',pending_connection:'文献收录待连接',idle:'暂无待处理材料',running:'正在处理',failed:'收录失败'};
-      details.querySelector('[data-collection-status]').textContent=[labels[value.status]||value.status,value.last_checked_at?'最近检查：'+value.last_checked_at:'',value.last_updated_at?'最近更新：'+value.last_updated_at:'',...(value.gaps||[]),value.last_error||''].filter(Boolean).join(' · ');
+      details.querySelector('[data-collection-status]').textContent=[labels[value.status]||value.status,value.last_checked_at?'最近检查：'+stamp(value.last_checked_at):'',value.last_updated_at?'最近更新：'+stamp(value.last_updated_at):'',...(value.gaps||[]),value.last_error||''].filter(Boolean).join(' · ');
       details.querySelector('[data-retry]').hidden=value.status!=='failed';
     } catch(e) {details.querySelector('[data-collection-status]').textContent=e.message;}
   }

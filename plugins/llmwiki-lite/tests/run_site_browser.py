@@ -71,7 +71,7 @@ def main():
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         origin = f"http://127.0.0.1:{server.server_port}"
-        tests = [("site_browser_test.cjs", [])]
+        tests = [("site_browser_test.cjs", []), ("theme_easter_egg_browser_test.cjs", [])]
         if args.prototype:
             tests.append(("site_prototype_browser_test.cjs", [str(args.prototype.resolve())]))
         if args.alignment:

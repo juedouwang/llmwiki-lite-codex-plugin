@@ -9,3 +9,4 @@
 #literature .rw-list-row .rw-list-meta:empty{display:none}
 
 #literature .literature-more{margin:0 0 0 auto}#literature .rw-list{margin:0}.literature-paging:empty{display:none}
+#literature .literature-empty{padding:24px 7px;margin:0;font-size:12px;color:var(--rw-sub)}#literature .literature-empty a{color:var(--rw-ink);text-decoration:underline;text-underline-offset:3px;margin-left:4px}

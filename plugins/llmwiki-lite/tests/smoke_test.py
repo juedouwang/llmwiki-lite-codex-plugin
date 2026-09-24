@@ -213,8 +213,9 @@ def test_research_records(source: Path, record: dict) -> dict:
         "same-day entries should have distinct fragment IDs",
     )
     daily_text = first_path.read_text(encoding="utf-8")
+    # 12:30Z is 20:30 Beijing time: headings follow the Beijing clock, storage stays UTC.
     require(
-        daily_text.count("## 12:30\uff5c\u9636\u6bb5\u6027\u7406\u89e3\uff1a\u5b9e\u9a8c\u8bbe\u8ba1") == 2
+        daily_text.count("## 20:30\uff5c\u9636\u6bb5\u6027\u7406\u89e3\uff1a\u5b9e\u9a8c\u8bbe\u8ba1") == 2
         and daily_text.count("<!-- llmwiki-record-entry ") == 2,
         "daily record did not append both entries",
     )
@@ -301,7 +302,7 @@ def test_web(
             code == 200
             and "registered-two" in home_text
             and "野人工作台" in home_text
-            and "＋ 添加项目" in home_text,
+            and "<span>添加项目</span>" in home_text,
             "Chinese research home page failed",
         )
         for token in ("console-shell", "console-topbar", "console-sidebar", "project-list"):

@@ -50,7 +50,6 @@ from llmwiki_registry import (  # noqa: E402
 )
 from research_web_ui import (  # noqa: E402
     IMAGE_MIME_TYPES,
-    STYLE,
     esc,
     home_page,
     layout,
@@ -275,10 +274,11 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                     self.headers_out(200, "image/x-icon", len(raw))
                     self.wfile.write(raw)
                     return
-                if parsed.path in {"/static/daily-tasks.js", "/static/daily-tasks.css", "/static/theme.js", "/static/records.js", "/static/code.js", "/static/code.css", "/static/document-editor.css", "/static/document-editor.js", "/static/notebook.css", "/static/notebook.js", "/static/app.js", "/static/workbench-navigation.js", "/static/projects.js", "/static/progress.js", "/static/progress.css", "/static/reports.js", "/static/reports.css", "/static/knowledge-maintenance.js", "/static/knowledge-maintenance.css"}:
-                    target = SCRIPT_DIR / "static" / parsed.path.rsplit("/", 1)[-1]
-                    raw = target.read_bytes()
-                    content_type = "text/css" if target.suffix == ".css" else "text/javascript"
+                # Flat names only (no "/" or ".."), so new assets need no server edit.
+                static = re.fullmatch(r"/static/([a-z0-9][a-z0-9-]*\.(css|js))", parsed.path)
+                if static and (SCRIPT_DIR / "static" / static[1]).is_file():
+                    raw = (SCRIPT_DIR / "static" / static[1]).read_bytes()
+                    content_type = "text/css" if static[2] == "css" else "text/javascript"
                     self.headers_out(200, content_type + "; charset=utf-8", len(raw))
                     self.wfile.write(raw)
                     return
@@ -385,11 +385,6 @@ def create_handler(home: str) -> type[BaseHTTPRequestHandler]:
                         self.json({"ok": False, "error": str(exc)}, 409)
                     except (LLMWikiError, ValueError, OSError) as exc:
                         self.json({"ok": False, "error": str(exc)}, 400)
-                    return
-                if parsed.path == "/static/style.css":
-                    raw = STYLE.encode("utf-8")
-                    self.headers_out(200, "text/css; charset=utf-8", len(raw))
-                    self.wfile.write(raw)
                     return
                 if parsed.path == "/":
                     # 工作台的默认入口是跨项目的“每日待办”，不受上一次项目/栏目

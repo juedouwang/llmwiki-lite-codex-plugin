@@ -115,7 +115,8 @@ def literature_catalog_list_page(home, project_id, params=None):
     for label, target in (("上一页", page - 1), ("下一页", page + 1)):
         if target >= 1 and (target < page or page * 50 < result["count"]):
             paging.append(f'<a href="{base}?q={quote(query)}&amp;page={target}">{label}</a>')
-    empty = '<p class="literature-empty">还没有收藏文献。点击“添加文献”粘贴地址即可。</p>' if not result["count"] and not query else '<p>没有匹配的文献。</p>'
+    empty = (f'<p class="literature-empty">还没有收藏文献。点击“添加文献”粘贴地址即可。项目里已有 PDF？<a href="{base}/migrate">从本地文件导入</a></p>'
+             if not result["count"] and not query else '<p class="literature-empty">没有匹配的文献。</p>')
     body = page_header("文献", new_button("添加文献", attributes="data-add")) + f'''<div class="rw-filter-row"><span>当前项目 · {result["count"]} 篇文献</span><input type="search" id="literature-search" aria-label="项目内搜索" value="{esc(query)}" placeholder="搜索标题、作者、DOI"><details class="literature-more"><summary>更多</summary><a href="{base}/migrate">明确导入本地文件</a></details></div>
 {_form()}<p role="status" id="literature-message"></p><div id="literature-results"><ul class="literature-list rw-list">{''.join(rows)}</ul>{empty if not rows else ''}<nav class="literature-paging">{''.join(paging)}</nav></div>
 <details id="literature-collection"><summary>收录详情</summary><div data-collection-status>展开查看收录状态。</div><button data-retry hidden>请求重试</button></details>'''

@@ -1,0 +1,96 @@
+/* Hidden vaporwave appearance (easter egg). Loaded only while active; the sunset and grid
+   stay in the rail and the edges, so reading surfaces remain calm and legible. */
+@media screen {
+:root[data-theme=vapor]{
+  color-scheme:dark;accent-color:#ff71ce;
+  --vw-pink:#ff71ce;--vw-cyan:#01cdfe;--vw-mint:#05ffa1;--vw-purple:#b967ff;--vw-yellow:#fffb96;
+  --vw-glow:0 0 18px rgba(255,113,206,.35);
+  --rw-paper:#1a0f38;--rw-side:#1b0c3a;--rw-ink:#f6ecff;--rw-sub:#b9a6df;
+  --rw-line:rgba(255,113,206,.2);--rw-hover:rgba(1,205,254,.08);--rw-select:rgba(255,113,206,.17);
+  --rw-solid:#ff71ce;--rw-on-solid:#1a0f38;--rw-purple:var(--vw-purple);--rw-purple-soft:rgba(185,103,255,.18);
+  --rw-green:var(--vw-mint);--rw-red:#ff6b9a;--rw-add:rgba(5,255,161,.11);--rw-del:rgba(255,107,154,.14);
+  scrollbar-color:rgba(255,113,206,.45) transparent;
+}
+:root[data-theme=vapor] ::selection{background:rgba(255,113,206,.55);color:#fff}
+
+/* Night sky behind the content, with a slow neon floor at the horizon. */
+:root[data-theme=vapor] .console-shell{isolation:isolate;background:
+  radial-gradient(70% 55% at 105% -10%,rgba(1,205,254,.13),transparent 60%),
+  radial-gradient(60% 50% at 20% 115%,rgba(255,113,206,.14),transparent 60%),var(--rw-paper) fixed}
+:root[data-theme=vapor] .console-shell::before{content:"";position:fixed;z-index:-1;left:var(--rail);right:0;bottom:0;
+  height:calc(20vh / var(--workbench-scale,1.25));pointer-events:none;opacity:.2;
+  background:linear-gradient(transparent calc(100% - 1px),var(--vw-pink) 0) 0 0/100% 32px,
+             linear-gradient(90deg,transparent calc(100% - 1px),var(--vw-pink) 0) 50% 0/56px 100%;
+  transform:perspective(260px) rotateX(58deg);transform-origin:bottom;
+  -webkit-mask-image:linear-gradient(to top,#000 10%,transparent 92%);mask-image:linear-gradient(to top,#000 10%,transparent 92%);
+  animation:vw-floor 7s linear infinite}
+@keyframes vw-floor{to{background-position:0 32px,50% 0}}
+:root[data-theme=vapor] .console-topbar{background:transparent}
+:root[data-theme=vapor] .workbench-footer{border-top-color:var(--rw-line)}
+:root[data-theme=vapor] .workbench-footer::after{content:"ａｅｓｔｈｅｔｉｃ";order:1;color:rgba(255,113,206,.7);letter-spacing:.3em}
+:root[data-theme=vapor] .workbench-footer>span:last-child{order:2}
+
+/* The rail is the postcard: dusk gradient, striped sun and a grid floor behind the footer. */
+:root[data-theme=vapor] .console-sidebar{border-right:1px solid rgba(255,113,206,.28);
+  background:linear-gradient(180deg,#1b0c3a 0%,#2c1160 42%,#5a1a7c 70%,#a3307f 88%,#ff6f91 100%)}
+:root[data-theme=vapor] .console-sidebar>*{position:relative;z-index:1}
+/* A flat perspective grid (converging rays + tightening rows) stays inside the rail; menus may overflow it. */
+:root[data-theme=vapor] .console-sidebar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:78px;z-index:0;opacity:.5;pointer-events:none;
+  background:repeating-conic-gradient(from 180deg at 50% -60%,transparent 0 3.2deg,#ffd1f0 3.2deg 3.6deg) 0 0/100% 100% no-repeat,
+    linear-gradient(transparent 4%,#ffd1f0 4% 5.5%,transparent 0 12%,#ffd1f0 12% 13.5%,transparent 0 24%,#ffd1f0 24% 25.5%,
+      transparent 0 41%,#ffd1f0 41% 42.5%,transparent 0 66%,#ffd1f0 66% 67.5%,transparent 0);
+  -webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%)}
+@media (min-height:760px) and (min-width:776px){:root[data-theme=vapor] .console-sidebar::before{content:"";position:absolute;z-index:0;left:50%;bottom:58px;pointer-events:none;
+  width:112px;height:112px;margin-left:-56px;border-radius:50%;opacity:.9;
+  background:linear-gradient(180deg,#fffb96 0%,#ffb86b 45%,#ff71ce 100%);box-shadow:0 0 42px rgba(255,113,206,.55);
+  -webkit-mask-image:linear-gradient(#000 52%,transparent 52% 57%,#000 57% 65%,transparent 65% 71%,#000 71% 78%,transparent 78% 85%,#000 85% 90%,transparent 90%);
+  mask-image:linear-gradient(#000 52%,transparent 52% 57%,#000 57% 65%,transparent 65% 71%,#000 71% 78%,transparent 78% 85%,#000 85% 90%,transparent 90%)}}
+:root[data-theme=vapor] .console-sidebar-brand>span{background:linear-gradient(90deg,var(--vw-pink),var(--vw-cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+:root[data-theme=vapor] .console-navigation .console-group-label{color:#ff9ddd;letter-spacing:.18em}
+:root[data-theme=vapor] .console-nav-item{color:#cdbdf0}
+:root[data-theme=vapor] .console-nav-item:hover{background:rgba(255,255,255,.07);color:#fff}
+:root[data-theme=vapor] .console-nav-item.is-active,:root[data-theme=vapor] .console-nav-item.is-active:hover{
+  background:rgba(255,255,255,.1);color:#fff;box-shadow:inset 2px 0 0 var(--vw-cyan),0 0 16px rgba(1,205,254,.14)}
+:root[data-theme=vapor] .console-avatar{background:linear-gradient(135deg,var(--vw-pink),var(--vw-cyan));color:#1a0f38;font-weight:600;box-shadow:var(--vw-glow)}
+:root[data-theme=vapor] .console-sidebar-footer,:root[data-theme=vapor] .console-sidebar-footer :is(.console-nav-item,.rw-icon-button){color:#fff}
+:root[data-theme=vapor] .console-sidebar-footer .console-nav-item.is-active{background:rgba(255,255,255,.18);box-shadow:none}
+
+/* Type: a faint chromatic split on page titles, neon links in documents. */
+:root[data-theme=vapor] .page-header h1{color:#fdf0ff;letter-spacing:.06em;text-shadow:-1.5px 0 rgba(255,113,206,.75),1.5px 0 rgba(1,205,254,.75)}
+:root[data-theme=vapor] .document a,:root[data-theme=vapor] .note-document a,:root[data-theme=vapor] .meta a{color:var(--vw-cyan)}
+:root[data-theme=vapor] .document h2,:root[data-theme=vapor] .note-document h2{color:#ffc2ea}
+:root[data-theme=vapor] .document blockquote,:root[data-theme=vapor] .note-document blockquote{border-left-color:var(--vw-pink)}
+:root[data-theme=vapor] code{background:rgba(185,103,255,.16);color:#ecdcff}
+:root[data-theme=vapor] pre{background:rgba(8,2,24,.45);border:1px solid var(--rw-line)}
+:root[data-theme=vapor] th{background:rgba(255,113,206,.1)}
+:root[data-theme=vapor] mark,:root[data-theme=vapor] .search-result mark{background:rgba(1,205,254,.25);color:#fff}
+
+/* Controls: neon for the one primary action, quiet glass for everything else. */
+:root[data-theme=vapor] .primary,:root[data-theme=vapor] .rw-primary{background:linear-gradient(120deg,var(--vw-pink),var(--vw-purple))!important;
+  color:#fff!important;border-color:transparent!important;box-shadow:var(--vw-glow)}
+:root[data-theme=vapor] .primary:hover,:root[data-theme=vapor] .rw-primary:hover{background:linear-gradient(120deg,#ff8ad6,#c784ff)!important;opacity:1}
+:root[data-theme=vapor] button:not(.primary):not(.rw-primary):hover,:root[data-theme=vapor] .button:not(.primary):not(.rw-primary):hover{border-color:rgba(1,205,254,.45)}
+:root[data-theme=vapor] input[type=text],:root[data-theme=vapor] input[type=search],:root[data-theme=vapor] input[type=number],
+:root[data-theme=vapor] input[type=date],:root[data-theme=vapor] select:not(.progress-inline-priority),:root[data-theme=vapor] textarea{background-color:rgba(255,255,255,.035);border-color:rgba(185,103,255,.38)}
+:root[data-theme=vapor] :is(input,select,textarea):focus-visible{outline:2px solid var(--vw-cyan);outline-offset:1px;box-shadow:0 0 0 4px rgba(1,205,254,.14)}
+:root[data-theme=vapor] :is(button,a,summary):focus-visible{outline-color:var(--vw-cyan)}
+:root[data-theme=vapor] select option{background:#1f1144;color:var(--rw-ink)}
+:root[data-theme=vapor] :is(.rw-list-row,.project-row,.knowledge-row,.search-result,.daily-task):hover{background:rgba(1,205,254,.05)}
+
+/* Floating surfaces read as retro windows: a neon strip on top and a soft glow. */
+:root[data-theme=vapor] :is(dialog,.theme-options,.console-project-menu,.project-context-menu,.action-menu-items,.records-filter .filter-bar){
+  background:#1f1144;border-color:rgba(255,113,206,.45);box-shadow:0 0 0 1px rgba(1,205,254,.18),0 12px 40px rgba(8,0,30,.55),0 0 34px rgba(255,113,206,.18)}
+:root[data-theme=vapor] dialog::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,var(--vw-pink),var(--vw-purple),var(--vw-cyan))}
+:root[data-theme=vapor] dialog::backdrop{background:rgba(18,4,40,.62);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+
+/* Feature palettes: priorities and Git lanes borrow the neon set. */
+:root[data-theme=vapor] .priority-high{--priority-bg:rgba(255,113,206,.17);--priority-ink:#ff9ddd}
+:root[data-theme=vapor] .priority-medium{--priority-bg:rgba(1,205,254,.14);--priority-ink:#7fe6ff}
+:root[data-theme=vapor] .priority-low{--priority-bg:rgba(5,255,161,.12);--priority-ink:#6dffc4}
+:root[data-theme=vapor] .progress-ddl.is-overdue{color:#ff9ddd}
+:root[data-theme=vapor] #research-progress .progress-bar.is-overdue{background:rgba(255,113,206,.2);color:#ff9ddd}
+:root[data-theme=vapor] #progress-resume{background:linear-gradient(120deg,rgba(255,113,206,.08),rgba(1,205,254,.06));border-color:rgba(255,113,206,.3)}
+:root[data-theme=vapor] .code-app{--code-lane-0:var(--vw-cyan);--code-lane-1:var(--vw-pink);--code-lane-2:var(--vw-mint);--code-lane-3:var(--vw-yellow)}
+:root[data-theme=vapor] .vapor-toast{background:linear-gradient(120deg,var(--vw-pink),var(--vw-purple),var(--vw-cyan));color:#fff;box-shadow:var(--vw-glow)}
+}
+@media (prefers-reduced-motion:reduce){:root[data-theme=vapor] .console-shell::before{animation:none}}

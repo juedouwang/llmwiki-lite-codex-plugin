@@ -25,8 +25,6 @@
 .project-row{display:flex;flex-direction:column;gap:4px;min-width:0}
 .project-row-main{display:flex;align-items:center;gap:12px;min-width:0;width:100%}
 
-/* Git graph visualization */
-.graph-controls{display:flex;gap:12px;align-items:center;margin-bottom:20px;padding:12px;background:var(--soft);border-radius:8px}.graph-controls label{margin:0;display:flex;align-items:center;gap:8px}.graph-controls select{width:auto;min-width:150px}.graph-container{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:auto;margin-bottom:20px}.commit-detail{background:var(--soft);border-radius:8px;padding:16px;margin-top:20px}.commit-detail h3{margin:0 0 12px;font-size:15px}.commit-detail p{margin:8px 0;font-size:13px}
 
 /* Shared shell transcribed from research-workbench-complete.html.
    The prototype frame becomes the viewport; the approved 125% app scale and
@@ -136,7 +134,9 @@ body{font:14px/1.55 var(--font-ui)}
 [data-theme-choice]:hover{background:var(--rw-hover)}
 [data-theme-choice][aria-pressed=true]{background:var(--rw-select);color:var(--rw-ink)}
 .theme-settings{display:flex;gap:5px;flex-wrap:wrap}
-.appearance-settings h2{font-size:14px;font-weight:500}
+.appearance-settings h2{font-size:15px;font-weight:500;margin:10px 0 12px}
+/* Settings read as one column; the project group label sits below section titles, not above the page title. */
+.settings-content .section-title{font-size:12px;font-weight:400;color:var(--rw-sub);margin:28px 0 0}
 .workbench-footer{border-top:1px solid var(--rw-line);padding:11px var(--workbench-gutter);display:flex;gap:10px;justify-content:space-between;color:var(--rw-sub);font-size:11px;flex-wrap:wrap}
 body[data-workbench-page=code] .workbench-footer{display:none}
 .rw-split{display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px;border-top:1px solid var(--rw-line);padding-top:18px}
@@ -200,3 +200,7 @@ input[type=date],textarea{background:var(--panel);color:var(--text);border:1px s
 .console-navigation .console-group-label{grid-column:1/-1;font-size:11px;color:var(--rw-sub);font-weight:400;padding:0 11px;margin:0 0 8px;letter-spacing:.03em}
 .console-my-work{margin-bottom:30px}.console-my-work>.console-nav-item{margin-bottom:5px}
 .console-project-section .console-project-switcher{margin-bottom:13px}.console-project-label small{display:none}
+.records-more{justify-content:center;margin-top:18px}
+/* Easter-egg notice (see theme.js); the vapor theme restyles it. */
+.vapor-toast{position:fixed;left:50%;bottom:56px;z-index:300;transform:translate(-50%,8px);padding:8px 16px;border-radius:999px;background:var(--rw-solid);color:var(--rw-on-solid);font-size:12px;letter-spacing:.06em;box-shadow:0 8px 28px #0003;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s}
+.vapor-toast.is-shown{opacity:1;transform:translate(-50%,0)}

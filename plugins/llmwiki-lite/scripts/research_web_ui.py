@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import html
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
 
 from llmwiki_core import LLMWikiError, _wiki_page_title, status, wiki_list
 from llmwiki_registry import get_project, list_projects, load_settings
-from markdown_renderer import render_markdown
-from research_records import MAX_LIST_RECORDS, list_records, read_record
+from markdown_renderer import plain_text, render_markdown
+from research_records import CST, EMPTY_SECTION, MAX_LIST_RECORDS, list_records, read_record
 import web_session
 
 IMAGE_MIME_TYPES = {
@@ -70,8 +70,6 @@ def ui_icon(name: str) -> str:
         + _ICON_PATHS[name] + '</svg>'
     )
 
-
-STYLE = (Path(__file__).parent / "static" / "style.css").read_text(encoding="utf-8")
 
 CATEGORY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("研究总览", ("index", "overview", "readme", "project", "研究总览", "项目总览", "概览")),
@@ -301,14 +299,20 @@ def project_status(project: dict[str, Any]) -> dict[str, Any]:
         return {"wiki_page_count": 0, "snapshot_file_count": 0, "snapshot_at": None, "dirty_paths": [], "error": str(exc)}
 
 
+def beijing_datetime(value: Any) -> datetime | None:
+    """Stamps are stored in UTC (naive means UTC); the site reads in Beijing time."""
+    try:
+        parsed = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).astimezone(CST)
+
+
 def format_time(value: str | None) -> str:
     if not value:
         return "尚未扫描"
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed.strftime("%Y-%m-%d %H:%M")
-    except ValueError:
-        return value
+    parsed = beijing_datetime(value)
+    return parsed.strftime("%Y-%m-%d %H:%M") if parsed else value
 
 
 def classify_page(path: str, title: str) -> str:
@@ -373,8 +377,7 @@ def home_page(home: str, params: dict[str, list[str]]) -> str:
     selected = web_session.current_project()
     rows = []
     for project in projects:
-        state = project_status(project)
-        count = int(state.get("wiki_page_count", 0))
+        count = knowledge_count(project)
         pid = str(project["id"])
         current_marker = ' aria-current="true"' if pid == selected else ''
         rows.append(
@@ -388,7 +391,7 @@ def home_page(home: str, params: dict[str, list[str]]) -> str:
             f'</div></div>'
         )
     content = '<div class="project-list">' + "".join(rows) + '</div>' if rows else '<div class="empty"><h2>添加你的第一个项目</h2><p>关联本地项目，开始整理文献与研究记录。</p><a class="button primary" href="/settings#register-project">添加项目</a></div>'
-    body = notice(params) + page_header("项目", '<a class="button" href="/settings#register-project">＋ 添加项目</a>') + content
+    body = notice(params) + page_header("项目", new_button("添加项目", href="/settings#register-project")) + content
     body = (f'<section id="project-manager" data-default-project="{esc(listed["web_default_project_id"] or "")}">' + body
             + '<p class="meta" id="project-order-hint">拖动文件夹调整顺序；星标指定默认项目（不改变每日待办首页）。</p>'
             + project_management_controls()
@@ -408,6 +411,25 @@ def knowledge_records(project: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         eligible.append(page)
     return sorted(page_records(project, eligible), key=lambda item: (str(item["title"]), str(item["path"])))
+
+
+def knowledge_count(project: dict[str, Any]) -> int:
+    """The number the knowledge list will show, not every Markdown file under the Wiki."""
+    try:
+        return len(knowledge_records(project))
+    except (LLMWikiError, OSError, ValueError):
+        return 0
+
+
+_LANDING_STEMS = ("overview", "readme", "项目总览", "总览", "概览")
+
+
+def landing_page(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Open a project's knowledge on its overview, not whichever title sorts first."""
+    def rank(item: dict[str, Any]) -> int:
+        stem = Path(str(item["path"])).stem.lower()
+        return _LANDING_STEMS.index(stem) if stem in _LANDING_STEMS else len(_LANDING_STEMS)
+    return min(records, key=rank)
 
 
 def knowledge_header() -> str:
@@ -452,7 +474,7 @@ def project_page(home: str, project_id: str, params: dict[str, list[str]]) -> st
     prompt = f'请理解并维护研究项目“{project["name"]}”的 Wiki，检查变化，只更新受影响的页面，保留原有内容并说明依据。'
     help_html = f'''<details class="subtle-details"><summary>如何更新知识库</summary><div class="prompt" id="project-prompt">{esc(prompt)}<button onclick="copyText('project-prompt',this)">复制指令</button></div></details>'''
     if records:
-        content = knowledge_surface(project, records, str(records[0]["path"]), project_updates=True)
+        content = knowledge_surface(project, records, str(landing_page(records)["path"]), project_updates=True)
     else:
         from knowledge_maintenance import widget
         content = '<div class="empty"><h2>还没有知识页</h2><p>让 AI 助手理解项目，或将已有 Markdown 放入 Wiki。</p></div>' + widget(project_id)
@@ -461,25 +483,19 @@ def project_page(home: str, project_id: str, params: dict[str, list[str]]) -> st
 
 
 def _record_day(record: dict[str, Any]) -> tuple[str, str]:
-    value = str(record.get("recorded_at") or "")
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = beijing_datetime(record.get("recorded_at"))
+    if parsed:
         return parsed.strftime("%Y-%m-%d"), parsed.strftime("%Y\u5e74%m\u6708%d\u65e5")
-    except ValueError:
-        path = str(record.get("path") or "")
-        match = re.search(r"(\d{4})/(\d{2})/(\d{4}-\d{2}-\d{2})\.md$", path)
-        if match:
-            return match.group(3), f"{match.group(1)}\u5e74{match.group(2)}\u6708{match.group(3)[-2:]}\u65e5"
-        return "0000-00-00", "\u672a\u77e5\u65e5\u671f"
+    path = str(record.get("path") or "")
+    match = re.search(r"(\d{4})/(\d{2})/(\d{4}-\d{2}-\d{2})\.md$", path)
+    if match:
+        return match.group(3), f"{match.group(1)}\u5e74{match.group(2)}\u6708{match.group(3)[-2:]}\u65e5"
+    return "0000-00-00", "\u672a\u77e5\u65e5\u671f"
 
 
 def _record_time(record: dict[str, Any]) -> str:
-    value = str(record.get("recorded_at") or "")
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed.strftime("%H:%M")
-    except ValueError:
-        return ""
+    parsed = beijing_datetime(record.get("recorded_at"))
+    return parsed.strftime("%H:%M") if parsed else ""
 
 
 def _record_day_groups(records: list[dict[str, Any]]) -> list[tuple[str, str, list[dict[str, Any]]]]:
@@ -567,7 +583,7 @@ def records_page(home: str, project_id: str, params: dict[str, list[str]]) -> st
             params_parts.append(f"tag={quote(tag, safe='')}")
         load_more_url = f"{purl(project_id)}/records?{'&'.join(params_parts)}"
         load_more_html = (
-            f'<div class="actions" style="justify-content:center"><a class="button" href="{load_more_url}">'
+            f'<div class="actions records-more"><a class="button" href="{load_more_url}">'
             f"加载更多（已显示 {len(records)} / 共 {total_count} 条）</a></div>"
         )
 
@@ -871,17 +887,21 @@ def search_page(home: str, params: dict[str, list[str]]) -> str:
                 continue
             pages = wiki_list(str(project["source_root"]), state_root=str(project["state_root"]))["pages"]
             for page in pages:
+                # The generated catalog only repeats other titles; the knowledge list hides it too.
+                if str(page["path"]).rsplit("/", 1)[-1].lower() == "index.md":
+                    continue
                 target = safe_path(Path(str(project["wiki_root"])), str(page["path"]))
                 try:
                     if target.stat().st_size > 2 * 1024 * 1024:
                         continue
-                    text = target.read_text(encoding="utf-8")
+                    text = plain_text(target.read_text(encoding="utf-8"))
+                    # Record templates keep empty sections as placeholders; they are not content.
+                    text = re.sub(r"[^\s：]+：" + re.escape(EMPTY_SECTION) + r"\s*", "", text)
                 except (OSError, UnicodeDecodeError):
                     continue
-                haystack = f'{page["title"]}\n{page["path"]}\n{text}'
-                if query.lower() not in haystack.lower():
+                if query.lower() not in f'{page["title"]}\n{page["path"]}\n{text}'.lower():
                     continue
-                results.append({"project": project, "page": page, "category": classify_page(str(page["path"]), str(page["title"])), "excerpt": highlighted_excerpt(haystack, query)})
+                results.append({"project": project, "page": page, "category": classify_page(str(page["path"]), str(page["title"])), "excerpt": highlighted_excerpt(text, query)})
     result_html = "".join(f'''<article class="search-result"><div><span class="category-tag">{esc(item["category"])}</span><span class="meta">{esc(item["project"]["name"])}</span></div><h2><a href="{pageurl(item["project"]["id"], item["page"]["path"])}">{esc(item["page"]["title"])}</a></h2><div class="meta path">{esc(item["page"]["path"])}</div><p>{item["excerpt"]}</p></article>''' for item in results)
     if query and not results:
         result_html = '<div class="empty"><h2>没有找到相关内容</h2><p>可尝试项目术语、算法名、实验指标、作者名或更短的关键词。</p></div>'
@@ -902,8 +922,9 @@ def settings_page(home: str, params: dict[str, list[str]]) -> str:
         web_port = int(settings.get("web_port") or 8765)
     except (TypeError, ValueError):
         web_port = 8765
-    body = notice(params) + page_header("设置") + f'''<div class="settings-content"><details class="settings-section" open><summary>默认存储</summary><form method="post" action="/settings/default-wiki-root"><label>Wiki 默认根目录<input type="text" name="default_wiki_root" value="{esc(default_root)}" placeholder="留空则使用项目下的 wiki 目录"></label><p class="meta">仅影响之后添加的项目。</p><details class="settings"><summary>高级设置</summary><label>本地网站端口<input type="number" name="web_port" min="1024" max="65535" value="{web_port}"></label><p class="path">注册表：{esc(home)}</p></details><div class="actions"><button class="primary">保存默认设置</button></div></form></details><details class="settings-section" id="register-project"><summary>添加项目</summary><form method="post" action="/project/register"><label>项目目录<input type="text" name="source_root" required placeholder="项目的绝对路径"></label><label>项目名称<input type="text" name="name" placeholder="默认使用目录名"></label><label>Wiki 目录<input type="text" name="wiki_root" placeholder="留空使用默认位置"></label><details class="settings"><summary>高级设置</summary><label>机器状态目录<input type="text" name="state_root" placeholder="留空由插件管理"></label></details><p class="meta">添加项目不会修改源文件，也不会自动扫描。</p><div class="actions"><button class="primary">注册项目</button></div></form></details><h2 class="section-title">已添加的项目</h2>{"".join(project_forms) if project_forms else '<p class="muted">暂无项目</p>'}</div>'''
+    body = notice(params) + page_header("设置") + f'''<div class="settings-content"><details class="settings-section" open><summary>默认存储</summary><form method="post" action="/settings/default-wiki-root"><label>Wiki 默认根目录<input type="text" name="default_wiki_root" value="{esc(default_root)}" placeholder="留空则使用项目下的 wiki 目录"></label><p class="meta">仅影响之后添加的项目。</p><details class="settings"><summary>高级设置</summary><label>本地网站端口<input type="number" name="web_port" min="1024" max="65535" value="{web_port}"></label><p class="path">注册表：{esc(home)}</p></details><div class="actions"><button class="primary">保存默认设置</button></div></form></details><details class="settings-section" id="register-project"><summary>添加项目</summary><form method="post" action="/project/register"><label>项目目录<input type="text" name="source_root" required placeholder="项目的绝对路径"></label><label>项目名称<input type="text" name="name" placeholder="默认使用目录名"></label><label>Wiki 目录<input type="text" name="wiki_root" placeholder="留空使用默认位置"></label><details class="settings"><summary>高级设置</summary><label>机器状态目录<input type="text" name="state_root" placeholder="留空由插件管理"></label></details><p class="meta">添加项目不会修改源文件，也不会自动扫描。</p><div class="actions"><button class="primary">注册项目</button></div></form></details><h2 class="section-title">已添加的项目</h2>{"".join(project_forms) if project_forms else '<p class="muted">暂无项目</p>'}'''
     from research_reports import settings_section
     body += '<section class="settings-section appearance-settings"><h2>外观</h2><div class="theme-settings">' + theme_choices() + '</div><p class="meta">只保存在当前浏览器，跟随系统会自动切换。</p></section>'
-    body += settings_section(home)
+    # One reading column for every section, including feature-owned ones.
+    body += settings_section(home) + '</div>'
     return layout("设置", body, active="settings", home=home)

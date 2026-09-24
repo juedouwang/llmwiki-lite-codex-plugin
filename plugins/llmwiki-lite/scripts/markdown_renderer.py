@@ -114,6 +114,40 @@ def _frontmatter(text: str) -> tuple[list[str], str]:
     return ([], text) if end < 0 else (text[4:end].splitlines(), text[end + 5 :])
 
 
+_PLAIN_INLINE = (
+    (re.compile(r"!\[([^\]]*)\]\([^)]*\)"), lambda m: m.group(1) or "[图片]"),
+    (re.compile(r"\[\[([^\]|]+)\|?([^\]]*)\]\]"), lambda m: m.group(2) or m.group(1)),
+    (re.compile(r"\[([^\]]+)\]\([^)]*\)"), lambda m: m.group(1)),
+    (re.compile(r"(\*\*|__|~~)(.+?)\1"), lambda m: m.group(2)),
+    (re.compile(r"(?<![\w*])\*(?!\s)([^*\n]+?)\*(?!\w)"), lambda m: m.group(1)),
+    (re.compile(r"`([^`\n]+)`"), lambda m: m.group(1)),
+)
+
+
+def plain_text(text: str) -> str:
+    """One-line reading text for excerpts: no frontmatter, comments or Markdown marks.
+
+    A heading reads as a lead-in ("进展：…") so short previews keep their structure.
+    """
+    _, body = _frontmatter(text.replace("\r\n", "\n").replace("\r", "\n"))
+    body = re.sub(r"<!--.*?(?:-->|$)", " ", body, flags=re.S)
+    parts: list[str] = []
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if not stripped or re.fullmatch(r"(```|~~~).*|[-*_]{3,}|\|?[\s:|-]+\|?", stripped):
+            continue
+        heading = re.match(r"#{1,6}\s+(.+?)\s*#*$", stripped)
+        stripped = heading.group(1) if heading else re.sub(r"^(?:>\s*)+|^(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?", "", stripped)
+        if stripped.startswith("|"):
+            stripped = stripped.strip("|").replace("|", " ")
+        for pattern, replace in _PLAIN_INLINE:
+            stripped = pattern.sub(replace, stripped)
+        if heading and not re.search(r"[：:。.！!？?]$", stripped):
+            stripped += "："
+        parts.append(stripped.strip())
+    return re.sub(r"：\s+", "：", re.sub(r"\s+", " ", " ".join(parts))).strip()
+
+
 def _slug(text: str) -> str:
     return (
         re.sub(r"[^\w\-\u4e00-\u9fff]+", "-", text.strip().lower()).strip("-")

@@ -416,7 +416,8 @@ class KnowledgeTests(KnowledgeFixture):
         path = self.wiki / first["path"]
         raw = path.read_text(encoding="utf-8")
         # Remove the first complete entry, preserving a valid daily file and the second entry.
-        start, end = raw.index("## 00:00｜First"), raw.index("## 00:00｜Second")
+        # Headings use Beijing time: 00:00Z reads 08:00.
+        start, end = raw.index("## 08:00｜First"), raw.index("## 08:00｜Second")
         path.write_text(raw[:start] + raw[end:], encoding="utf-8")
         items, _ = km.scan(self.p, km.state(self.p)["sources"])
         self.assertEqual(items[locator]["revision"], "deleted")

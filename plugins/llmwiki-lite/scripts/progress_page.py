@@ -1,5 +1,6 @@
 """Research task page. No shared navigation or server ownership."""
 from llmwiki_registry import get_project
+from markdown_renderer import plain_text
 from research_web_ui import esc, layout, new_button, page_header, ui_icon
 
 
@@ -10,7 +11,7 @@ def page(home: str, project_id: str) -> str:
     # Keep meaningful, escaped server-rendered context before JS loads.
     resume = "".join(
         f'<li><a href="/project/{esc(project_id)}/todos#task-{task["id"]}">{esc(task["title"])}</a>'
-        f'<p>{esc(task_description(task))}</p>'
+        f'<p>{esc(plain_text(task_description(task)))}</p>'
         + (f'<span class="meta">关联笔记：{esc(task["record_id"])}</span>' if task.get("record_id") else "")
         + '</li>' for task in active_tasks(project)
     )

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -37,8 +37,20 @@ SECTION_TITLES = {
 }
 
 
+# Persist UTC, file and title entries by Beijing day (the site-wide convention).
+CST = timezone(timedelta(hours=8))
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _sort_instant(value: Any) -> float:
+    """Order mixed ``Z`` / ``+08:00`` stamps by real time, not by string."""
+    try:
+        return _parse_datetime(str(value)).timestamp()
+    except LLMWikiError:
+        return float("-inf")
 
 
 def _project_wiki_root(project_root: str, state_root: str | None = None) -> tuple[Path, Path]:
@@ -112,11 +124,14 @@ def _yaml_scalar(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+EMPTY_SECTION = "\uff08\u672a\u586b\u5199\uff09"
+
+
 def _section(title: str, value: str | list[str], level: int = 3) -> str:
     if isinstance(value, list):
-        body = "\n".join(f"- {item}" for item in value) or "\uff08\u672a\u586b\u5199\uff09"
+        body = "\n".join(f"- {item}" for item in value) or EMPTY_SECTION
     else:
-        body = value or "\uff08\u672a\u586b\u5199\uff09"
+        body = value or EMPTY_SECTION
     return f"{'#' * level} {title}\n\n{body}\n"
 
 
@@ -136,13 +151,18 @@ def _parse_datetime(value: str) -> datetime:
     return parsed
 
 
+def _beijing(recorded_at: str) -> datetime:
+    """Day files, entry keys and headings follow the Beijing clock, not the UTC day."""
+    return _parse_datetime(recorded_at).astimezone(CST)
+
+
 def _date_path(recorded_at: str) -> str:
-    parsed = _parse_datetime(recorded_at)
+    parsed = _beijing(recorded_at)
     return f"{RECORDS_DIR}/{parsed:%Y/%m/%Y-%m-%d}.md"
 
 
 def _entry_key(title: str, recorded_at: str, existing: set[str]) -> str:
-    parsed = _parse_datetime(recorded_at)
+    parsed = _beijing(recorded_at)
     base = f"{parsed:%H%M%S}-{_slug(title)}"
     candidate = base
     index = 2
@@ -192,7 +212,7 @@ def _entry_content(
     related_pages: list[str],
     tags: list[str],
 ) -> str:
-    parsed = _parse_datetime(recorded_at)
+    parsed = _beijing(recorded_at)
     lines = [
         f"## {parsed:%H:%M}\uFF5C{title}",
         _entry_metadata(
@@ -217,7 +237,7 @@ def _entry_content(
 
 
 def _daily_document(recorded_at: str, project_id: str, entry: str) -> str:
-    day = _parse_datetime(recorded_at).strftime("%Y-%m-%d")
+    day = _beijing(recorded_at).strftime("%Y-%m-%d")
     frontmatter = [
         "---",
         f'title: {_yaml_scalar(day + " " + DAILY_TITLE_SUFFIX)}',
@@ -550,7 +570,7 @@ def list_records(
         ]
     records.sort(
         key=lambda item: (
-            str(item.get("recorded_at") or ""),
+            _sort_instant(item.get("recorded_at")),
             str(item.get("updated_at") or ""),
             str(item.get("id") or ""),
         ),

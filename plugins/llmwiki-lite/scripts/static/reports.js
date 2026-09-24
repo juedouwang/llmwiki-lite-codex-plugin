@@ -57,7 +57,7 @@
       $('report-copy-enable').hidden = value.connection === 'configured' || (bound && !value.enabled);
       $('report-copy-enable').textContent = bound ? '检查计划连接' : '首次连接计划';
       if ($('report-copy-maintain')) $('report-copy-maintain').hidden = !bound;
-      $('report-connection').textContent = ({paused: '已暂停', pending: bound ? '待恢复计划连接' : '尚未连接共享计划', configured: '共享计划已连接'})[value.connection] + ' · 最近成功：' + (runtime.last_success_at || '暂无') + (runtime.last_error ? ' · 最近错误：' + runtime.last_error : '') + (runtime.last_started_at && Date.now() - Date.parse(runtime.last_started_at) > 7200000 ? ' · 尚未收到最近检查' : '');
+      $('report-connection').textContent = ({paused: '已暂停', pending: bound ? '待恢复计划连接' : '尚未连接共享计划', configured: '共享计划已连接'})[value.connection] + ' · 最近成功：' + (runtime.last_success_at ? new Date(runtime.last_success_at).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai', hour12: false}) : '暂无') + (runtime.last_error ? ' · 最近错误：' + runtime.last_error : '') + (runtime.last_started_at && Date.now() - Date.parse(runtime.last_started_at) > 7200000 ? ' · 尚未收到最近检查' : '');
     }
     request('/api/reports/settings').then(fill).catch(e => { $('report-settings-status').textContent = e.message; });
     configForm.onsubmit = async event => {

@@ -48,7 +48,10 @@ const path=require('node:path');
       const entries=page.locator('#progress-history .progress-history-entry');
       const history=[...task.history].reverse();assert.equal(await entries.count(),history.length);
       for(let i=0;i<history.length;i++){
-        assert.equal(await entries.nth(i).locator('p.meta').first().innerText(),history[i].at+' · '+(history[i].status==='done'?'Done':'Todo'));
+        // Shown in local time; the exact stored stamp stays machine-readable on <time>.
+        const meta=entries.nth(i).locator('p.meta').first();
+        assert.equal(await meta.locator('time').getAttribute('datetime'),history[i].at);
+        assert.ok((await meta.innerText()).endsWith(' · '+(history[i].status==='done'?'Done':'Todo')));
         assert.equal(await entries.nth(i).locator('strong').innerText(),history[i].title);
       }
     }
