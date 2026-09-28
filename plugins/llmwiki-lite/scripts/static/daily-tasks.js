@@ -44,22 +44,20 @@
     const base = projectId === '__workspace__' ? '/reports/asset/records/assets/' : `/project/${encodeURIComponent(projectId)}/asset/records/assets/`;
     return `${base}${encodeURIComponent(result.image)}`;
   }
-  async function pasteImage(event) {
-    const files = [...(event.clipboardData?.items || [])].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean);
-    if (!files.length) return;
-    event.preventDefault();
+  async function pasteImages(files, at, original) {
     if (busy) return;
-    const textarea = field('description'), start = textarea.selectionStart, end = textarea.selectionEnd, before = textarea.value.slice(0, start), after = textarea.value.slice(end);
-    textarea.disabled = true;
+    const textarea = field('description'); textarea.disabled = true; error('');
     try {
       const links = [];
       for (const file of files) links.push(`![截图](${await uploadImage(file, field('project_id').value)})`);
-      textarea.value = before + links.join('\n') + after;
-      const pos = before.length + links.join('\n').length; textarea.setSelectionRange(pos, pos);
-      textarea.dispatchEvent(new Event('input', {bubbles:true}));
+      textarea.disabled = false; description.insert('\n' + links.join('\n') + '\n', at, original);
     } catch (e) { error(e.message); }
     finally { textarea.disabled = false; }
   }
+  // Pasted screenshots show as images in the field; the saved value stays Markdown.
+  // Tasks shared with 科研进度 may hold ../assets links relative to project records.
+  const imageURL = href => href.startsWith('/') ? href : window.ResearchDocument.assetURL(field('project_id').value, 'records/manual/preview.md', href);
+  const description = window.ResearchDocument.imageField(field('description'), {images: pasteImages, imageURL});
   function revisionFor(task, projectId = owner(task)) {
     const revision = task?.revision ?? data.revisions[projectId];
     if (typeof revision !== 'string') throw new Error('未取得任务版本，请重新读取列表后重试。');
@@ -251,7 +249,6 @@
   $('#daily-cancel').addEventListener('click', () => closeEditor());
   $('#daily-retry').addEventListener('click', async () => { message(''); await refresh(); });
   $('#daily-reload').addEventListener('click', reloadDraft);
-  field('description').addEventListener('paste', pasteImage);
   field('project_id').addEventListener('change', () => { if (!editing) { try { draftRevision = revisionFor(null, field('project_id').value); } catch (e) { error(e.message); } } });
   form.addEventListener('submit', event => {
     event.preventDefault(); if (conflict || busy || !form.reportValidity()) return;

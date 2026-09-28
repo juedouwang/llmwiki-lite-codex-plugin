@@ -40,11 +40,11 @@ async function until(condition, timeout=10000) {
     await page.waitForFunction(()=>!document.hidden&&document.hasFocus(),null,{timeout:10000});
     await page.locator('#progress-dialog[open]').waitFor();
     // The unified description replaced the separate next-step field; it is the unsaved input to protect.
-    const input=page.locator('#progress-form [name=description]');
+    const input=page.locator('#progress-description-live');
     await input.click();
     await input.fill('这句还没写完，明天继续');
     await input.focus();
-    const state=()=>input.evaluate(el=>({text:el.value,start:el.selectionStart,end:el.selectionEnd,focused:el===document.activeElement}));
+    const state=()=>input.evaluate(el=>{const s=getSelection();return {text:document.querySelector('#progress-description').value,node:s.anchorNode?.textContent,start:s.anchorOffset,end:s.focusOffset,focused:el===document.activeElement};});
     const expected=await state();
     // Three consecutive foreground intervals, around 15 seconds in total.
     const first=polls.length-1;

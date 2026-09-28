@@ -113,10 +113,10 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),cryp
       const contract={taskBox,menuBox,toggleBox,priorityStyle,priorityValues,days};
       fs.writeFileSync(path.join(evidence,'progress-layout-contract.json'),JSON.stringify(contract,null,2));
       await taskRow.locator('.progress-task').click();await page.locator('#progress-dialog').waitFor();
-      const descriptionBox=await page.locator('#progress-description').boundingBox(),ddlBox=await page.locator('#progress-form [name=ddl]').boundingBox(),priorityBox=await page.locator('#progress-form [name=priority]').boundingBox();
+      const descriptionBox=await page.locator('#progress-description-live').boundingBox(),ddlBox=await page.locator('#progress-form [name=ddl]').boundingBox(),priorityBox=await page.locator('#progress-form [name=priority]').boundingBox();
       assert.ok(descriptionBox.y>=Math.max(ddlBox.y+ddlBox.height,priorityBox.y+priorityBox.height),'single description below DDL/priority options');
       assert.ok(ddlBox.x>=priorityBox.x+priorityBox.width-1,'DDL and priority inputs do not overlap');
-      assert.equal(await page.locator('#progress-description').isEditable(),true);
+      assert.equal(await page.locator('#progress-description-live').isEditable(),true);
       await page.locator('#progress-close').click();await page.mouse.move(0,0);
       console.log('PASS progress layout: unified description / Todo+Done / optional DDL / visible priority controls / seven deadline columns');
     }
@@ -128,7 +128,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),cryp
   await theme('light');await page.emulateMedia({colorScheme:'dark'});assert.equal(await page.locator('html').getAttribute('data-resolved-theme'),'light');
   await page.locator('[data-workbench-nav=records]').click();await page.locator('#research-records').waitFor();await theme('dark');
   await page.locator('[data-workbench-nav=code]').click();await page.locator('.code-version-title').waitFor();assert.equal(await page.locator('.theme-options [data-theme-choice=dark]').getAttribute('aria-pressed'),'true');
-  await page.goto(origin+base+'/todos');await page.locator('#progress-new').click();await page.locator('#progress-form [name=title]').fill('体验验证任务');await page.locator('#progress-description').fill('统一描述体验验证');await page.locator('#progress-form [name=priority]').selectOption('medium');assert.equal(await page.locator('#progress-form [name=ddl]').inputValue(),'');await page.locator('#progress-form [type=submit]').click();await page.locator('#progress-dialog').waitFor({state:'hidden'});await page.locator('#progress-todo .progress-task').filter({hasText:'体验验证任务'}).click();
+  await page.goto(origin+base+'/todos');await page.locator('#progress-new').click();await page.locator('#progress-form [name=title]').fill('体验验证任务');await page.locator('#progress-description-live').fill('统一描述体验验证');await page.locator('#progress-form [name=priority]').selectOption('medium');assert.equal(await page.locator('#progress-form [name=ddl]').inputValue(),'');await page.locator('#progress-form [type=submit]').click();await page.locator('#progress-dialog').waitFor({state:'hidden'});await page.locator('#progress-todo .progress-task').filter({hasText:'体验验证任务'}).click();
   await page.locator('#progress-dialog').waitFor();assert.equal(await page.locator('#progress-dialog').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(33, 33, 33)');await page.locator('#progress-close').click();
   await page.goto(origin+'/reports?context='+pid);const daily=await page.locator('#report-new').evaluate(el=>({height:el.getBoundingClientRect().height,padding:getComputedStyle(el).padding}));await page.locator('#report-new').click();await page.locator('#report-create').waitFor();await page.locator('#report-create [value=cancel]').click();
   await page.goto(origin+'/reports?context='+pid+'&view=weekly');assert.equal(await page.locator('#report-new').innerText(),'新建周报');

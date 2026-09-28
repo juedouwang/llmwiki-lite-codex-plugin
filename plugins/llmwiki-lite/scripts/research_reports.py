@@ -663,12 +663,17 @@ def _report_sources(owner: dict, kind: str, start: str, ids: list, home, now: da
             gaps.extend(selected.get('gaps', []))
             if not report['metadata']['versions']:
                 gaps.append(f'{day}：使用未确认日报草稿。')
+        fallback = False
         for pid in ids:
             if pid not in covered:
                 project = project_for(pid, home)
                 raw, missing = collect_sources(project, day, now=now, home=home)
                 items.extend(raw)
+                fallback = fallback or bool(raw)
                 gaps.extend(f'{project["name"]}：{gap}' for gap in missing)
+        if fallback:
+            # A failed or queued daily never blocks the weekly; it is disclosed instead.
+            gaps.append(f'{day}：该日日报未生成或不可用，已直接使用原始材料。')
     return items, sorted(set(gaps))
 
 
@@ -709,56 +714,59 @@ def report_plan(home=None, max_reports: int = 3, *, now: datetime | None = None)
     if type(max_reports) is not int or not 1 <= max_reports <= 3:
         raise ReportError('每轮最多整理 3 篇报告。')
     now = now or datetime.now(timezone.utc)
-    today = now.astimezone(CST).date()
+    local = now.astimezone(CST)
+    today, clock = local.date(), local.strftime('%H:%M')
     start_date = date.fromisoformat(settings['start_date'])
     ids = settings['project_ids']
-    candidates = []
-    for pid in [WORKSPACE_ID]:
-        p = workspace(home)
-        folder = _state(p, '')
-        for path in sorted(folder.glob('*.json')) if folder.exists() else []:
-            if not re.fullmatch(r'(daily|weekly)-\d{4}-\d{2}-\d{2}\.json', path.name):
-                continue
-            meta = _json(path)
-            if meta['generation']['requested'] and set(meta['project_ids']).issubset(ids):
-                candidates.append((pid, meta['kind'], meta['period_start'], ids))
-    for offset in range(14, -1, -1):
-        day = today - timedelta(days=offset)
-        if day < start_date or (offset == 0 and now.astimezone(CST).strftime('%H:%M') < settings['daily_time']):
-            continue
-        candidates.append((WORKSPACE_ID, 'daily', day.isoformat(), ids))
+    project = workspace(home)
+    folder = _state(project, '')
+    metas = [_json(path) for path in (sorted(folder.glob('*.json')) if folder.exists() else [])
+             if re.fullmatch(r'(daily|weekly)-\d{4}-\d{2}-\d{2}\.json', path.name)]
+    # A weekly waits only for dailies of its week that can still land this round.
+    in_flight = {m['period_start'] for m in metas if m['kind'] == 'daily' and m['generation']['state'] == 'running'
+                 and datetime.fromisoformat(m['generation']['expires_at']) > now}
+    latest = today - timedelta(days=0 if clock >= settings['daily_time'] else 1)
+    floor = max(start_date, today - timedelta(days=14))
     monday = today - timedelta(days=today.weekday())
-    for start in [monday - timedelta(days=7), monday]:
+    weeklies = []
+    for start in [monday, monday - timedelta(days=7)]:
         due = start + timedelta(days=settings['weekly_weekday'] - 1)
         # Initial enablement must not invent missed weekly slots from before consent.
-        if due < start_date:
-            continue
-        if today < due or (today == due and now.astimezone(CST).strftime('%H:%M') < settings['weekly_time']):
-            continue
-        candidates.append((WORKSPACE_ID, 'weekly', start.isoformat(), ids))
+        if due >= start_date and (today > due or (today == due and clock >= settings['weekly_time'])):
+            weeklies.append(start)
+    # Priority: latest due daily, this week's due weekly, explicit regenerations,
+    # then backfill newest first (a week's dailies before its weekly).
+    candidates = [('current', 'daily', latest)] if latest >= floor else []
+    if monday in weeklies:
+        candidates.append(('current', 'weekly', monday))
+    candidates += [('requested', m['kind'], date.fromisoformat(m['period_start'])) for m in metas
+                   if m['generation']['requested'] and set(m['project_ids']).issubset(ids)]
+    older = [('daily', day) for day in (latest - timedelta(days=o) for o in range(1, 15)) if day >= floor]
+    older += [('weekly', start) for start in weeklies if start != monday]
+    candidates += [('backfill', kind, day) for kind, day in sorted(older, key=lambda c: (c[1], c[0] == 'daily'), reverse=True)]
     unique = {}
-    for candidate in candidates:
-        unique.setdefault(tuple(candidate[:3]), candidate)
+    for tier, kind, day in candidates:
+        unique.setdefault((kind, day.isoformat()), tier)
     runs, pending_count, gaps = [], 0, []
-    blocked_daily = set()
-    for pid, kind, start, project_ids in unique.values():
-        if kind == 'weekly' and any(start <= day <= (date.fromisoformat(start) + timedelta(days=6)).isoformat() for day in blocked_daily):
+    reserved = backfilled = 0
+    for (kind, start), tier in unique.items():
+        if kind == 'weekly' and in_flight & {(date.fromisoformat(start) + timedelta(days=o)).isoformat() for o in range(7)}:
             pending_count += 1
+            if tier == 'current':
+                # Keep a slot so backfill cannot push this round's weekly to tomorrow.
+                reserved = 1
             continue
-        project = report_owner(pid, home)
         key, end = identity(kind, start)
         # Material collection is intentionally outside every document lock.
-        items, missing = _report_sources(project, kind, start, project_ids, home, now)
+        items, missing = _report_sources(project, kind, start, ids, home, now)
         template = (Path(__file__).resolve().parents[1] / 'templates/weekly-report.md').read_text(encoding='utf-8') if kind == 'weekly' else ''
-        fingerprint = digest([project_ids, [(i['id'], i['revision']) for i in items], digest(template)])
+        fingerprint = digest([ids, [(i['id'], i['revision']) for i in items], digest(template)])
         with locked(project, key):
-            meta = _json(_state(project, key + '.json')) or _new(project, kind, start, project_ids)
+            meta = _json(_state(project, key + '.json')) or _new(project, kind, start, ids)
             gen = meta['generation']
             if gen['state'] == 'running':
                 expiry = datetime.fromisoformat(gen['expires_at'])
                 if expiry > now:
-                    if kind == 'daily':
-                        blocked_daily.add(start)
                     continue
                 gen.update(state='failed', retry_after=(expiry + timedelta(minutes=30)).isoformat(), last_error='RUN_EXPIRED')
                 _commit(project, key, meta)
@@ -767,21 +775,18 @@ def report_plan(home=None, max_reports: int = 3, *, now: datetime | None = None)
             if fingerprint != gen['input_fingerprint']:
                 gen.update(attempts=0, retry_after=None, input_fingerprint=fingerprint)
             if gen['attempts'] >= 3:
-                gaps.append(f'{pid} {start}：本输入已失败三次，等待手动重试。')
+                gaps.append(f'{WORKSPACE_ID} {start}：本输入已失败三次，等待手动重试。')
                 continue
+            # A failed daily waits for its retry; a weekly then records the gap instead of waiting.
             if gen['retry_after'] and datetime.fromisoformat(gen['retry_after']) > now:
-                if kind == 'daily':
-                    blocked_daily.add(start)
                 continue
             if not items:
                 gen.update(state='no_evidence', requested=False)
                 meta['last_input_fingerprint'] = fingerprint
                 _commit(project, key, meta)
                 continue
-            if len(runs) >= max_reports:
+            if len(runs) >= max_reports - (0 if tier == 'current' else reserved) or (tier == 'backfill' and backfilled):
                 pending_count += 1
-                if kind == 'daily':
-                    blocked_daily.add(start)
                 continue
             body, _, _ = _current(project, key, meta)
             if body:
@@ -791,7 +796,7 @@ def report_plan(home=None, max_reports: int = 3, *, now: datetime | None = None)
                 items.append({'id': 'template', 'role': 'weekly_template', 'text': template})
             run_id = uuid4().hex
             run = {'run_id': run_id, 'owner_project_id': None, 'scope': 'workspace', 'kind': kind, 'period_start': start, 'period_end': end,
-                   'project_ids': project_ids, 'input_fingerprint': fingerprint, 'expires_at': (now + timedelta(minutes=10)).isoformat(),
+                   'project_ids': ids, 'input_fingerprint': fingerprint, 'expires_at': (now + timedelta(minutes=10)).isoformat(),
                    'items': items, 'coverage_until': now.isoformat(), 'gaps': missing, 'read_cursors': [], 'result': None,
                    'conversation_auth': {source_pid: _conversation_auth(project_for(source_pid, home), settings)
                                          for source_pid in {i['project_id'] for i in items if i.get('kind') == 'conversation'}}}
@@ -799,8 +804,9 @@ def report_plan(home=None, max_reports: int = 3, *, now: datetime | None = None)
             gen.update(state='running', run_id=run_id, input_fingerprint=fingerprint, started_at=now.isoformat(), expires_at=run['expires_at'], attempts=gen['attempts'] + 1)
             _commit(project, key, meta)
             runs.append({k: v for k, v in run.items() if k not in {'items', 'read_cursors', 'result'}})
+            backfilled += tier == 'backfill'
             if kind == 'daily':
-                blocked_daily.add(start)
+                in_flight.add(start)
     return {'ok': True, 'runs': runs, 'pending_count': pending_count, 'gaps': gaps}
 
 

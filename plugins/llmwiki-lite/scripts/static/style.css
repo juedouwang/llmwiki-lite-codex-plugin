@@ -240,3 +240,12 @@ input[type=date],textarea{background:var(--panel);color:var(--text);border:1px s
 .vapor-toast.is-shown{opacity:1;transform:translate(-50%,0)}
 /* Short screens (1366×768, 150% scaling): tighten the rail so its footer never covers navigation. */
 @media(max-height:720px) and (min-width:776px){.console-sidebar{gap:14px;padding-top:16px}.console-my-work{margin-bottom:14px}.console-nav-item{padding:7px 11px}.console-my-work>.console-nav-item,.console-project-section>.console-nav-item{margin-bottom:2px}.console-project-section .console-project-switcher{margin-bottom:8px}}
+/* Form description fields: Markdown stays the value, pasted images show inline. */
+.rw-editor-live.rw-image-field{position:relative;box-sizing:border-box;width:100%;min-height:100px;max-height:60vh;overflow:auto;margin:0;padding:8px 10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.7 var(--font-ui,inherit);outline:none;cursor:text}
+.rw-editor-live.rw-image-field:focus{outline:2px solid var(--rw-purple);outline-offset:3px}
+.rw-editor-live.rw-image-field[data-empty=true]::before{content:attr(data-placeholder);color:#949494;pointer-events:none;position:absolute}
+.rw-editor-live.rw-image-field[aria-disabled=true]{opacity:.6;cursor:not-allowed}
+.rw-image-field .rw-inline-image{display:inline-block;max-width:100%;vertical-align:middle;white-space:normal;line-height:0;margin:6px 0;user-select:all}
+.rw-image-field .rw-inline-image img{display:block;max-width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:4px}
+.rw-image-field .rw-inline-image.is-unavailable{min-width:80px;min-height:36px;border:1px dashed var(--line)}
+#progress-form .rw-editor-live.rw-image-field{min-height:130px;font-size:14px}

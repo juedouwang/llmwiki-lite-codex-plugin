@@ -17,7 +17,7 @@ const path=require('node:path');
     const data=async()=>await(await context.request.get(api+'?view=summary')).json();
     const task=async title=>(await data()).tasks.find(t=>t.title===title);
     const row=title=>page.locator('#progress-todo .progress-task-row').filter({has:page.getByRole('button',{name:title,exact:true})});
-    const form=page.locator('#progress-form'),description=form.locator('[name=description]');
+    const form=page.locator('#progress-form'),description=page.locator('#progress-description-live'),descriptionValue=()=>form.locator('[name=description]').inputValue();
     const save=async()=>{await form.getByRole('button',{name:'保存',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#progress-dialog').open);};
     const open=async title=>{await page.locator('#progress-todo-tab').click();await row(title).getByRole('button',{name:title,exact:true}).click();};
     const close=async()=>{await page.locator('#progress-close').click();await page.waitForFunction(()=>!document.querySelector('#progress-dialog').open);};
@@ -91,7 +91,7 @@ const path=require('node:path');
     checks.push('create/edit; aligned priority/date fields; grouped quick dates; clear date; inline priority; span timeline');
 
     // Merge old fields read-only; metadata edits must not claim the automatic/manual description.
-    await open('旧任务兼容');assert.match(await description.inputValue(),/上次完成基线[\s\S]*下一步验证/);
+    await open('旧任务兼容');assert.match(await descriptionValue(),/上次完成基线[\s\S]*下一步验证/);
     await form.locator('[name=priority]').selectOption('high');await form.getByRole('button',{name:'清除日期',exact:true}).click();await save();
     let legacy=await task('旧任务兼容');assert.equal(legacy.status,'blocked');assert.equal(legacy.description_source,'legacy');assert.equal(legacy.ddl,'');
     assert.equal(legacy.start,'2026-09-01');assert.equal(legacy.end,'2026-09-20');
@@ -104,13 +104,16 @@ const path=require('node:path');
     await page.evaluate(async png=>{const bytes=Uint8Array.from(atob(png),c=>c.charCodeAt(0));await navigator.clipboard.write([new ClipboardItem({'image/png':new Blob([bytes],{type:'image/png'})})]);},cfg.png);
     await page.keyboard.press('Control+End');await page.keyboard.press('Control+V');
     await page.waitForFunction(()=>document.querySelector('#progress-description').value.includes('![](../assets/'));
-    const image=page.locator('#progress-preview img');await image.waitFor();
-    await page.waitForFunction(()=>[...document.querySelectorAll('#progress-preview img')].every(img=>img.complete&&img.naturalWidth>0));
-    const imageUrl=await image.first().getAttribute('src');assert.ok(imageUrl.startsWith(`/project/${cfg.projectId}/asset/records/assets/`));
+    // The field shows the screenshot itself, never the Markdown link text.
+    await page.waitForFunction(()=>document.querySelector('#progress-description-live img')?.naturalWidth>0);
+    assert.doesNotMatch(await description.innerText(),/!\[|\.\.\/assets\//);
+    const image=page.locator('#progress-description-live img');await image.waitFor();
+    assert.equal(await page.locator('#progress-description-preview, #progress-preview').count(),0);
+    const imageUrl=new URL(await image.first().evaluate(img=>img.src)).pathname;assert.ok(imageUrl.startsWith(`/project/${cfg.projectId}/asset/records/assets/`));
     await screenshot('progress-description-image-light.png');await save();
     const imageTask=await task('完整新任务');assert.match(imageTask.description,/!\[\]\(\.\.\/assets\/[a-f0-9]{64}\.png\)/);
     const otherImage=await context.request.get(cfg.origin+imageUrl.replace(`/project/${cfg.projectId}/`,`/project/${cfg.otherProjectId}/`));assert.equal(otherImage.status(),404);
-    await page.reload();await row('完整新任务').waitFor();await open('完整新任务');await image.waitFor();await page.waitForFunction(()=>document.querySelector('#progress-preview img')?.naturalWidth>0);await close();
+    await page.reload();await row('完整新任务').waitFor();await open('完整新任务');await image.waitFor();await page.waitForFunction(()=>document.querySelector('#progress-description-live img')?.naturalWidth>0);await close();
     checks.push('native Ctrl+V screenshot; rendered image after reload; project-isolated upload');
 
     // An upload failure retains the local screenshot; retry succeeds without losing concurrent typing.
@@ -120,9 +123,9 @@ const path=require('node:path');
     await description.focus();await page.keyboard.press('Control+V');await page.locator('#progress-uploads').getByRole('button',{name:'重试',exact:true}).waitFor();
     await form.getByRole('button',{name:'保存',exact:true}).click();assert.equal(await page.locator('#progress-dialog').evaluate(n=>n.open),true);
     assert.match(await page.locator('#progress-error').innerText(),/重试或移除/);
-    await description.fill((await description.inputValue())+'\n上传期间输入保留');
+    await description.fill((await descriptionValue())+'\n上传期间输入保留');
     await page.unroute(uploadRoute);await page.locator('#progress-uploads').getByRole('button',{name:'重试',exact:true}).click();
-    await page.waitForFunction(()=>!document.querySelector('#progress-uploads').children.length);assert.match(await description.inputValue(),/上传期间输入保留/);await save();
+    await page.waitForFunction(()=>!document.querySelector('#progress-uploads').children.length);assert.match(await descriptionValue(),/上传期间输入保留/);await save();
     checks.push('failed screenshot retry; block incomplete save; retain draft text');
 
     // Completion and restoration are explicit. Blocked legacy status is restored, not overwritten.
@@ -139,20 +142,20 @@ const path=require('node:path');
     await form.getByRole('button',{name:'保存',exact:true}).click();await page.locator('#progress-reload').waitFor();
     assert.equal(await form.locator('[name=title]').inputValue(),'保留我的标题');
     await page.locator('#progress-reload').click();await until(async()=>!(await form.getByRole('button',{name:'保存',exact:true}).isDisabled()));
-    assert.equal(await description.inputValue(),'另一页面的新描述');await save();assert.equal((await task('保留我的标题')).description,'另一页面的新描述');
+    assert.equal(await descriptionValue(),'另一页面的新描述');await save();assert.equal((await task('保留我的标题')).description,'另一页面的新描述');
     // Same-field conflict preserves local text for explicit confirmation.
     await open('保留我的标题');await description.fill('本地描述需要保留');current=await data();
     response=await context.request.post(api,{headers:{'X-Notebook-Request':'1','Origin':cfg.origin},data:{action:'update',revision:current.revision,id:concurrent.id,task:{description:'服务器描述也变了'}}});assert.equal(response.status(),200);
     await form.getByRole('button',{name:'保存',exact:true}).click();await page.locator('#progress-reload').waitFor();await page.locator('#progress-reload').click();
     await page.waitForFunction(()=>document.querySelector('#progress-error').textContent.includes('双方修改'));
-    assert.equal(await description.inputValue(),'本地描述需要保留');await save();
+    assert.equal(await descriptionValue(),'本地描述需要保留');await save();
     checks.push('409 conflict; field merge; same-field draft preservation');
 
     // Polling and soft navigation cannot discard an unsaved task description.
     await open('保留我的标题');await description.fill('不可丢失的未保存草稿');
     const blocked=await page.evaluate(()=>{const e=new CustomEvent('workbench:before-leave',{cancelable:true,detail:{root:document.querySelector('#main-content')}});document.dispatchEvent(e);return e.defaultPrevented;});assert.equal(blocked,true);
-    await page.waitForTimeout(5200);assert.equal(await description.inputValue(),'不可丢失的未保存草稿');await close();
-    await open('保留我的标题');assert.equal(await description.inputValue(),'本地描述需要保留');await close();
+    await page.waitForTimeout(5200);assert.equal(await descriptionValue(),'不可丢失的未保存草稿');await close();
+    await open('保留我的标题');assert.equal(await descriptionValue(),'本地描述需要保留');await close();
     checks.push('unsaved navigation guard; polling preserves draft; cancel discards only local changes');
 
     // Delete is explicit, project-bound, and does not remove unrelated tasks.

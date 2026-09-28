@@ -42,7 +42,6 @@ def page(home: str, project_id: str) -> str:
 <label for="progress-description">任务描述</label>
 <textarea id="progress-description" name="description" rows="6" maxlength="100000" placeholder="记录进展和下一步；支持 Markdown、Ctrl+V 粘贴截图" spellcheck="false"></textarea>
 <div id="progress-uploads" role="status"></div>
-<details id="progress-description-preview" open><summary>描述预览</summary><article id="progress-preview" class="prose" aria-label="任务描述预览"></article></details>
 <label>关联笔记<select name="record_id"><option value="">不关联</option></select></label><div id="progress-source"></div>
 <details id="progress-legacy"><summary>原始记录与助手上下文（只读）</summary><pre></pre></details>
 <details id="progress-history"><summary>修改记录</summary><div></div></details>

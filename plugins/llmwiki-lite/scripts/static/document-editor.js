@@ -24,7 +24,7 @@ window.ResearchDocument = window.ResearchDocument || (() => {
     const element = document.createElement('div');
     element.id = options.prefix + '-live'; element.className = 'rw-editor-live';
     element.setAttribute('role', 'textbox'); element.setAttribute('aria-multiline', 'true');
-    element.setAttribute('aria-label', source.getAttribute('aria-label'));
+    element.setAttribute('aria-label', source.getAttribute('aria-label') || source.labels?.[0]?.textContent || '');
     element.dataset.placeholder = source.placeholder; element.spellcheck = false; element.tabIndex = 0;
     element.hidden = true; source.after(element);
     function scan() {
@@ -106,6 +106,77 @@ window.ResearchDocument = window.ResearchDocument || (() => {
       if(range)select(...range,focus);
     }
     return {element, render, select, selection, read:()=>scan().text};
+  }
+  // Form fields: the hidden textarea stays the form value; the visible editor
+  // shows image tokens as images, like documents. Setting .value re-renders.
+  function imageField(source, options = {}) {
+    const live = liveMarkdown(source, {prefix: source.id, imageURL: options.imageURL}), el = live.element;
+    const native = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value'), get = () => native.get.call(source);
+    let composing = false, before = null, undo = [], redo = [];
+    const end = () => [get().length, get().length], range = () => live.selection() || end();
+    const push = entry => { undo.push(entry); if (undo.length > 100) undo.shift(); redo = []; };
+    const changed = () => source.dispatchEvent(new Event('input', {bubbles: true}));
+    function write(value, at) { native.set.call(source, value); live.render(value, at, !!at); changed(); }
+    Object.defineProperty(source, 'value', {configurable: true, get, set(value) {
+      native.set.call(source, value); undo = []; redo = []; if (!composing) live.render(get());
+    }});
+    function insert(text, at = range(), original) {
+      let value = get(), [start, stop] = at;
+      // Text typed while an upload was in flight is never overwritten.
+      if (original !== undefined && value !== original) {
+        stop = start; if (value.slice(0, start) !== original.slice(0, start)) start = stop = value.length;
+      }
+      push({value, at: range()}); write(value.slice(0, start) + text + value.slice(stop), [start + text.length, start + text.length]);
+      return start + text.length;
+    }
+    function history(backward) {
+      const from = backward ? undo : redo, entry = from.pop(); if (!entry) return;
+      (backward ? redo : undo).push({value: get(), at: range()}); write(entry.value, entry.at);
+    }
+    el.classList.add('rw-image-field'); el.hidden = false; source.hidden = true; live.render(get());
+    const editable = () => { el.contentEditable = String(!source.disabled && !source.readOnly); el.setAttribute('aria-disabled', String(source.disabled)); };
+    new MutationObserver(editable).observe(source, {attributes: true, attributeFilter: ['disabled', 'readonly']}); editable();
+    for (const label of source.labels || []) label.addEventListener('click', () => el.focus());
+    el.addEventListener('beforeinput', event => {
+      if (composing || event.isComposing) return;
+      if (event.inputType.startsWith('format')) event.preventDefault();
+      else if (['historyUndo', 'historyRedo'].includes(event.inputType)) { event.preventDefault(); history(event.inputType === 'historyUndo'); }
+      else if (['insertParagraph', 'insertLineBreak'].includes(event.inputType)) { event.preventDefault(); insert('\n'); }
+      else before = {value: get(), at: range()};
+    });
+    el.addEventListener('input', event => {
+      if (!composing && before) { push(before); before = null; }
+      native.set.call(source, live.read()); el.dataset.empty = String(!get()); changed();
+      // A completed ![](...) token becomes an image as soon as it is typed.
+      if (!composing && !event.isComposing && event.data === ')') live.render(get(), range(), true);
+    });
+    el.addEventListener('compositionstart', () => { composing = true; before = {value: get(), at: range()}; });
+    el.addEventListener('compositionend', () => {
+      composing = false; native.set.call(source, live.read()); el.dataset.empty = String(!get());
+      if (before && before.value !== get()) push(before); before = null; changed();
+    });
+    el.addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      if (event.isComposing || !(event.ctrlKey || event.metaKey) || !['z', 'y'].includes(key)) return;
+      event.preventDefault(); history(key === 'z' && !event.shiftKey);
+    });
+    // Copy/cut keep the Markdown of image atoms; paste/drop never inserts rich HTML.
+    for (const name of ['copy', 'cut']) el.addEventListener(name, event => {
+      const at = live.selection(); if (!at || at[0] === at[1]) return;
+      event.preventDefault(); event.clipboardData.setData('text/plain', get().slice(...at));
+      if (name === 'cut') insert('', at);
+    });
+    el.addEventListener('dragstart', event => event.preventDefault());
+    for (const name of ['paste', 'drop']) el.addEventListener(name, event => {
+      const transfer = name === 'paste' ? event.clipboardData : event.dataTransfer; if (!transfer) return;
+      const files = [...transfer.items].filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean);
+      const text = transfer.getData('text/plain');
+      event.preventDefault();
+      if (source.disabled || source.readOnly) return;
+      if (files.length) options.images?.(files, range(), get());
+      else if (text) insert(text);
+    });
+    return {element: el, insert, focus: () => el.focus()};
   }
   const documentTitles = new Map(), retainedPages = new Set();
   function applyTitles(root) {
@@ -522,7 +593,7 @@ window.ResearchDocument = window.ResearchDocument || (() => {
     }).catch(e=>{message('打开失败：'+e.message);$('save-state').textContent='打开失败';});
     return context;
   }
-  return {mount, request, node, applyTitles, assetURL(project, markdownPath, href) {
+  return {mount, request, node, applyTitles, imageField, assetURL(project, markdownPath, href) {
     const path=new URL(href.replaceAll('\\','/'), new URL('/'+markdownPath,location.origin)).pathname;
     return (project==='__workspace__'?'/reports':'/project/'+encodeURIComponent(project))+'/asset'+path;
   }};

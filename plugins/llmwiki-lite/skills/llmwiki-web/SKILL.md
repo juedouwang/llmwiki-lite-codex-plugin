@@ -9,6 +9,7 @@ The website is a simple loopback visualization and interaction layer, not a seco
 1. Call `llmwiki_web_start` with optional `home` or `port` when the user asks to open the site.
 2. Return the URL from the tool. It binds to `127.0.0.1` only.
 3. If a shell launch is needed, run `python -I -B <plugin>/scripts/web_server.py`; keep the host loopback. For a Windows desktop shortcut without a terminal, target `pythonw.exe -I -B <plugin>/scripts/desktop_launcher.py --home <actual-home> --port <actual-port>`. It reuses the existing background starter, opens the browser after health checks, and exits. Never wrap it in a visible terminal, create startup tasks, or kill an existing service without user intent. Closing the browser does not stop the background server.
+4. For the separately installed Windows desktop application, open `%LOCALAPPDATA%/Programs/WildResearchWorkbench/WildResearchWorkbench.exe` (desktop shortcut: “野人工作台（桌面版）”). It uses the same data home, or `--home <actual-home>` for a custom registry. Its server exits with the native window; repeated launch focuses that window. Do not pass `--debug-port` for everyday use. Its optional build lives in the source repository's `desktop/`, outside the plugin cache; source changes require rebuilding/installing the desktop snapshot.
 
 The website brand is “野人工作台”. Its default application scale is 125%, independently of browser zoom; responsive layouts use matching breakpoints. Do not instruct the user to adjust browser zoom for the normal display.
 

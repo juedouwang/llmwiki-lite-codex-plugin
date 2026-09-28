@@ -1,0 +1,6 @@
+# Windows desktop only; never install these into the plugin/host environment.
+# Versions verified against official PyPI metadata on 2026-09-25.
+pywebview==6.2.1
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
+pypdf==6.19.0

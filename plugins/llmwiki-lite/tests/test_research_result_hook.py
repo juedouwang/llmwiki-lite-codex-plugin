@@ -79,7 +79,7 @@ class ResearchResultHookTests(unittest.TestCase):
                               "title": "跨目录研究记录", "understanding": "该结果来自通用会话。"})
         value["cwd"] = str(outside)
         result = subprocess.run([sys.executable, "-I", "-B", str(Path(hook.__file__))],
-                                input=json.dumps(value, ensure_ascii=False), text=True,
+                                input=json.dumps(value, ensure_ascii=False), text=True, encoding="utf-8",
                                 capture_output=True,
                                 env={**os.environ, "LLMWIKI_HOME": self.home, "PYTHONUTF8": "1"},
                                 timeout=15, check=False)
@@ -120,7 +120,7 @@ class ResearchResultHookTests(unittest.TestCase):
         for value in (useful, useful, self.payload({"version": 1, "task_id": "f" * 32,
                                                     "summary": "不存在的任务"}, session="invalid-task")):
             completed = subprocess.run([sys.executable, "-I", "-B", str(script)],
-                                       input=json.dumps(value, ensure_ascii=False), text=True,
+                                       input=json.dumps(value, ensure_ascii=False), text=True, encoding="utf-8",
                                        capture_output=True, env=env, timeout=15, check=False)
             self.assertEqual(completed.returncode, 0, completed.stderr)
         records = list_records(self.project["source_root"], state_root=self.project["state_root"])
@@ -138,7 +138,7 @@ class ResearchResultHookTests(unittest.TestCase):
                                     "summary": summary, "evidence": ["测试输出"],
                                     "remaining": "待用户核查"}, session=session)
             process = subprocess.run([sys.executable, "-I", "-B", str(Path(hook.__file__))],
-                                     input=json.dumps(payload, ensure_ascii=False), text=True,
+                                     input=json.dumps(payload, ensure_ascii=False), text=True, encoding="utf-8",
                                      capture_output=True,
                                      env={**os.environ, "LLMWIKI_HOME": self.home, "PYTHONUTF8": "1"},
                                      timeout=15, check=False)

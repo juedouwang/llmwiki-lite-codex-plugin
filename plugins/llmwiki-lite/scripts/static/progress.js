@@ -1,4 +1,4 @@
-/* Project-local explicit tasks. Shared editor request/Markdown preview APIs only. */
+/* Project-local explicit tasks. Shared editor request APIs only. */
 (()=>{
   'use strict';
   const page=document.getElementById('main-content');if(!page)return;
@@ -39,7 +39,7 @@
   const sorted=list=>[...list].sort((a,b)=>(rank[a.priority]??1)-(rank[b.priority]??1)||(ddl(a)||'9999-12-31').localeCompare(ddl(b)||'9999-12-31')||a.id.localeCompare(b.id));
   let tasks=[],revision='',records=[],candidates=[],recordsLoaded=false,ready=false,busy=false;
   let editing=null,baseline=null,dialogRevision='',session=0,descriptionTouched=false,conflict=false;
-  let view='todo',start=today(),days=7,timer=null,inflight=false,epoch=0,previewTimer=null,previewSequence=0;
+  let view='todo',start=today(),days=7,timer=null,inflight=false,epoch=0;
   const uploads=new Map();
   function notice(text){const n=$('#progress-message');if(n){n.textContent=text;n.hidden=!text;}}
   function error(text){const n=$('#progress-error');if(n){n.textContent=text;n.hidden=!text;}}
@@ -185,13 +185,13 @@
     fields.forEach(k=>{if(k!=='record_id')input(k).value=baseline[k];});fillRecords(baseline.record_id);
     $('#progress-dialog-title').textContent=editing?'编辑任务':'新建任务';$('#progress-delete').hidden=!editing;$('#progress-complete').hidden=!editing;
     $('#progress-complete').textContent=task?.status==='done'?'恢复到 Todo':task&&pending(task)?'验收并完成':'完成任务';$('#progress-reload').hidden=true;
-    form.querySelector('[type=submit]').disabled=false;legacyInfo(task||{});dialog.showModal();input('title').focus();updatePreview();
+    form.querySelector('[type=submit]').disabled=false;legacyInfo(task||{});dialog.showModal();input('title').focus();
     const token=session;ensureRecords().then(()=>{if(active()&&token===session&&dialog.open)fillRecords(input('record_id').value);}).catch(e=>error(e.message));
   }
   function closeTask(force=false){
     if(!force&&(busy||pendingUploads())){error('请等待保存或截图上传完成。');return;}
     if(!force&&(hasChanges()||uploads.size)&&!confirm('尚未保存，放弃这次修改吗？'))return;
-    session++;previewSequence++;clearTimeout(previewTimer);clearUploads();dialog.close();editing=null;baseline=null;
+    session++;clearUploads();dialog.close();editing=null;baseline=null;
   }
   function setConflict(){conflict=true;$('#progress-reload').hidden=false;form.querySelector('[type=submit]').disabled=true;}
   async function save(event){
@@ -215,25 +215,10 @@
       const next={title:latest.title,description:description(latest),priority:latest.priority||'medium',ddl:ddl(latest),record_id:latest.record_id||''},collisions=[];
       fields.forEach(k=>{if(current[k]===old[k])current[k]=next[k];else if(next[k]!==old[k]&&current[k]!==next[k])collisions.push(`${fieldLabels[k]}（服务器）：${next[k]||'空'}`);});
       baseline=next;fields.forEach(k=>{if(k!=='record_id')input(k).value=current[k];});fillRecords(current.record_id);dialogRevision=revision;conflict=false;$('#progress-reload').hidden=true;form.querySelector('[type=submit]').disabled=false;
-      taskMetadata=metadata(latest);dailyInfo(latest);legacyInfo(latest);updatePreview();error(collisions.length?'双方修改了相同字段，当前填写保留，请核对后保存。\n'+collisions.join('\n'):'已合并服务器更新，当前填写保留，请检查后保存。');
+      taskMetadata=metadata(latest);dailyInfo(latest);legacyInfo(latest);error(collisions.length?'双方修改了相同字段，当前填写保留，请核对后保存。\n'+collisions.join('\n'):'已合并服务器更新，当前填写保留，请检查后保存。');
     }catch(e){error(e.message);}
   }
-  async function updatePreview(){
-    if(!dialog?.open)return;
-    const sequence=++previewSequence,token=session,text=input('description').value,box=$('#progress-preview');
-    if(!text){box.replaceChildren(node('p','meta','暂无描述'));return;}
-    try{const data=await request(base+'/notebook/preview',{text});if(!active()||token!==session||sequence!==previewSequence)return;
-      // The renderer escapes Markdown HTML; additionally allow images only from this project.
-      const template=document.createElement('template');template.innerHTML=data.html;
-      const prefix=`/project/${encodeURIComponent(project)}/asset/`;
-      template.content.querySelectorAll('img').forEach(img=>{
-        const url=new URL(img.getAttribute('src'),location.origin);
-        if(url.origin!==location.origin||!url.pathname.startsWith(prefix)){img.replaceWith(node('span','meta','[图片不可用：仅显示当前项目图片]'));return;}
-        img.loading='lazy';img.referrerPolicy='no-referrer';
-      });box.replaceChildren(template.content);
-    }catch(e){if(token===session&&sequence===previewSequence){box.replaceChildren(node('p','meta','预览暂不可用，描述仍保留。'),node('pre','',text));}}
-  }
-  function changedDescription(){descriptionTouched=true;previewSequence++;clearTimeout(previewTimer);previewTimer=setTimeout(updatePreview,200);}
+  function changedDescription(){descriptionTouched=true;}
   function renderUploads(){
     const box=$('#progress-uploads');if(!box)return;box.replaceChildren();
     for(const [key,u] of uploads){const row=node('div','progress-upload'),img=node('img');img.src=u.url;img.alt='待上传截图';row.append(img,node('span','',u.state==='pending'?'截图上传中…':u.error));
@@ -248,19 +233,22 @@
       if(!/^[a-f0-9]{64}\.(png|jpg|gif|webp)$/.test(result.image))throw new Error('图片接口返回了无效文件名。');
       const text=input('description'),markdown=`\n![](../assets/${result.image})\n`;
       if(text.value.length+markdown.length>text.maxLength)throw new Error('描述已达长度上限，请缩短后重试。');
-      // Do not overwrite text entered while the upload was in flight.
-      const position=Math.min(u.position,text.value.length),at=text.value===u.original?position:text.value.length;
-      text.setRangeText(markdown,at,at,'end');URL.revokeObjectURL(u.url);uploads.delete(key);renderUploads();changedDescription();updatePreview();
+      // Text entered while the upload was in flight is kept; later images follow this one.
+      const caret=descriptionField.insert(markdown,u.at,u.original);
+      for(const other of uploads.values())if(other!==u&&other.original===u.original){other.original=text.value;other.at=[caret,caret];}
+      URL.revokeObjectURL(u.url);uploads.delete(key);renderUploads();
     }catch(e){if(token===session&&uploads.has(key)){u.state='failed';u.error='截图上传失败：'+e.message;renderUploads();}}
   }
-  function paste(event){
-    const files=[...(event.clipboardData?.items||[])].filter(i=>i.kind==='file'&&i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);
-    if(!files.length)return;event.preventDefault();if(busy){error('请等待保存完成再粘贴截图。');return;}
+  function pasteImages(files,at,original){
+    if(busy){error('请等待保存完成再粘贴截图。');return;}
     for(const file of files){
       if(!['image/png','image/jpeg','image/gif','image/webp'].includes(file.type)||file.size>10*1024*1024){error('截图须为 PNG、JPEG、GIF 或 WebP，且不超过 10 MB。');continue;}
-      const key=crypto.randomUUID();uploads.set(key,{file,url:URL.createObjectURL(file),state:'queued',position:input('description').selectionStart,original:input('description').value});upload(key);
+      const key=crypto.randomUUID();uploads.set(key,{file,url:URL.createObjectURL(file),state:'queued',at,original});upload(key);
     }
   }
+  // Pasted screenshots show as images in the field; the saved value stays Markdown.
+  const assetURL=href=>href.startsWith('/')?href:window.ResearchDocument.assetURL(project,'records/manual/preview.md',href);
+  const descriptionField=root&&window.ResearchDocument.imageField(input('description'),{images:pasteImages,imageURL:assetURL});
   function stopTimer(){if(timer){clearInterval(timer);timer=null;}}
   async function refresh(){if(inflight||busy||document.hidden||!active())return;inflight=true;try{await load();}catch(e){if(active())notice('科研进度刷新失败：'+e.message);}finally{inflight=false;}}
   function startTimer(){if(!timer&&active()&&!document.hidden)timer=setInterval(refresh,5000);}
@@ -269,13 +257,13 @@
   document.addEventListener('workbench:before-leave',event=>{if(owns(event)&&active()&&unsaved()){event.preventDefault();if(dialog?.open)error('尚未保存，请先保存或取消当前修改。');else notice('请等待当前操作完成。');}},{signal:lifecycle.signal});
   document.addEventListener('workbench:leave',event=>{if(owns(event)){stopTimer();if(dialog?.open)closeTask(true);$('#progress-import-dialog')?.close();}},{signal:lifecycle.signal});
   document.addEventListener('workbench:enter',event=>{if(owns(event)&&active()){refresh().then(hashTask);startTimer();}},{signal:lifecycle.signal});
-  document.addEventListener('workbench:dispose',event=>{if(owns(event)){stopTimer();clearTimeout(previewTimer);previewSequence++;session++;clearUploads();lifecycle.abort();}},{signal:lifecycle.signal});
+  document.addEventListener('workbench:dispose',event=>{if(owns(event)){stopTimer();session++;clearUploads();lifecycle.abort();}},{signal:lifecycle.signal});
   window.addEventListener('beforeunload',event=>{if(active()&&unsaved()){event.preventDefault();event.returnValue='';}},{signal:lifecycle.signal});
   window.addEventListener('hashchange',hashTask,{signal:lifecycle.signal});
   if(root){
     $('#progress-new').addEventListener('click',()=>openTask());form.addEventListener('submit',save);
     $('#progress-close').addEventListener('click',()=>closeTask());dialog.addEventListener('cancel',event=>{event.preventDefault();closeTask();});
-    input('description').addEventListener('input',changedDescription);input('description').addEventListener('paste',paste);
+    input('description').addEventListener('input',changedDescription);
     input('record_id').addEventListener('change',()=>fillRecords(input('record_id').value));
     root.querySelectorAll('[data-ddl]').forEach(b=>b.addEventListener('click',()=>{input('ddl').value=b.dataset.ddl===''?'':add(today(),Number(b.dataset.ddl));}));
     $('#progress-reload').addEventListener('click',reloadDraft);

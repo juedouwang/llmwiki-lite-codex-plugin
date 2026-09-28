@@ -107,6 +107,74 @@ class WorkspaceReportTests(unittest.TestCase):
         self.assertEqual(second['runs'], [])
         self.assertFalse(reports._state(self.owner, 'weekly-2026-09-14.json').exists())
 
+    def start_on(self, day):
+        current = reports.report_settings(self.home)
+        reports.save_settings({'expected_revision': current['revision'], 'start_date': day}, self.home)
+
+    def record_on(self, day, text='完成代码修改；未完成硬件验证。', at='17:00'):
+        write_record(self.projects[0]['source_root'], state_root=self.projects[0]['state_root'], title=day + '进展',
+                     understanding=text, recorded_at=f'{day}T{at}:00+08:00')
+
+    def at(self, day):
+        self.clock = datetime.fromisoformat(day + 'T18:00:00+08:00').astimezone(timezone.utc)
+
+    def fail_run(self, run):
+        reports.report_finish(run['run_id'], 'failed', error_code='TEST_FAILURE', home=self.home, now=self.clock)
+
+    def test_failed_backlog_never_displaces_todays_daily(self):
+        self.start_on('2026-09-20')
+        for day in ('2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24'):
+            self.record_on(day)
+        self.at('2026-09-21')
+        for run in reports.report_plan(self.home, now=self.clock)['runs']:
+            self.fail_run(run)  # 20th and 21st fail; their retries are due again by the 24th.
+        self.at('2026-09-24')
+        plan = reports.report_plan(self.home, now=self.clock)
+        self.assertEqual([(r['kind'], r['period_start']) for r in plan['runs']],
+                         [('daily', '2026-09-24'), ('daily', '2026-09-23')])  # Today, then one newest backfill.
+        self.assertEqual(plan['pending_count'], 3)
+        for run in plan['runs']:
+            self.finish(run, '# 日报\n\n完成代码修改，硬件未验证。')
+        again = reports.report_plan(self.home, now=self.clock, max_reports=1)
+        self.assertEqual([r['period_start'] for r in again['runs']], ['2026-09-22'])
+
+    def test_friday_daily_then_weekly_within_one_round_despite_failed_daily(self):
+        self.start_on('2026-09-21')
+        for day in ('2026-09-23', '2026-09-24', '2026-09-25'):
+            self.record_on(day)
+        self.at('2026-09-24')
+        today, backlog = reports.report_plan(self.home, now=self.clock)['runs']
+        self.finish(today, '# 日报\n\n周四完成代码修改。')
+        self.fail_run(backlog)
+        self.at('2026-09-25')
+        first = reports.report_plan(self.home, now=self.clock)
+        self.assertEqual([(r['kind'], r['period_start']) for r in first['runs']],
+                         [('daily', '2026-09-25'), ('daily', '2026-09-23')])
+        self.assertEqual(first['pending_count'], 1)  # The weekly waits only for today's daily.
+        self.finish(first['runs'][0], '# 日报\n\n周五完成代码修改。')
+        self.fail_run(first['runs'][1])  # Still failing, and its retry is not due yet.
+        # The round budget is 3, so only one slot remains; the weekly must still get it.
+        weekly = reports.report_plan(self.home, now=self.clock, max_reports=1)['runs']
+        self.assertEqual([(r['kind'], r['period_start']) for r in weekly], [('weekly', '2026-09-21')])
+        self.assertTrue(any(g.startswith('2026-09-23：') for g in weekly[0]['gaps']))
+        items = reports.report_sources(weekly[0]['run_id'], home=self.home, now=self.clock)['items']
+        self.assertEqual(sorted(i['occurred_at'] for i in items if i.get('kind') == 'daily_report'), ['2026-09-24', '2026-09-25'])
+
+    def test_new_evidence_for_edited_old_daily_only_makes_candidate(self):
+        self.start_on('2026-09-21')
+        self.record_on('2026-09-23')
+        self.at('2026-09-23')
+        self.finish(reports.report_plan(self.home, now=self.clock)['runs'][0], '# 日报\n\n机器初稿。')
+        item = reports.load(self.owner, 'daily', '2026-09-23')
+        reports.update(self.owner, 'daily', '2026-09-23', {'action': 'save', 'body': '人工修改稿', 'expected_revision': item['revision']})
+        self.record_on('2026-09-23', '深夜补充：第二次仿真仍未上板。', at='23:30')
+        self.at('2026-09-24')
+        runs = reports.report_plan(self.home, now=self.clock)['runs']
+        self.assertEqual([r['period_start'] for r in runs], ['2026-09-23'])  # The 24th has no evidence.
+        self.assertIsNone(reports.load(self.owner, 'daily', '2026-09-24')['metadata']['draft'])
+        self.assertEqual(self.finish(runs[0], '# 日报\n\n含深夜补充的新稿。')[0]['target'], 'candidate')
+        self.assertEqual(reports.load(self.owner, 'daily', '2026-09-23')['body'], '人工修改稿')
+
     def records(self):
         for p in self.projects:
             write_record(p['source_root'], state_root=p['state_root'], title=p['name'] + '进展',
