@@ -6,7 +6,7 @@ The installable Plugin is `plugins/llmwiki-lite/`. Its intentionally small produ
 
 - seven independent workflow Skills shared by every supported host;
 - deterministic MCP filesystem and project-registry tools;
-- an optional fail-open change Hook for Codex, Claude Code, and opencode;
+- an optional fail-open change Hook for Codex, Claude Code, and opencode, plus fail-open capture Hooks (recording rules at session start, recording checkpoints at stop) for Codex and Claude Code;
 - a loopback-only Markdown website with storage settings.
 
 Host entry points:

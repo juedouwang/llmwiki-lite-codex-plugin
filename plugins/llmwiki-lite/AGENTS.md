@@ -7,9 +7,9 @@ These instructions apply only inside `plugins/llmwiki-lite/` and replace the leg
 This directory is one standalone plugin that targets three hosts: Codex, Claude Code, and opencode.
 
 - The host AI performs project understanding, semantic selection, reasoning, synthesis, and Wiki writing.
-- Seven independent Skills cover project registration, understanding, query, maintenance, literature workflows, explicit research records, and web visualization. The same `skills/` tree serves all three hosts.
+- Independent Skills cover project registration, understanding, query, maintenance, literature workflows, smart research records, task planning, and web visualization. The same `skills/` tree serves all three hosts.
 - MCP tools perform deterministic filesystem, registry, storage, and local-server mechanics only.
-- Hooks record optional dirty-path hints and remain fail-open on every host.
+- Hooks record optional dirty-path hints, inject the recording rules (`templates/capture-rules.md`) and recent-record recall at session start, and ask the host model once to review unrecorded work when activity counts cross a threshold. Hooks count activity and detect record-tool calls; they never judge what is worth recording. All hooks remain fail-open on every host.
 - The website is a loopback-only Markdown viewer, storage-settings UI, explicit manual research notebook editor, and explicit research-task timeline, not a second reasoning system. Manual notebooks are limited to records/manual; task state is limited to .research-progress under the Wiki root. Preserve existing assistant daily records. Do not infer task completion or scientific results from file changes.
 - Do not import or recreate the legacy Research Core architecture from `tools/` or the legacy `llmwiki-research-codex-plugin` repository.
 
@@ -23,7 +23,7 @@ Do not add fixed knowledge taxonomies, fifteen-page rendering, Claim/Evidence li
 .codex-plugin/plugin.json         # Codex manifest
 .claude-plugin/plugin.json        # Claude Code manifest
 .mcp.json                         # shared MCP config (Codex + Claude Code)
-hooks/hooks.json                  # shared change hook (Codex + Claude Code)
+hooks/hooks.json                  # shared hooks (Codex + Claude Code): change hints, capture, result receipts
 opencode/llmwiki-hook.js          # opencode plugin hook
 opencode/install.py               # opencode config installer
 opencode/README.md
@@ -44,6 +44,8 @@ scripts/research_records.py
 scripts/web_server.py
 scripts/mcp_server.py
 scripts/record_change.py
+scripts/capture_hook.py
+templates/capture-rules.md
 tests/smoke_test.py
 ```
 

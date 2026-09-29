@@ -111,7 +111,13 @@ def _default_settings() -> dict[str, Any]:
         "project_order": [],
         "web_host": "127.0.0.1",
         "web_port": 8765,
+        # auto: recording rules at session start plus stop checkpoints;
+        # passive: rules only; off: neither.
+        "capture_mode": "auto",
     }
+
+
+CAPTURE_MODES = ("auto", "passive", "off")
 
 
 def load_settings(home: str | None = None) -> dict[str, Any]:
@@ -130,10 +136,15 @@ def update_settings(
     default_wiki_root: str | None | object = ...,
     current_project_id: str | None | object = ...,
     web_port: int | object = ...,
+    capture_mode: str | object = ...,
 ) -> dict[str, Any]:
     root = llmwiki_home(home)
     with _home_lock(root):
         settings = load_settings(str(root))
+        if capture_mode is not ...:
+            if capture_mode not in CAPTURE_MODES:
+                raise LLMWikiError("capture_mode must be one of: auto, passive, off.")
+            settings["capture_mode"] = capture_mode
         if default_wiki_root is not ...:
             if default_wiki_root is None or not str(default_wiki_root).strip():
                 settings["default_wiki_root"] = None

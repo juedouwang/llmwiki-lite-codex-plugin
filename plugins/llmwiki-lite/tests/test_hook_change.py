@@ -42,6 +42,8 @@ class HookChangeTests(unittest.TestCase):
             self.assertIn('source:model.py', [x['locator'] for x in changes['items']])
 
     def test_every_configured_codex_hook_is_async(self):
+        # Only the capture hook may run synchronously: it has to inject context at
+        # SessionStart and may ask for one continuation at Stop. It stays bounded.
         config = json.loads((Path(__file__).resolve().parents[1] / 'hooks' / 'hooks.json').read_text(encoding='utf-8'))
         self.assertIn('PostToolUse', config['hooks'])
         self.assertIn('Stop', config['hooks'])
@@ -49,7 +51,12 @@ class HookChangeTests(unittest.TestCase):
             for group in groups:
                 for command in group['hooks']:
                     with self.subTest(event=name):
-                        self.assertIs(command.get('async'), True)
+                        if 'capture_hook.py' in command['command']:
+                            self.assertIn(name, ('SessionStart', 'Stop'))
+                            self.assertFalse(command.get('async'))
+                            self.assertLessEqual(command.get('timeout', 600), 30)
+                        else:
+                            self.assertIs(command.get('async'), True)
 
 
 if __name__ == '__main__':

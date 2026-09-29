@@ -5,7 +5,7 @@
 - **AI 助手（Codex / Claude Code / opencode）** 负责理解、选择证据、推理和 Markdown 写作；
 - **Skill** 负责给 AI 助手清晰、可独立执行的工作指引；
 - **MCP** 只提供注册、扫描、检索、读取、快照、状态和安全写入等重复机械劳动；
-- **Hook** 只记录可能变化的路径提示，三个平台语义一致且始终 fail-open；
+- **Hook** 记录可能变化的路径提示；在 Codex 与 Claude Code 中还会在会话开始注入记录规则和最近记录，并在积累了未记录的工作时请助手回顾一次（智能科研记录）。Hook 只计数、不判断内容，始终 fail-open；
 - **Web** 是简体中文优先的本地科研知识工作台。
 
 程序不会生成固定十五类空页面，也不会重新引入复杂 Research Core。
@@ -113,7 +113,7 @@ python -B plugins/llmwiki-lite/scripts/task_cli.py write --args-file -
 - 三个平台共用同一套 `skills/`、`scripts/` 和网页端；
 - `.mcp.json` 与 `hooks/hooks.json` 使用同一段跨平台启动代码：Codex 用插件根目录 / `${PLUGIN_ROOT}`，Claude Code 用 `${CLAUDE_PLUGIN_ROOT}`，opencode 由安装脚本写入绝对路径；
 - opencode 使用 `opencode/llmwiki-hook.js` 实现同等语义的变更提示 Hook（`tool.execute.after`）；
-- Hook 在三个平台都只记录 dirty-path 提示，失败时静默跳过，绝不影响宿主工具调用。
+- 变更提示 Hook 在三个平台语义一致；智能科研记录的 `SessionStart` / `Stop` Hook 目前覆盖 Codex 与 Claude Code，opencode 尚未接入。所有 Hook 失败时静默跳过，绝不影响宿主工具调用。
 
 ## 默认语言
 

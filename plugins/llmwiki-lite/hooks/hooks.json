@@ -1,6 +1,17 @@
 {
-  "description": "Asynchronously record successful file-change hints and intentional research-result receipts.",
+  "description": "Inject research-recording rules and recall at session start, run recording checkpoints at stop, and asynchronously record file-change hints and intentional research-result receipts.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -I -B -c \"import os,runpy,sys,pathlib;c=[r'${CLAUDE_PLUGIN_ROOT}',r'${PLUGIN_ROOT}',os.environ.get('CLAUDE_PLUGIN_ROOT'),os.environ.get('PLUGIN_ROOT'),os.getcwd()];s=next((pathlib.Path(x)/'scripts'/'capture_hook.py' for x in c if x and (pathlib.Path(x)/'scripts'/'capture_hook.py').is_file()),None);runpy.run_path(str(s),run_name='__main__') if s else None\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|write_file|apply_patch|Bash|functions.exec_command",
@@ -20,6 +31,15 @@
             "type": "command",
             "command": "python -I -B -c \"import os,runpy,sys,pathlib;c=[r'${CLAUDE_PLUGIN_ROOT}',r'${PLUGIN_ROOT}',os.environ.get('CLAUDE_PLUGIN_ROOT'),os.environ.get('PLUGIN_ROOT'),os.getcwd()];s=next((pathlib.Path(x)/'scripts'/'record_research_result.py' for x in c if x and (pathlib.Path(x)/'scripts'/'record_research_result.py').is_file()),None);runpy.run_path(str(s),run_name='__main__') if s else None\"",
             "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -I -B -c \"import os,runpy,sys,pathlib;c=[r'${CLAUDE_PLUGIN_ROOT}',r'${PLUGIN_ROOT}',os.environ.get('CLAUDE_PLUGIN_ROOT'),os.environ.get('PLUGIN_ROOT'),os.getcwd()];s=next((pathlib.Path(x)/'scripts'/'capture_hook.py' for x in c if x and (pathlib.Path(x)/'scripts'/'capture_hook.py').is_file()),None);runpy.run_path(str(s),run_name='__main__') if s else None\"",
+            "timeout": 15
           }
         ]
       }

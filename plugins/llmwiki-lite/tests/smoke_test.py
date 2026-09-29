@@ -700,6 +700,25 @@ def test_platform_metadata() -> None:
     require(hooks["hooks"]["PostToolUse"][0]["hooks"][0]["async"] is True, "hook must stay async")
     compile(mcp_code, "<mcp-bootstrap>", "exec")
     compile(hook_code, "<hook-bootstrap>", "exec")
+    # Capture hooks must run synchronously: SessionStart injects context and the
+    # Stop checkpoint may ask the model to continue; neither works in the background.
+    capture_hooks = [
+        hook
+        for event in ("SessionStart", "Stop")
+        for group in hooks["hooks"].get(event, [])
+        for hook in group["hooks"]
+        if "capture_hook.py" in hook["command"]
+    ]
+    require(len(capture_hooks) == 2, "capture hooks must cover SessionStart and Stop")
+    for hook in capture_hooks:
+        require(not hook.get("async"), "capture hook must be synchronous")
+        capture_code = hook["command"].split(' -c "', 1)[1][:-1]
+        require(
+            "${CLAUDE_PLUGIN_ROOT}" in capture_code and "${PLUGIN_ROOT}" in capture_code,
+            "capture hook placeholders missing",
+        )
+        compile(capture_code, "<capture-bootstrap>", "exec")
+    require((PLUGIN_ROOT / "templates" / "capture-rules.md").is_file(), "capture rules template missing")
 
     skill_name = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
     for skill in sorted((PLUGIN_ROOT / "skills").iterdir()):
@@ -840,6 +859,7 @@ def main() -> int:
     from test_daily_tasks_http import DailyHTTPTests
     from test_hook_change import HookChangeTests
     from test_research_result_hook import ResearchResultHookTests
+    from test_capture_hook import CaptureHookTests
     from test_task_cli import CLIContractTests, CLIBackendTests
     from test_progress import ProgressTests
     from test_progress_workbench import ProgressWorkbenchTests
@@ -888,7 +908,7 @@ def main() -> int:
         ReportTests,
         ReportGenerationTests, WorkspaceReportTests,
         NotebookTests, NotebookRemovalTests, ContinuousDocuments, DesktopLauncherTests,
-        DailyTasksTests, DailyHTTPTests, HookChangeTests, ResearchResultHookTests, CLIContractTests, CLIBackendTests, ProgressTests, ProgressWorkbenchTests, ProjectManagementTests, GitWebWorktreeTests,
+        DailyTasksTests, DailyHTTPTests, HookChangeTests, ResearchResultHookTests, CaptureHookTests, CLIContractTests, CLIBackendTests, ProgressTests, ProgressWorkbenchTests, ProjectManagementTests, GitWebWorktreeTests,
         ProgressContextTests,
         MCPValidationTests,
         CatalogTests, LiteratureWebTests, CollectionTests, LiteratureScheduleTests,

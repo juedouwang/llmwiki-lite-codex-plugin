@@ -70,7 +70,7 @@ llmwiki-lite/
 3. `llmwiki-query`：从 Wiki 定位，再回到真实项目核验；
 4. `llmwiki-maintain`：根据变化增量维护受影响页面；
 5. `llmwiki-literature`：调研推荐论文，在用户选定后下载原文、生成中文精读并进入文献中心；
-6. `llmwiki-research-record`：在用户明确要求后，把讨论整理为阶段性科研记录；
+6. `llmwiki-research-record`：智能科研记录——助手在对话中自己判断决策、结果、发现、踩坑、约定和下一步是否值得保留并记录，下次会话自动接续（见“智能科研记录”）；也是日报/周报流程的入口；
 7. `llmwiki-web`：启动中文科研知识工作台。
 8. `llmwiki-task-planning`：将科研目标拆成按日期执行的每日任务，并通过共享接口提交交付、等待用户验收。
 
@@ -95,7 +95,7 @@ llmwiki-lite/
 界面重构不迁移数据、不改真实 Markdown 路径、不开放任意文件编辑。手动笔记仍是明确授权的编辑入口。网站仍只监听 `127.0.0.1`；公网访问、账号权限和多设备同步尚未实施。
 
 
-文献辅助阅读推荐写入 `wiki_root`，并在 frontmatter 中使用相对项目根目录的 `paper_file` 或 `sources` 精确关联原文。未显式关联时只做保守的标题/路径候选匹配；置信度不足就保持“待关联”，不会伪造对应关系。系统不自动翻译 PDF，AI 助手必须先读原文，再把原文事实、解释和待验证推断分开写。科研过程记录写入 `wiki_root/records/YYYY/MM/YYYY-MM-DD.md`，同一天的多次明确记录追加到同一个日档，每条记录通过 `#entry_key` 区分；只有用户明确触发时才创建，不会自动保存所有对话。
+文献辅助阅读推荐写入 `wiki_root`，并在 frontmatter 中使用相对项目根目录的 `paper_file` 或 `sources` 精确关联原文。未显式关联时只做保守的标题/路径候选匹配；置信度不足就保持“待关联”，不会伪造对应关系。系统不自动翻译 PDF，AI 助手必须先读原文，再把原文事实、解释和待验证推断分开写。科研过程记录写入 `wiki_root/records/YYYY/MM/YYYY-MM-DD.md`，同一天的多条记录追加到同一个日档，每条记录通过 `#entry_key` 区分；由助手按记录规则判断后写入（用户也可以直接要求记录），不会保存所有对话。
 
 启动方式：Windows 上已安装桌面版（见仓库 `desktop/`）时，直接打开桌面或开始菜单的“野人工作台”；AI 助手调用 `llmwiki_web_start` 也会打开桌面版，不再启动浏览器网站。
 
@@ -112,7 +112,7 @@ python -I -B scripts/web_server.py --host 127.0.0.1 --port 8765
 - `source_root`：真实研究/代码项目，插件只读理解；
 - `wiki_root`：人类可读 Markdown；
 - `state_root`：快照、哈希、配置和变化提示。
-- `wiki_root/records/YYYY/MM/YYYY-MM-DD.md`：用户明确触发后生成的科研过程日档；同一天追加多条记录，不覆盖历史。
+- `wiki_root/records/YYYY/MM/YYYY-MM-DD.md`：科研过程日档（助手按记录规则写入或用户要求记录）；同一天追加多条记录，不覆盖历史。
 
 未配置全局默认时，新用户使用 `<project-root>/wiki`。配置例如 `E:\wiki_obsidian` 后，新项目默认使用其独立子目录。网页修改位置时默认复制原内容，并永不自动删除旧目录。
 
@@ -124,7 +124,7 @@ python -I -B scripts/web_server.py --host 127.0.0.1 --port 8765
 - 文献原文只从已注册项目的 `source_root` 读取，只允许 PDF、EPUB、DOCX、HTML/HTM；路径穿越和符号链接会被拒绝；
 - PDF 使用 inline 与 Range 流式响应供浏览器阅读，非 PDF 作为附件打开，源项目 HTML 不在站内执行；
 - 网站永不修改、移动或删除文献原文；
-- Hook 仅提供 dirty-path 提示且始终 fail-open（三个平台相同：脚本缺失或输入异常都不会影响宿主工具调用）；
+- 变更 Hook 仅提供 dirty-path 提示；记录 Hook 只注入记录规则/最近记录，并在积累了未记录的工作时请助手回顾一次，从不自行判断内容。所有 Hook 始终 fail-open（脚本缺失或输入异常都不会影响宿主工具调用）；
 - 不进行独立外部网络发送；
 - 不引入 React/Vue、Node 构建链、数据库或外部 CDN；
 - 不生成固定十五类页面，不批量制造空模板。
@@ -211,7 +211,7 @@ python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/validate_plugin
 - 已提供 MCP `llmwiki_progress_get` / `llmwiki_progress_context_write` 作为自动摘要接入口。未接通生成端时详情显示“自动整理尚未接通”。写入摘要成功不等于无人值守自动化已完成。
 - MCP 调用漏填必需参数时，返回具体缺失字段，不执行工具、不输出内部 TypeError 或 traceback；进度读写传入空项目（空串、空白、null）也会拒绝，不回退当前项目。
 - 笔记直接粘贴或拖放图片；每次在正文新插入，不自动替换已有图片。
-- **自动日报/周报默认关闭，启用需用户授权和内置计划绑定**。Hook 只有文件变化提示。方案见 `docs/research-continuity.md`。
+- **自动日报/周报默认关闭，启用需用户授权和内置计划绑定**。Hook 不生成日报，也不改任务状态。方案见 `docs/research-continuity.md`。
 
 验证：`python -B plugins/llmwiki-lite/tests/smoke_test.py`；`python -B -X utf8 -m unittest discover -s plugins/llmwiki-lite/tests -p "test_progress*.py"`。可选浏览器测试覆盖导入、跨天上下文、并发冲突、自动整理未接通说明及移动端。
 
@@ -342,8 +342,24 @@ URL 的 `?worktree=<id>` 保留当前目录，刷新/后退不会串树；从其
 
 网页标签页图标复用桌面快捷方式的 `scripts/static/workbench.ico`，全站统一声明，并支持浏览器默认 `/favicon.ico` 请求。
 
+## 智能科研记录
+
+目标：和 AI 助手一起做研究时，不用说“记录”，值得长期保留的内容就会被写进项目的科研记录；下次开新会话（无论用哪个助手）都能直接接着干。
+
+- **会话开始（`SessionStart` Hook，同步）**：在已注册项目的源码目录或 Wiki 目录中启动会话时，注入记录规则（`templates/capture-rules.md`）、项目路径、最近 6 条记录和最近记录里的下一步。任务回执和空笔记会被过滤。不在已注册项目里的会话不注入任何内容。
+- **助手判断**：宿主模型按规则判断——决策、结果、发现、踩坑、约定、问题与下一步值得记；闲聊、通用讲解、没有结论的中间过程不记。记录后回复末尾会有一行「📝 已记录：标题」。
+- **记录检查（`Stop` Hook，同步）**：上次记录后又积累了一段工作（默认 6 次以上工具调用，或 3 轮以上且回复超过 2500 字）却没有记录时，请助手回顾一次：要么记录，要么只回复「（本段无需记录）」。回顾后仍没有记录，阈值和最小间隔（10 分钟起）翻倍，最多 8 倍；一旦有记录就恢复。回复以提问结尾时，检查推迟到用户回答之后；检查引起的续写不会再次被拦截。
+- **Hook 只计数，不判断**：Python 只统计工具调用、对话轮次、回复长度，并识别 `llmwiki_record_write` 调用；什么值得记录始终由宿主模型决定。会话检查点保存在 `state_root/capture/sessions/`（14 天后清理），不写进 Wiki。
+
+开关与预览：
+
+- `llmwiki_settings_update(capture_mode=...)`，或直接对助手说“关掉记录检查”：`auto`（默认，规则 + 检查）、`passive`（只注入规则）、`off`（全关）。环境变量 `LLMWIKI_CAPTURE=auto|passive|off` 可临时覆盖。
+- 预览会话开始时注入的内容：`python plugins/llmwiki-lite/scripts/capture_hook.py --preview <项目目录>`。
+
+宿主说明：Claude Code 与 Codex 都支持这两个 Hook；Codex 首次加载新 Hook 需要在 `/hooks` 中审核并信任。opencode 暂未接入会话开始注入和记录检查，仍可显式说“记录一下”。
+
 ## 异步科研收口（开发版）
 
-`PostToolUse` 与 `Stop` 命令 Hook 均设置 `async: true`：前者只落项目文件变化提示；后者仅识别助手最终回复中显式的 `llmwiki-research-result` 结构化标记。普通回复不自动宣称成果。标记有每日任务 ID 时使用共享 `submit` 进入待审批；无任务 ID 时可独立追加有价值的科研记录；通用目录的会话须在标记中显式指定已注册项目 ID，不能靠正文猜项目。用户在每日待办验收通过才是 Done；退回需填写意见，保留各轮交付及退回记录。Hook 不点击网页、不启动模型、不阻塞用户当前操作。
+文件变化提示（`PostToolUse`）和交付标记（`Stop`）这两个 Hook 设置 `async: true`：前者只落项目文件变化提示；后者仅识别助手最终回复中显式的 `llmwiki-research-result` 结构化标记。标记有每日任务 ID 时使用共享 `submit` 进入待审批；独立科研结论由助手直接调用 `llmwiki_record_write` 记录（见“智能科研记录”），旧的无任务 ID 标记仍兼容；通用目录的会话须在标记中显式指定已注册项目 ID，不能靠正文猜项目。用户在每日待办验收通过才是 Done；退回需填写意见，保留各轮交付及退回记录。Hook 不点击网页、不启动模型、不阻塞用户当前操作。
 
 事件流 `state_root/events.jsonl` 供状态、报告取材及知识维护的有界优先级提示；知识维护保存消费游标，但源码/科研记录修订扫描始终是补偿来源。项目架构、当前认识、关键术语由已授权共享计划中的宿主模型维护；待审批交付不能充作已验证认识，有冲突的旧文替换仍需用户确认。定时知识维护默认关闭；只配置 Hook 不等于启用或完成定时维护。异步 Hook 可能在宿主会话结束时被取消，重要交付请在网站核实是否落盘。

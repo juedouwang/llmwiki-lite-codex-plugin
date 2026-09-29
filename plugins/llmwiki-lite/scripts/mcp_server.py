@@ -118,12 +118,13 @@ TOOLS = [
     },
     {
         "name": "llmwiki_settings_update",
-        "description": "Update global default Wiki root or website port. An empty/null Wiki root restores <project>/wiki for new users.",
+        "description": "Update global default Wiki root, website port, or research capture mode. An empty/null Wiki root restores <project>/wiki for new users. capture_mode: auto = recording rules at session start plus stop checkpoints, passive = rules only, off = neither.",
         "inputSchema": schema(
             {
                 "home": HOME,
                 "default_wiki_root": {"type": ["string", "null"]},
                 "web_port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+                "capture_mode": {"type": "string", "enum": ["auto", "passive", "off"]},
             }
         ),
     },
@@ -364,6 +365,45 @@ TOOLS.extend([
 
 TOOL_NAMES = {x["name"] for x in TOOLS}
 
+# Project tools whose files live under the project's state/Wiki roots. A
+# registered project may keep those outside the source tree.
+STATE_ROOT_TOOLS = {
+    "llmwiki_status",
+    "llmwiki_snapshot",
+    "llmwiki_wiki_write",
+    "llmwiki_wiki_list",
+    "llmwiki_wiki_check",
+    "llmwiki_record_write",
+    "llmwiki_record_list",
+    "llmwiki_record_read",
+    "llmwiki_progress_get",
+    "llmwiki_progress_context_write",
+}
+
+
+def with_registered_state_root(args: dict[str, Any]) -> dict[str, Any]:
+    """Default ``state_root`` to the registration of ``project_root``.
+
+    Without this, a call that omits ``state_root`` falls back to
+    ``<project>/.llmwiki`` and writes to ``<project>/wiki`` even when the project
+    is registered with its Wiki elsewhere, so the records never show up.
+    """
+    if args.get("state_root") or not isinstance(args.get("project_root"), str):
+        return args
+    try:
+        source = Path(args["project_root"]).expanduser().resolve(strict=False)
+        projects = list_projects().get("projects", [])
+    except Exception:
+        return args
+    for project in projects:
+        try:
+            registered = Path(str(project.get("source_root") or "")).resolve(strict=False)
+        except (OSError, RuntimeError):
+            continue
+        if registered == source and project.get("state_root"):
+            return {**args, "state_root": str(project["state_root"])}
+    return args
+
 
 def only(args: dict[str, Any], allowed: set[str]) -> None:
     if not isinstance(args, dict):
@@ -382,6 +422,8 @@ def dispatch(name: str, args: dict[str, Any]) -> dict[str, Any]:
     missing = [key for key in tool["inputSchema"]["required"] if key not in args]
     if missing:
         raise LLMWikiError(f"Missing required argument(s): {', '.join(missing)}")
+    if name in STATE_ROOT_TOOLS:
+        args = with_registered_state_root(args)
     literature_tools = {"llmwiki_literature_collect": literature_collect, "llmwiki_literature_plan": literature_plan, "llmwiki_literature_sources": literature_sources, "llmwiki_literature_finish": literature_finish}
     if name in literature_tools:
         only(args, set(tool["inputSchema"]["properties"]))
@@ -411,12 +453,14 @@ def dispatch(name: str, args: dict[str, Any]) -> dict[str, Any]:
         only(args, {"home"})
         return {"ok": True, "settings": load_settings(**args)}
     if name == "llmwiki_settings_update":
-        only(args, {"home", "default_wiki_root", "web_port"})
+        only(args, {"home", "default_wiki_root", "web_port", "capture_mode"})
         kwargs = dict(args)
         if "default_wiki_root" not in kwargs:
             kwargs["default_wiki_root"] = ...
         if "web_port" not in kwargs:
             kwargs["web_port"] = ...
+        if "capture_mode" not in kwargs:
+            kwargs["capture_mode"] = ...
         return {"ok": True, "settings": update_settings(**kwargs)}
     if name == "llmwiki_web_start":
         only(args, {"home", "port", "open_browser"})
