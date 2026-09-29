@@ -72,5 +72,54 @@ class DesktopLauncherTests(unittest.TestCase):
                 thread.join()
 
 
+class WorkbenchStartTests(unittest.TestCase):
+    """The assistant opens the installed desktop app instead of the browser site."""
+
+    def test_installed_desktop_is_launched_instead_of_website(self):
+        import web_server
+        exe = Path("C:/Apps/WildResearchWorkbench.exe")
+        with tempfile.TemporaryDirectory() as tmp, patch.object(web_server, "desktop_executable", return_value=exe), \
+                patch.object(web_server, "_desktop_url", side_effect=[None, None, "http://127.0.0.1:18765/"]), \
+                patch.object(web_server, "_spawn_detached") as spawn, patch.object(web_server, "start_background") as website, \
+                patch.object(web_server.time, "sleep"):
+            result = web_server.start_workbench(home=tmp)
+        spawn.assert_called_once_with([str(exe), "--home", result["home"]])
+        self.assertEqual(result["home"], str(web_server.llmwiki_home(tmp)))
+        website.assert_not_called()
+        self.assertEqual((result["desktop"], result["started"], result["url"]), (True, True, "http://127.0.0.1:18765/"))
+
+    def test_running_desktop_is_reused_without_stealing_focus(self):
+        import web_server
+        with tempfile.TemporaryDirectory() as tmp, patch.object(web_server, "desktop_executable", return_value=Path("app.exe")), \
+                patch.object(web_server, "_desktop_url", return_value="http://127.0.0.1:18765/"), \
+                patch.object(web_server, "_spawn_detached") as spawn:
+            self.assertFalse(web_server.start_workbench(home=tmp)["started"])
+            spawn.assert_not_called()
+            web_server.start_workbench(home=tmp, open_browser=True)
+            spawn.assert_called_once()
+
+    def test_without_desktop_the_website_is_used(self):
+        import web_server
+        with patch.object(web_server, "desktop_executable", return_value=None), \
+                patch.object(web_server, "start_background", return_value={"ok": True}) as website:
+            web_server.start_workbench(home="h", port=8766, open_browser=True)
+        website.assert_called_once_with(home="h", port=8766, open_browser=True)
+
+    def test_recorded_url_must_be_live_loopback(self):
+        import web_server
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertIsNone(web_server._desktop_url(root))
+            (root / "desktop").mkdir()
+            state = root / "desktop" / "instance.json"
+            state.write_text('{"pid": 1, "url": "http://example.com:18765/"}', encoding="utf-8")
+            self.assertIsNone(web_server._desktop_url(root))
+            state.write_text('{"pid": 1, "url": "http://127.0.0.1:18765/"}', encoding="utf-8")
+            with patch.object(web_server, "is_server", return_value=False):
+                self.assertIsNone(web_server._desktop_url(root))
+            with patch.object(web_server, "is_server", return_value=True):
+                self.assertEqual(web_server._desktop_url(root), "http://127.0.0.1:18765/")
+
+
 if __name__ == "__main__":
     unittest.main()

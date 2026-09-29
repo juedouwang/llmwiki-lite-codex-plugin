@@ -242,14 +242,14 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
         + work_section + project_section
         + '</nav><div class="console-sidebar-footer">'
         + '<span class="console-avatar" aria-hidden="true">野</span><span class="console-profile-label">本地</span>'
-        + '<details class="theme-menu"><summary class="rw-icon-button" aria-label="外观" title="外观">' + ui_icon("monitor") + '</summary><div class="theme-options" aria-label="外观模式">' + theme_choices() + '</div></details>'
+        + '<details class="theme-menu"><summary class="rw-icon-button" aria-label="外观" title="外观">' + ui_icon("monitor") + '</summary><div class="theme-options" aria-label="外观选项">' + theme_choices(compact=True) + '</div></details>'
         + _console_nav_item("/settings" + context_query, "设置", "settings", "settings", active) + '</div></aside>'
     )
     return (
         '<!doctype html><html lang="zh-CN" data-workbench-scale="1.25"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         '<link rel="icon" type="image/x-icon" href="/static/workbench.ico?v=1">'
-        f'<title>{esc(title)} · 野人工作台</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/style.css"></head>'
+        f'<title>{esc(title)} · 野人工作台</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/style-presets.css"></head>'
         f'<body data-workbench-page="{esc(active)}" data-workbench-project="{esc(current_id or "")}" data-workbench-session="{esc(web_session.session_id())}"><a class="skip-link" href="#main-content">跳到内容</a><div class="console-shell">' + sidebar
         + '<button class="console-overlay" id="console-overlay" aria-label="关闭导航"></button>'
         '<div class="console-main">'
@@ -279,9 +279,43 @@ def new_button(label: str, *, href: str = "", element_id: str = "", attributes: 
     return f'<button type="button"{attrs}>{content}</button>'
 
 
-def theme_choices() -> str:
-    return ''.join(f'<button type="button" data-theme-choice="{value}" aria-pressed="false">{ui_icon(icon)}<span>{label}</span></button>'
-                   for value, label, icon in [("light", "浅色", "sun"), ("dark", "深色", "moon"), ("system", "跟随系统", "monitor")])
+THEME_PRESETS = (
+    ("claude", "Claude 灵感", "暖纸张、陶土色与柔和衬线"),
+    ("codex", "Codex 灵感", "清晰分栏与冷静的工作台灰"),
+    ("notion", "Notion 文档", "留白、轻线条与专注阅读"),
+    ("linear", "Linear 效率", "深色层次与低饱和紫"),
+    ("glass", "玻璃质感", "半透明表面与柔和光晕"),
+    ("bento", "Bento 模块", "柔软色块与卡片节奏"),
+    ("brutalist", "新粗野主义", "粗描边、高对比与硬阴影"),
+    ("swiss", "瑞士排版", "严格网格与醒目的红黑字级"),
+    ("retro", "复古未来", "夜色、等宽细节与霓虹线"),
+    ("collage", "拼贴手帐", "纸片层次与手作色彩"),
+    ("anima", "幻灵战队灵感", "最终之城夜色、动物徽记与队员撞色"),
+    ("cyberpunk", "赛博朋克", "夜城霓虹、荧光标记与锋利线条"),
+    ("geek", "极客终端", "终端绿、等宽信息与工具面板"),
+)
+
+
+def theme_choices(*, compact: bool = False) -> str:
+    modes = ''.join(
+        f'<button type="button" data-theme-choice="{value}" aria-pressed="false">'
+        f'{ui_icon(icon)}<span>{label}</span></button>'
+        for value, label, icon in (("light", "浅色", "sun"), ("dark", "深色", "moon"),
+                                   ("system", "跟随系统", "monitor"))
+    )
+    presets = ''.join(
+        f'<button type="button" data-theme-choice="{value}" aria-pressed="false" title="{label}：{description}">'
+        f'<span class="theme-swatch" aria-hidden="true"></span>'
+        f'<span class="theme-choice-copy"><strong>{label}</strong>'
+        + ('' if compact else f'<small>{description}</small>') + '</span></button>'
+        for value, label, description in THEME_PRESETS
+    )
+    if compact:
+        return ('<div class="theme-choice-group" role="group" aria-label="明暗模式"><span class="theme-group-label">明暗模式</span>'
+                + modes + '</div><div class="theme-choice-group" role="group" aria-label="界面风格">'
+                '<span class="theme-group-label">界面风格</span>' + presets + '</div>')
+    return ('<div class="theme-mode-grid" role="group" aria-label="明暗模式">' + modes + '</div>'
+            '<div class="theme-preset-grid" role="group" aria-label="界面风格">' + presets + '</div>')
 
 
 def notice(params: dict[str, list[str]]) -> str:
@@ -925,7 +959,7 @@ def settings_page(home: str, params: dict[str, list[str]]) -> str:
         web_port = 8765
     body = notice(params) + page_header("设置") + f'''<div class="settings-content"><details class="settings-section" open><summary>默认存储</summary><form method="post" action="/settings/default-wiki-root"><label>Wiki 默认根目录<input type="text" name="default_wiki_root" value="{esc(default_root)}" placeholder="留空则使用项目下的 wiki 目录"></label><p class="meta">仅影响之后添加的项目。</p><details class="settings"><summary>高级设置</summary><label>本地网站端口<input type="number" name="web_port" min="1024" max="65535" value="{web_port}"></label><p class="path">注册表：{esc(home)}</p></details><div class="actions"><button class="primary">保存默认设置</button></div></form></details><details class="settings-section" id="register-project"><summary>添加项目</summary><form method="post" action="/project/register"><label>项目目录<input type="text" name="source_root" required placeholder="项目的绝对路径"></label><label>项目名称<input type="text" name="name" placeholder="默认使用目录名"></label><label>Wiki 目录<input type="text" name="wiki_root" placeholder="留空使用默认位置"></label><details class="settings"><summary>高级设置</summary><label>机器状态目录<input type="text" name="state_root" placeholder="留空由插件管理"></label></details><p class="meta">添加项目不会修改源文件，也不会自动扫描。</p><div class="actions"><button class="primary">注册项目</button></div></form></details><h2 class="section-title">已添加的项目</h2>{"".join(project_forms) if project_forms else '<p class="muted">暂无项目</p>'}'''
     from research_reports import settings_section
-    body += '<section class="settings-section appearance-settings"><h2>外观</h2><div class="theme-settings">' + theme_choices() + '</div><p class="meta">只保存在当前浏览器，跟随系统会自动切换。</p></section>'
+    body += '<section class="settings-section appearance-settings"><h2>外观</h2><div class="theme-settings">' + theme_choices() + '</div><p class="meta">选择只保存在当前浏览器；“跟随系统”会自动响应系统明暗变化。风格名称表示视觉灵感。</p></section>'
     # One reading column for every section, including feature-owned ones.
     body += settings_section(home) + '</div>'
     return layout("设置", body, active="settings", home=home)

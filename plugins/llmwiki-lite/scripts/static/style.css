@@ -164,12 +164,45 @@ body{font:14px/1.55 var(--font-ui)}
 .theme-menu{position:relative;flex-shrink:0}
 .theme-menu summary{list-style:none;cursor:pointer}
 .theme-options{position:absolute;bottom:39px;left:-70px;min-width:144px;z-index:60;background:var(--rw-paper);border:1px solid var(--rw-line);border-radius:8px;padding:5px;box-shadow:0 8px 28px #0002}
-[data-theme-choice]{display:flex;align-items:center;gap:9px;border:0;background:transparent;border-radius:5px;padding:8px 10px;color:var(--rw-sub);font-size:12px;text-align:left;white-space:nowrap}
+[data-theme-choice]{display:flex;align-items:center;justify-content:flex-start;gap:9px;border:0;background:transparent;border-radius:5px;padding:8px 10px;color:var(--rw-sub);font-size:12px;text-align:left;white-space:nowrap}
 .theme-options [data-theme-choice]{width:100%}
 [data-theme-choice]:hover{background:var(--rw-hover)}
 [data-theme-choice][aria-pressed=true]{background:var(--rw-select);color:var(--rw-ink)}
 .theme-settings{display:flex;gap:5px;flex-wrap:wrap}
 .appearance-settings h2{font-size:15px;font-weight:500;margin:10px 0 12px}
+/* Appearance picker: compact scrolling menu and readable previews in Settings. */
+.theme-options{width:228px;max-width:calc(100vw / var(--workbench-scale,1.25) - 24px);max-height:min(480px,calc(76dvh / var(--workbench-scale,1.25)));overflow-y:auto;overscroll-behavior:contain}
+.theme-choice-group+.theme-choice-group{border-top:1px solid var(--rw-line);margin-top:5px;padding-top:5px}
+.theme-group-label{display:block;padding:6px 10px 3px;color:var(--rw-sub);font-size:10px;letter-spacing:.06em}
+.theme-choice-copy{display:flex;flex-direction:column;min-width:0;line-height:1.35}
+.theme-choice-copy strong{color:var(--rw-ink);font-size:12px;font-weight:500}
+.theme-choice-copy small{color:var(--rw-sub);font-size:11px;white-space:normal}
+.theme-swatch{--theme-swatch-bg:#f8f8f8;--theme-swatch-side:#e5e5e5;--theme-swatch-accent:#777;display:block;position:relative;flex:none;width:25px;height:20px;border:1px solid color-mix(in srgb,var(--theme-swatch-side),#777 25%);border-radius:4px;background:linear-gradient(90deg,var(--theme-swatch-side) 0 30%,var(--theme-swatch-bg) 30%)}
+.theme-swatch::after{content:"";position:absolute;left:38%;right:12%;bottom:4px;height:3px;border-radius:2px;background:var(--theme-swatch-accent)}
+[data-theme-choice=claude] .theme-swatch{--theme-swatch-bg:#faf8f4;--theme-swatch-side:#f2eee7;--theme-swatch-accent:#aa563d}
+[data-theme-choice=codex] .theme-swatch{--theme-swatch-bg:#f9faf9;--theme-swatch-side:#ebefee;--theme-swatch-accent:#153d3b}
+[data-theme-choice=notion] .theme-swatch{--theme-swatch-bg:#fff;--theme-swatch-side:#f7f7f5;--theme-swatch-accent:#242424}
+[data-theme-choice=linear] .theme-swatch{--theme-swatch-bg:#15171d;--theme-swatch-side:#1d2028;--theme-swatch-accent:#7769cf}
+[data-theme-choice=glass] .theme-swatch{--theme-swatch-bg:#eaf1f6;--theme-swatch-side:#e0ebf1;--theme-swatch-accent:#275d84}
+[data-theme-choice=bento] .theme-swatch{--theme-swatch-bg:#f6f5fb;--theme-swatch-side:#ebe9f4;--theme-swatch-accent:#5d50ae}
+[data-theme-choice=brutalist] .theme-swatch{--theme-swatch-bg:#fff9ed;--theme-swatch-side:#ffe7be;--theme-swatch-accent:#f05b38}
+[data-theme-choice=swiss] .theme-swatch{--theme-swatch-bg:#fff;--theme-swatch-side:#f0f0ee;--theme-swatch-accent:#c3222c}
+[data-theme-choice=retro] .theme-swatch{--theme-swatch-bg:#101827;--theme-swatch-side:#121e32;--theme-swatch-accent:#4de1cf}
+[data-theme-choice=collage] .theme-swatch{--theme-swatch-bg:#fff8ed;--theme-swatch-side:#f1e4d3;--theme-swatch-accent:#a83f68}
+[data-theme-choice=anima] .theme-swatch{--theme-swatch-bg:#10152a;--theme-swatch-side:#141a33;--theme-swatch-accent:#ffc93c}
+[data-theme-choice=cyberpunk] .theme-swatch{--theme-swatch-bg:#100e18;--theme-swatch-side:#181322;--theme-swatch-accent:#ff72cd}
+[data-theme-choice=geek] .theme-swatch{--theme-swatch-bg:#0d1512;--theme-swatch-side:#111d17;--theme-swatch-accent:#73e69a}
+[data-theme-choice=vapor] .theme-swatch{--theme-swatch-bg:#1a0f38;--theme-swatch-side:#2c1160;--theme-swatch-accent:#ff71ce}
+.theme-settings{display:block}
+.theme-mode-grid{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:15px}
+.theme-mode-grid [data-theme-choice]{border:1px solid var(--rw-line);border-radius:8px;padding:7px 11px}
+.theme-mode-grid [data-theme-choice][aria-pressed=true]{border-color:var(--rw-ink)}
+.theme-preset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.theme-preset-grid [data-theme-choice]{display:flex;min-width:0;min-height:62px;padding:9px 11px;gap:11px;border:1px solid var(--rw-line);border-radius:9px;white-space:normal}
+.theme-preset-grid [data-theme-choice][aria-pressed=true]{border-color:var(--rw-ink);box-shadow:inset 0 0 0 1px var(--rw-ink)}
+.theme-preset-grid .theme-swatch{width:42px;height:36px;border-radius:6px}
+.theme-preset-grid .theme-choice-copy strong{font-size:13px}
+@media(max-width:560px){.theme-preset-grid{grid-template-columns:1fr}.theme-options{left:0}}
 /* Settings read as one column; the project group label sits below section titles, not above the page title. */
 .settings-content .section-title{font-size:12px;font-weight:400;color:var(--rw-sub);margin:28px 0 0}
 .workbench-footer{border-top:1px solid var(--rw-line);padding:11px var(--workbench-gutter);display:flex;gap:10px;justify-content:space-between;color:var(--rw-sub);font-size:11px;flex-wrap:wrap}
@@ -194,6 +227,7 @@ body[data-workbench-page=code] .workbench-footer{display:none}
 @media(max-width:1000px){.rw-split{grid-template-columns:145px minmax(0,1fr);gap:16px}}
 @media(max-width:775px){.rw-split{display:block}.rw-page-list{border-right:0;border-bottom:1px solid var(--rw-line);padding:0 0 12px;margin-bottom:15px}.rw-page-list .page-list{display:flex;gap:3px;flex-wrap:wrap}.rw-page-list .knowledge-row{font-size:11px}.rw-title-button{font-size:13px}.rw-list-row{padding:14px 0;gap:9px}.records-intro{align-items:flex-start}.records-filter{align-self:center}.rw-list-meta{gap:7px}.workbench-footer{padding:10px 14px}.theme-options{bottom:auto;top:35px;left:0}}
 @media print{.workbench-footer,.theme-menu,.record-delete{display:none!important}}
+@media(max-width:775px){.theme-options{left:auto;right:0;top:auto;bottom:39px;max-width:calc(100vw / var(--workbench-scale,1.25) - 64px);max-height:min(350px,calc(60dvh / var(--workbench-scale,1.25)))}}
 
 .theme-menu>summary::after,.records-filter>summary::after{display:none}
 .theme-menu>summary,.records-filter>summary{padding:6px}

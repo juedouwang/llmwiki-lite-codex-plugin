@@ -6,9 +6,10 @@
   const calm = window.matchMedia('(prefers-reduced-motion: reduce)');
   // Easter egg: "vapor" stays out of every menu until found (five quick taps on the avatar, or the
   // Konami code). Its key remembers the everyday theme to return to, and its presence means "found".
-  const themes = ['light', 'dark', 'system', 'vapor'], eggKey = 'workbench.vapor';
+  const presets = ['claude', 'codex', 'notion', 'linear', 'glass', 'bento', 'brutalist', 'swiss', 'retro', 'collage', 'anima', 'cyberpunk', 'geek'];
+  const themes = ['light', 'dark', 'system', ...presets, 'vapor'], eggKey = 'workbench.vapor';
+  const darkPresets = new Set(['linear', 'retro', 'anima', 'cyberpunk', 'geek']);
   const konami = 'ArrowUp,ArrowUp,ArrowDown,ArrowDown,ArrowLeft,ArrowRight,ArrowLeft,ArrowRight,b,a';
-  const sunset = '<svg class="ui-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 17h18M6 20.5h12M7 14a5 5 0 0 1 10 0"/><path d="M12 4v2.5M5.3 7.3l1.6 1.6M18.7 7.3l-1.6 1.6"/></svg>';
   const read = name => { try { return localStorage.getItem(name); } catch (_) { return null; } };
   const write = (name, value) => { try { localStorage.setItem(name, value); } catch (_) {} };
   let choice = themes.includes(read(key)) ? read(key) : 'system';
@@ -21,15 +22,20 @@
       document.head.append(link);
     }
     if (read(eggKey) === null) return;
-    document.querySelectorAll('.theme-options, .theme-settings').forEach(group => {
+    document.querySelectorAll('.theme-options .theme-choice-group:last-child, .theme-preset-grid').forEach(group => {
       if (group.querySelector('[data-theme-choice=vapor]')) return;
       const button = document.createElement('button');
-      button.type = 'button'; button.dataset.themeChoice = 'vapor'; button.innerHTML = sunset + '<span>蒸汽波</span>';
+      const compact = group.classList.contains('theme-choice-group');
+      button.type = 'button'; button.dataset.themeChoice = 'vapor';
+      button.title = '蒸汽波：霓虹暮色与复古网格';
+      button.innerHTML = '<span class="theme-swatch" aria-hidden="true"></span>'
+        + '<span class="theme-choice-copy"><strong>蒸汽波</strong>'
+        + (compact ? '' : '<small>霓虹暮色与复古网格</small>') + '</span>';
       group.append(button);
     });
   }
   function apply() {
-    const scheme = choice === 'vapor' ? 'dark' : choice;
+    const scheme = choice === 'vapor' || darkPresets.has(choice) ? 'dark' : presets.includes(choice) ? 'light' : choice;
     vaporAssets();
     root.dataset.theme = choice;
     root.dataset.resolvedTheme = scheme === 'system' ? (media.matches ? 'dark' : 'light') : scheme;
@@ -37,6 +43,7 @@
     document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === choice)));
   }
   function choose(value) {
+    if (!themes.includes(value)) return;
     if (value === 'vapor' && choice !== 'vapor') write(eggKey, choice);
     choice = value; write(key, value); apply();
   }

@@ -1,0 +1,459 @@
+/* Optional visual presets. The default light, dark, system and vapor themes are untouched. */
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]){
+  --rw-purple:var(--preset-accent);
+  --rw-purple-soft:var(--rw-select);
+  --rw-green:var(--preset-positive);
+  --rw-red:var(--preset-negative);
+  --rw-add:var(--preset-add);
+  --rw-del:var(--preset-del);
+  --font-ui:var(--preset-body-font);
+  --workbench-gutter:clamp(18px,3vw,40px);
+}
+
+/* A shared shape vocabulary lets each preset change the whole workbench. */
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) body{
+  font-family:var(--preset-body-font);
+}
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) .console-sidebar{
+  border-color:var(--rw-line);
+}
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.console-nav-item,.rw-button,.rw-icon-button,button:not([data-theme-choice]),.button,input,select,textarea,.console-project-menu,.action-menu-items,dialog){
+  border-radius:var(--preset-radius);
+}
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.page-header h1,.document h1,.note-document h1,.record-title){
+  font-family:var(--preset-heading-font);
+  letter-spacing:var(--preset-heading-tracking,normal);
+}
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.rw-list-row,.project-row,.knowledge-row,.paper-card,.timeline-card){
+  border-radius:var(--preset-row-radius);
+}
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.console-project-menu,.action-menu-items,dialog){
+  box-shadow:var(--preset-popover-shadow);
+}
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(button,a,summary,input,select,textarea):focus-visible{
+  outline:2px solid var(--preset-accent);
+  outline-offset:3px;
+}
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.rw-primary,.primary){
+  background:var(--rw-solid);
+  border-color:var(--rw-solid);
+  color:var(--rw-on-solid);
+}
+:root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) .nb-plus:hover{
+  color:var(--rw-on-solid);
+}
+
+/* Claude: warm paper, a quiet terracotta accent, and book-like titles. */
+:root[data-theme=claude]{
+  --rw-paper:#faf8f4;--rw-side:#f2eee7;--rw-ink:#302b27;--rw-sub:#706960;
+  --rw-line:#ded7cc;--rw-hover:#f0e9df;--rw-select:#e9d8cb;
+  --rw-solid:#aa563d;--rw-on-solid:#fffaf5;
+  --preset-accent:#a54f36;--preset-positive:#367758;--preset-negative:#a64447;
+  --preset-add:#e9f3eb;--preset-del:#f8e9e7;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:Georgia,"Songti SC","SimSun",serif;
+  --preset-radius:12px;--preset-row-radius:13px;
+  --preset-popover-shadow:0 16px 42px #47311d1c;
+  --rail:190px;
+}
+:root[data-theme=claude] .console-sidebar{padding-top:28px;gap:30px}
+:root[data-theme=claude] .console-topbar{border-bottom:1px solid var(--rw-line);padding-bottom:17px;background:#faf8f4}
+:root[data-theme=claude] .console-sidebar-brand{font-family:var(--preset-heading-font);font-size:17px;letter-spacing:-.3px}
+:root[data-theme=claude] .console-nav-item.is-active{background:var(--rw-select);color:#713b2b}
+:root[data-theme=claude] .page-header h1{font-size:27px;font-weight:500}
+:root[data-theme=claude] :is(.rw-list-row,.project-row,.paper-card){padding-inline:15px;border:1px solid transparent;border-bottom-color:var(--rw-line)}
+:root[data-theme=claude] :is(.rw-list-row,.project-row,.paper-card):hover{background:#f7f1e9;border-color:#e6d9ca}
+:root[data-theme=claude] :is(.document blockquote,.note-document blockquote){border-left:3px solid var(--preset-accent);background:var(--rw-hover);border-radius:0 9px 9px 0}
+:root[data-theme=claude] :is(.rw-button,.button,button:not([data-theme-choice])){font-weight:500}
+
+/* Codex: precise workspace chrome, compact controls and a dark command bar. */
+:root[data-theme=codex]{
+  --rw-paper:#f9faf9;--rw-side:#ebefee;--rw-ink:#1b2525;--rw-sub:#536462;
+  --rw-line:#ccd6d3;--rw-hover:#e7eeeb;--rw-select:#d6e7e1;
+  --rw-solid:#153d3b;--rw-on-solid:#f5fffd;
+  --preset-accent:#176b67;--preset-positive:#21765c;--preset-negative:#a74146;
+  --preset-add:#e2f3e9;--preset-del:#f9e7e7;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"SFMono-Regular",Consolas,"Microsoft YaHei",monospace;
+  --preset-radius:5px;--preset-row-radius:5px;
+  --preset-popover-shadow:0 14px 32px #10262222;
+  --rail:184px;--workbench-gutter:clamp(20px,3vw,42px);
+}
+:root[data-theme=codex] .console-sidebar{padding-top:20px;gap:19px}
+:root[data-theme=codex] .console-topbar{background:#1e2928;color:#eef7f4;padding-top:12px;padding-bottom:12px;border-bottom:2px solid #32786f}
+:root[data-theme=codex] .console-breadcrumbs,:root[data-theme=codex] .console-search{color:#bed0cb}
+:root[data-theme=codex] .console-breadcrumbs>span:last-child{color:#fff}
+:root[data-theme=codex] .console-nav-item{padding-block:8px;border-left:2px solid transparent}
+:root[data-theme=codex] .console-nav-item.is-active{border-left-color:var(--preset-accent);background:#d9e6e1}
+:root[data-theme=codex] .page-header h1{font-size:20px;font-weight:600}
+:root[data-theme=codex] :is(.rw-list-meta,.meta,.console-project-label small,.badge){font-family:Consolas,"Microsoft YaHei",monospace;font-size:11px}
+:root[data-theme=codex] :is(.rw-list-row,.project-row,.paper-card){padding-inline:12px;border-left:2px solid transparent}
+:root[data-theme=codex] :is(.rw-list-row,.project-row,.paper-card):hover{border-left-color:var(--preset-accent)}
+:root[data-theme=codex] :is(.rw-list,.project-list){border-top:2px solid var(--rw-ink)}
+
+/* Notion: a white document canvas with a restrained monochrome sidebar. */
+:root[data-theme=notion]{
+  --rw-paper:#fff;--rw-side:#f7f7f5;--rw-ink:#242424;--rw-sub:#656562;
+  --rw-line:#e1e1de;--rw-hover:#f3f3f0;--rw-select:#e8e8e4;
+  --rw-solid:#242424;--rw-on-solid:#fff;
+  --preset-accent:#3c5d88;--preset-positive:#377659;--preset-negative:#ad4848;
+  --preset-add:#eaf3eb;--preset-del:#faecea;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-radius:5px;--preset-row-radius:3px;
+  --preset-popover-shadow:0 14px 36px #00000012;
+  --rail:206px;--workbench-gutter:clamp(20px,5vw,72px);
+}
+:root[data-theme=notion] .console-sidebar{padding-top:22px}
+:root[data-theme=notion] .console-sidebar-brand{font-weight:700}
+:root[data-theme=notion] .console-topbar{padding-top:20px}
+:root[data-theme=notion] .console-content>main{max-width:1020px;margin-inline:auto}
+:root[data-theme=notion] .page-header h1{font-size:30px;font-weight:700;letter-spacing:-1px}
+:root[data-theme=notion] .rw-knowledge-document .document h1{font-size:30px;font-weight:700}
+:root[data-theme=notion] :is(.rw-list-row,.project-row,.paper-card){border-radius:0;padding-block:19px}
+:root[data-theme=notion] .rw-title-button{font-size:15px}
+:root[data-theme=notion] .console-nav-item.is-active{font-weight:600}
+:root[data-theme=notion] :is(.rw-button,.button){box-shadow:none}
+
+/* Linear: a dense, calm dark interface with violet indicators. */
+:root[data-theme=linear]{
+  --rw-paper:#15171d;--rw-side:#1d2028;--rw-ink:#eceef5;--rw-sub:#aeb4c4;
+  --rw-line:#383d4c;--rw-hover:#282c38;--rw-select:#34334b;
+  --rw-solid:#7364c8;--rw-on-solid:#fff;
+  --preset-accent:#a99bff;--preset-positive:#83c9a7;--preset-negative:#f09a9d;
+  --preset-add:#1d3b32;--preset-del:#472b35;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-radius:7px;--preset-row-radius:7px;
+  --preset-popover-shadow:0 18px 42px #0008;
+  --rail:190px;--workbench-gutter:clamp(18px,3vw,44px);
+}
+:root[data-theme=linear] .console-sidebar{gap:17px;border-right-color:#303443}
+:root[data-theme=linear] .console-topbar{padding-block:16px;border-bottom:1px solid var(--rw-line)}
+:root[data-theme=linear] .console-nav-item{padding-block:8px}
+:root[data-theme=linear] .console-nav-item.is-active{box-shadow:inset 3px 0 var(--preset-accent)}
+:root[data-theme=linear] .page-header h1{font-size:21px;font-weight:600}
+:root[data-theme=linear] :is(.rw-list-row,.project-row,.paper-card){padding-block:13px}
+:root[data-theme=linear] :is(.rw-list-row,.project-row,.paper-card):hover{background:#252936}
+:root[data-theme=linear] :is(.rw-title-button,.row-title){font-weight:550}
+:root[data-theme=linear] :is(.badge,.category-tag,.reading-state){color:#c4bbff}
+
+/* Glass: translucency stays on navigation and cards; text keeps opaque contrast. */
+:root[data-theme=glass]{
+  --rw-paper:#eaf1f6;--rw-side:#e0ebf1;--rw-ink:#1a3043;--rw-sub:#496075;
+  --rw-line:#aebfcc;--rw-hover:#d9e9f1;--rw-select:#c9e1ef;
+  --rw-solid:#275d84;--rw-on-solid:#fff;
+  --preset-accent:#17628e;--preset-positive:#287658;--preset-negative:#a94156;
+  --preset-add:#dff2e8;--preset-del:#f7e4e9;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-radius:14px;--preset-row-radius:16px;
+  --preset-popover-shadow:0 22px 48px #32587336;
+  --rail:188px;
+}
+:root[data-theme=glass] .console-shell{background:radial-gradient(circle at 85% 8%,#beddf0 0,transparent 34%),radial-gradient(circle at 18% 83%,#e5d5ee 0,transparent 33%),#eaf1f6}
+:root[data-theme=glass] .console-main{background:transparent}
+:root[data-theme=glass] .console-sidebar{background:#ffffff78;backdrop-filter:blur(18px);border-right:1px solid #ffffffa8;box-shadow:8px 0 30px #496a7b13}
+:root[data-theme=glass] .console-topbar{background:#ffffff70;backdrop-filter:blur(16px);border-bottom:1px solid #ffffffad;padding-block:16px}
+:root[data-theme=glass] .console-nav-item.is-active{background:#ffffffb8;box-shadow:0 3px 12px #426b821c}
+:root[data-theme=glass] .page-header h1{font-size:24px;font-weight:600}
+:root[data-theme=glass] :is(.rw-list-row,.project-row,.paper-card){background:#ffffffa8;border:1px solid #ffffffd6;box-shadow:0 8px 24px #54768914;margin-bottom:10px;padding:16px}
+:root[data-theme=glass] :is(.rw-list-row,.project-row,.paper-card):hover{background:#fff;border-color:#b8d2df}
+:root[data-theme=glass] :is(.console-project-menu,.action-menu-items,dialog){background:#f9fcfdeb;backdrop-filter:blur(18px)}
+:root[data-theme=glass] :is(input,select,textarea){background:#ffffffd9}
+
+/* Bento: information lives in a responsive field of rounded tiles. */
+:root[data-theme=bento]{
+  --rw-paper:#f6f5fb;--rw-side:#ebe9f4;--rw-ink:#292542;--rw-sub:#5f5976;
+  --rw-line:#d7d2e6;--rw-hover:#edebf6;--rw-select:#ddd6f2;
+  --rw-solid:#5d50ae;--rw-on-solid:#fff;
+  --preset-accent:#5d50ae;--preset-positive:#337a62;--preset-negative:#a94d5c;
+  --preset-add:#e8f3ec;--preset-del:#f8e9ed;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-radius:13px;--preset-row-radius:18px;
+  --preset-popover-shadow:0 18px 36px #45407824;
+  --rail:188px;
+}
+:root[data-theme=bento] .console-sidebar{gap:26px}
+:root[data-theme=bento] .console-topbar{padding-block:16px;border-bottom:1px solid var(--rw-line)}
+:root[data-theme=bento] .page-header h1{font-size:25px;font-weight:700}
+:root[data-theme=bento] :is(.rw-list,.project-list,.literature-grid){display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:14px;border:0}
+:root[data-theme=bento] :is(.rw-list-row,.project-row,.paper-card){min-width:0;min-height:105px;padding:17px;background:#fff;border:1px solid var(--rw-line);box-shadow:0 5px 16px #59527b0c}
+:root[data-theme=bento] :is(.rw-list-row,.project-row,.paper-card):hover{background:#fdfcff;border-color:#a99bdf;box-shadow:0 10px 22px #59527b1b}
+:root[data-theme=bento] .project-row{grid-template-columns:24px minmax(0,1fr) auto 16px}
+:root[data-theme=bento] .rw-list-row{align-items:flex-start}
+:root[data-theme=bento] .rw-list-row>.ui-icon{margin-top:2px}
+:root[data-theme=bento] .console-nav-item.is-active{background:#fff;box-shadow:0 3px 11px #51449116}
+
+/* Neo-brutalism: strong outlines, hard shadows and deliberate geometry. */
+:root[data-theme=brutalist]{
+  --rw-paper:#fff9ed;--rw-side:#ffe7be;--rw-ink:#1e1b1b;--rw-sub:#514444;
+  --rw-line:#27201d;--rw-hover:#fff0ce;--rw-select:#ffe05e;
+  --rw-solid:#f05b38;--rw-on-solid:#1a1716;
+  --preset-accent:#af351e;--preset-positive:#246a4b;--preset-negative:#a82f3d;
+  --preset-add:#d6f0d6;--preset-del:#ffd8d5;
+  --preset-body-font:"Trebuchet MS","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"Arial Black","Microsoft YaHei",sans-serif;
+  --preset-radius:0;--preset-row-radius:0;
+  --preset-popover-shadow:6px 6px 0 #1e1b1b;
+  --rail:188px;
+}
+:root[data-theme=brutalist] .console-sidebar{border-right:3px solid var(--rw-ink)}
+:root[data-theme=brutalist] .console-topbar{padding-block:16px;border-bottom:3px solid var(--rw-ink)}
+:root[data-theme=brutalist] .console-sidebar-brand{font-weight:900;text-transform:uppercase}
+:root[data-theme=brutalist] .console-nav-item.is-active{border:2px solid var(--rw-ink);box-shadow:3px 3px 0 var(--rw-ink);font-weight:800}
+:root[data-theme=brutalist] .page-header h1{font-size:26px;font-weight:900;text-transform:uppercase}
+:root[data-theme=brutalist] :is(.rw-button,.button,button:not([data-theme-choice]),input,select,textarea){border:2px solid var(--rw-ink)}
+:root[data-theme=brutalist] :is(.rw-button,.button,button:not([data-theme-choice])):hover{box-shadow:3px 3px 0 var(--rw-ink)}
+:root[data-theme=brutalist] :is(.rw-list-row,.project-row,.paper-card){background:#fffdf7;border:2px solid var(--rw-ink);padding:15px;margin:0 0 13px;box-shadow:4px 4px 0 var(--rw-ink)}
+:root[data-theme=brutalist] :is(.rw-list,.project-list){border:0}
+:root[data-theme=brutalist] :is(.badge,.category-tag,.reading-state){color:#1e1b1b;font-weight:800;text-transform:uppercase}
+
+/* Swiss editorial: a strict red/black grid, large headings and thin rules. */
+:root[data-theme=swiss]{
+  --rw-paper:#fff;--rw-side:#f0f0ee;--rw-ink:#151515;--rw-sub:#555;
+  --rw-line:#777;--rw-hover:#eee;--rw-select:#e8e8e5;
+  --rw-solid:#c3222c;--rw-on-solid:#fff;
+  --preset-accent:#bc1b26;--preset-positive:#246b48;--preset-negative:#bc1b26;
+  --preset-add:#e5f1e7;--preset-del:#f8e6e7;
+  --preset-body-font:Arial,"Microsoft YaHei",sans-serif;
+  --preset-heading-font:Arial,"Microsoft YaHei",sans-serif;
+  --preset-radius:0;--preset-row-radius:0;
+  --preset-popover-shadow:0 12px 0 #15151520;
+  --rail:176px;
+}
+:root[data-theme=swiss] .console-sidebar{border-right:2px solid var(--rw-ink)}
+:root[data-theme=swiss] .console-topbar{padding-block:14px;border-bottom:2px solid var(--rw-ink)}
+:root[data-theme=swiss] .console-sidebar-brand{font-weight:800;letter-spacing:-.7px}
+:root[data-theme=swiss] .console-nav-item{border-left:3px solid transparent;padding-left:8px;text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+:root[data-theme=swiss] .console-nav-item.is-active{border-left-color:var(--rw-solid);color:var(--rw-ink);background:#fff;font-weight:800}
+:root[data-theme=swiss] .page-header{border-bottom:3px solid var(--rw-ink);padding-bottom:16px;margin-bottom:24px}
+:root[data-theme=swiss] .page-header h1{font-size:31px;font-weight:800;line-height:1.08;letter-spacing:-1.5px}
+:root[data-theme=swiss] :is(.rw-list-row,.project-row,.paper-card){border-radius:0;border-bottom:1px solid var(--rw-ink);padding-block:19px}
+:root[data-theme=swiss] :is(.badge,.category-tag,.reading-state,.rw-list-meta){font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+:root[data-theme=swiss] :is(.document h2,.note-document h2){border-top:2px solid var(--rw-ink);padding-top:10px}
+
+/* Retrofuturism: restrained neon on a deep console surface. */
+:root[data-theme=retro]{
+  --rw-paper:#101827;--rw-side:#121e32;--rw-ink:#e6f4f3;--rw-sub:#adc6cc;
+  --rw-line:#385267;--rw-hover:#1d3046;--rw-select:#1b3c48;
+  --rw-solid:#4de1cf;--rw-on-solid:#071b24;
+  --preset-accent:#58e7db;--preset-positive:#72d4a3;--preset-negative:#ff97ae;
+  --preset-add:#174539;--preset-del:#4b283e;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"SFMono-Regular",Consolas,"Microsoft YaHei",monospace;
+  --preset-radius:5px;--preset-row-radius:7px;
+  --preset-popover-shadow:0 20px 44px #000a,0 0 0 1px #58e7db55;
+  --rail:194px;
+}
+:root[data-theme=retro] .console-shell{background:radial-gradient(circle at 75% 0,#293e5a 0,transparent 30%),#101827}
+:root[data-theme=retro] .console-sidebar{border-right:1px solid #58e7db70;box-shadow:4px 0 26px #58e7db0a}
+:root[data-theme=retro] .console-topbar{padding-block:16px;border-bottom:1px solid var(--preset-accent);background:#121e32}
+:root[data-theme=retro] .console-sidebar-brand{color:#8ff8e9;font-family:var(--preset-heading-font)}
+:root[data-theme=retro] .console-nav-item.is-active{color:#b0fff0;background:#183843;box-shadow:inset 3px 0 var(--preset-accent)}
+:root[data-theme=retro] .page-header h1{font-size:23px;color:#b3fff3;font-weight:600}
+:root[data-theme=retro] :is(.rw-list-row,.project-row,.paper-card){padding-inline:13px;border-left:1px solid #58e7db69}
+:root[data-theme=retro] :is(.rw-list-row,.project-row,.paper-card):hover{background:#1a2d41;box-shadow:inset 3px 0 var(--preset-accent)}
+:root[data-theme=retro] :is(.rw-list-meta,.meta,.badge){font-family:Consolas,"Microsoft YaHei",monospace}
+:root[data-theme=retro] :is(.rw-primary,.primary){box-shadow:0 0 16px #58e7db42}
+
+/* Collage: layered paper, playful cuts and clear reading surfaces. */
+:root[data-theme=collage]{
+  --rw-paper:#fff8ed;--rw-side:#f1e4d3;--rw-ink:#34243a;--rw-sub:#655467;
+  --rw-line:#d8b9bb;--rw-hover:#fbe9df;--rw-select:#f6cddd;
+  --rw-solid:#a83f68;--rw-on-solid:#fff;
+  --preset-accent:#a83f68;--preset-positive:#347960;--preset-negative:#ad4451;
+  --preset-add:#e3f2e8;--preset-del:#fbe3e3;
+  --preset-body-font:"Trebuchet MS","Microsoft YaHei",sans-serif;
+  --preset-heading-font:Georgia,"Songti SC","SimSun",serif;
+  --preset-radius:10px 4px 12px 5px;--preset-row-radius:18px 5px 14px 6px;
+  --preset-popover-shadow:7px 8px 0 #b68b9c55;
+  --rail:196px;
+}
+:root[data-theme=collage] .console-sidebar{border-right:2px dashed #bd93a4}
+:root[data-theme=collage] .console-topbar{padding-block:17px;border-bottom:2px dashed #b594a1;background:linear-gradient(110deg,#fff4e2,#fbe9e9 62%,#e8f3e9)}
+:root[data-theme=collage] .console-sidebar-brand{font-family:var(--preset-heading-font);font-size:17px}
+:root[data-theme=collage] .console-nav-item.is-active{background:#f8d6d7;box-shadow:3px 3px 0 #b9889a}
+:root[data-theme=collage] .page-header h1{font-size:27px;font-weight:700}
+:root[data-theme=collage] :is(.rw-list-row,.project-row,.paper-card){padding:16px;margin-bottom:11px;background:#fffdf8;border:1px solid #d8b9bb;box-shadow:5px 5px 0 #b68b9c35}
+:root[data-theme=collage] :is(.rw-list-row,.project-row,.paper-card):nth-child(even){background:#eff8ed;box-shadow:5px 5px 0 #77a68d47}
+:root[data-theme=collage] :is(.rw-list-row,.project-row,.paper-card):hover{border-color:var(--preset-accent)}
+:root[data-theme=collage] :is(.rw-list,.project-list){border:0}
+:root[data-theme=collage] :is(.badge,.category-tag,.reading-state){color:#893653;font-weight:700}
+
+/* Anima Squad inspired: an animal-emblem hero squad holding the line in a besieged
+   night city. Every member keeps a distinct identity colour (rabbit, cat, dove, lion,
+   wolf, bat) instead of one neon wash. CSS only; no Riot imagery, names, logos or fonts. */
+:root[data-theme=anima]{
+  --rw-paper:#10152a;--rw-side:#141a33;--rw-ink:#f4f6ff;--rw-sub:#b6c0de;
+  --rw-line:#34406a;--rw-hover:#1d2648;--rw-select:#2a2f58;
+  --rw-solid:#ffc93c;--rw-on-solid:#231a05;
+  --preset-accent:#8ee6ff;--preset-positive:#5ff0b8;--preset-negative:#ff8f8f;
+  --preset-add:#16433c;--preset-del:#4a2542;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"Segoe UI Black","Arial Black","Microsoft YaHei",sans-serif;
+  --preset-heading-tracking:.01em;
+  --preset-radius:4px 12px 4px 12px;--preset-row-radius:4px 2px 4px 14px;
+  --preset-popover-shadow:6px 6px 0 #ff6fae66,0 22px 44px #03061acc;
+  --rail:198px;
+  --squad-rabbit:#ff6fae;--squad-cat:#ff8a4c;--squad-dove:#8ee6ff;
+  --squad-lion:#ffc93c;--squad-wolf:#7b93ff;--squad-bat:#b98bff;
+  --squad-roster:linear-gradient(90deg,var(--squad-rabbit) 0 16.66%,var(--squad-cat) 0 33.33%,var(--squad-dove) 0 50%,var(--squad-lion) 0 66.66%,var(--squad-wolf) 0 83.33%,var(--squad-bat) 0);
+}
+/* The last city: a skyline silhouette on the horizon and a hostile glow behind it. */
+:root[data-theme=anima] .console-shell{background:
+  linear-gradient(90deg,#0b1024 0 62%,transparent 0) left bottom/74px 112px repeat-x fixed,
+  linear-gradient(90deg,transparent 0 30%,#0d1329 0 78%,transparent 0) 20px bottom/118px 168px repeat-x fixed,
+  linear-gradient(90deg,#0e142c 0 44%,transparent 0) 51px bottom/156px 74px repeat-x fixed,
+  radial-gradient(ellipse 70% 38% at 50% 104%,#6b2d7a66,transparent 70%) fixed,
+  radial-gradient(circle at 90% 4%,#ffc93c1f 0,transparent 26%),
+  radial-gradient(circle at 8% 30%,#7b93ff1c 0,transparent 30%),
+  #10152a}
+:root[data-theme=anima] .console-main{background:transparent}
+:root[data-theme=anima] .console-sidebar{background:linear-gradient(170deg,#1820408c,#121832f0 38%),#131933;border-right:2px solid #2d3864;gap:21px}
+/* Squad roster: six members, six colours, under the brand. */
+:root[data-theme=anima] .console-sidebar-heading{padding-bottom:12px;background:var(--squad-roster) left bottom/100% 4px no-repeat}
+:root[data-theme=anima] .console-sidebar-brand{font-family:var(--preset-heading-font);font-size:15px;font-style:italic;font-weight:900;letter-spacing:.02em;color:#fff}
+:root[data-theme=anima] .console-sidebar-brand .ui-icon{box-sizing:content-box;padding:4px;border-radius:4px 10px 4px 10px;background:var(--squad-lion);color:#231a05;box-shadow:2px 2px 0 var(--squad-rabbit)}
+:root[data-theme=anima] .console-group-label{color:#8f9bc4;font-style:italic;letter-spacing:.08em}
+/* Each station is guarded by one member: identity colour on icon, rail and active chip. */
+:root[data-theme=anima] .console-nav-item{--squad:#b6c0de;border-left:4px solid transparent;padding-left:9px;transition:transform .14s ease,background-color .14s ease}
+:root[data-theme=anima] [data-workbench-nav=daily]{--squad:var(--squad-rabbit)}
+:root[data-theme=anima] [data-workbench-nav=reports]{--squad:var(--squad-dove)}
+:root[data-theme=anima] [data-workbench-nav=todos]{--squad:var(--squad-lion)}
+:root[data-theme=anima] [data-workbench-nav=records]{--squad:var(--squad-cat)}
+:root[data-theme=anima] [data-workbench-nav=overview]{--squad:var(--squad-wolf)}
+:root[data-theme=anima] [data-workbench-nav=literature]{--squad:var(--squad-bat)}
+:root[data-theme=anima] [data-workbench-nav=code]{--squad:var(--preset-positive)}
+:root[data-theme=anima] .console-nav-item .console-nav-icon{color:var(--squad)}
+:root[data-theme=anima] .console-nav-item:hover{background:color-mix(in srgb,var(--squad) 12%,transparent);color:#fff;transform:translateX(2px)}
+:root[data-theme=anima] .console-nav-item.is-active{border-left-color:var(--squad);background:linear-gradient(100deg,color-mix(in srgb,var(--squad) 30%,#141a33),color-mix(in srgb,var(--squad) 8%,#141a33) 85%);color:#fff;font-weight:700;box-shadow:3px 3px 0 color-mix(in srgb,var(--squad) 45%,transparent)}
+:root[data-theme=anima] .console-sidebar-footer .console-nav-item{border-left-width:0}
+:root[data-theme=anima] .console-avatar{background:var(--squad-rabbit);color:#2a0a1a;font-weight:800}
+/* Command bar: diagonal speed lines with the roster as its lower edge. */
+:root[data-theme=anima] .console-topbar{padding-block:16px;border-bottom:0;background:
+  var(--squad-roster) left bottom/100% 3px no-repeat,
+  repeating-linear-gradient(115deg,#ffffff07 0 2px,transparent 2px 22px),
+  linear-gradient(100deg,#151c3a,#1b1f45 60%,#241d45)}
+:root[data-theme=anima] .console-breadcrumbs>span:last-child{color:#fff;font-weight:700}
+/* Mission titles: heavy italic with a charged power bar underneath. */
+:root[data-theme=anima] .page-header{padding-bottom:14px;border-bottom:0;background:
+  linear-gradient(90deg,var(--squad-lion) 0 72px,var(--squad-rabbit) 72px 108px,var(--squad-dove) 108px 132px,transparent 132px) left bottom/100% 4px no-repeat,
+  linear-gradient(#ffffff1f,#ffffff1f) left bottom/100% 1px no-repeat}
+:root[data-theme=anima] .page-header h1{font-size:26px;font-style:italic;font-weight:900;color:#fff;text-shadow:3px 3px 0 #ff6fae59}
+/* Squad cards: each row wears a member colour as an armour stripe and a cut corner. */
+:root[data-theme=anima] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row){--squad:var(--squad-rabbit);padding-inline:16px;margin-bottom:8px;border:1px solid #2f3a64;background:
+  linear-gradient(225deg,var(--squad) 0 9px,transparent 9px),
+  linear-gradient(118deg,#1a2244,#161d3a 72%,#1d2146);box-shadow:inset 4px 0 var(--squad);transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+:root[data-theme=anima] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row):nth-child(6n+2){--squad:var(--squad-cat)}
+:root[data-theme=anima] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row):nth-child(6n+3){--squad:var(--squad-dove)}
+:root[data-theme=anima] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row):nth-child(6n+4){--squad:var(--squad-lion)}
+:root[data-theme=anima] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row):nth-child(6n+5){--squad:var(--squad-wolf)}
+:root[data-theme=anima] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row):nth-child(6n){--squad:var(--squad-bat)}
+:root[data-theme=anima] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row):hover{border-color:var(--squad);transform:translate(-2px,-2px);box-shadow:inset 4px 0 var(--squad),5px 5px 0 color-mix(in srgb,var(--squad) 55%,transparent)}
+:root[data-theme=anima] :is(.rw-list,.project-list){border:0}
+:root[data-theme=anima] :is(.badge,.category-tag,.reading-state){color:#ffd66b;font-weight:700;letter-spacing:.02em}
+:root[data-theme=anima] :is(.console-project-menu,.action-menu-items,dialog,.theme-options){background:#181f3d;border-color:#46528a;box-shadow:inset 0 3px 0 var(--squad-lion),var(--preset-popover-shadow)}
+:root[data-theme=anima] :is(input,select,textarea){background:#141a33;border-color:#3d4a7a}
+:root[data-theme=anima] :is(input,select,textarea):focus{border-color:var(--preset-accent)}
+/* Call to action: squad gold with an offset rabbit-pink impact shadow. */
+:root[data-theme=anima] :is(.rw-primary,.primary){font-weight:800;box-shadow:4px 4px 0 var(--squad-rabbit);transition:transform .12s ease,box-shadow .12s ease}
+:root[data-theme=anima] :is(.rw-primary,.primary):hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--squad-rabbit)}
+:root[data-theme=anima] :is(.rw-primary,.primary):active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--squad-rabbit)}
+:root[data-theme=anima] :is(.document blockquote,.note-document blockquote){border-left:4px solid var(--squad-dove);background:#8ee6ff12;border-radius:0 12px 0 12px}
+:root[data-theme=anima] :is(.document h2,.note-document h2){font-style:italic}
+:root[data-theme=anima] :is(.document h2,.note-document h2)::before{content:"";display:inline-block;width:10px;height:.8em;margin-right:8px;background:var(--squad-lion);transform:skewX(-18deg)}
+
+/* Cyberpunk: a dense city-grid surface, hot magenta signals and acid controls. */
+:root[data-theme=cyberpunk]{
+  --rw-paper:#100e18;--rw-side:#181322;--rw-ink:#f4eaff;--rw-sub:#c3afcf;
+  --rw-line:#54405f;--rw-hover:#2d1938;--rw-select:#4a1d4c;
+  --rw-solid:#eaff73;--rw-on-solid:#161624;
+  --preset-accent:#ff72cd;--preset-positive:#73eddf;--preset-negative:#ffa0ad;
+  --preset-add:#143d42;--preset-del:#4b253e;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:Impact,"Arial Narrow","Microsoft YaHei",sans-serif;
+  --preset-radius:2px;--preset-row-radius:2px;
+  --preset-popover-shadow:7px 7px 0 #ff45ad35,0 22px 44px #000c;
+  --rail:192px;
+}
+:root[data-theme=cyberpunk] .console-shell{background:radial-gradient(circle at 85% 13%,#61204a66 0,transparent 29%),linear-gradient(90deg,#ff72cd0c 1px,transparent 1px),linear-gradient(#ff72cd0c 1px,transparent 1px),#100e18;background-size:auto,44px 44px,44px 44px,auto}
+:root[data-theme=cyberpunk] .console-main{background:transparent}
+:root[data-theme=cyberpunk] .console-sidebar{background:#181322ee;border-right:2px solid #ff72cd;box-shadow:5px 0 0 #ff72cd18;gap:18px}
+:root[data-theme=cyberpunk] .console-topbar{padding-block:15px;background:#191326f2;border-bottom:2px solid #eaff73}
+:root[data-theme=cyberpunk] .console-sidebar-brand{font-family:var(--preset-heading-font);font-size:16px;letter-spacing:.08em;color:#eaff73}
+:root[data-theme=cyberpunk] .console-nav-item{border:1px solid transparent;text-transform:uppercase;letter-spacing:.025em}
+:root[data-theme=cyberpunk] .console-nav-item.is-active{border-color:#ff72cd;background:#4b1a4e;color:#fff1fc;box-shadow:inset 3px 0 #eaff73,3px 3px 0 #eaff7333}
+:root[data-theme=cyberpunk] .page-header h1{font-size:27px;letter-spacing:.045em;text-transform:uppercase;color:#f3eaff;text-shadow:2px 2px 0 #ff45ad80}
+:root[data-theme=cyberpunk] .page-header{padding-bottom:11px;border-bottom:1px solid #ff72cd}
+:root[data-theme=cyberpunk] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row){padding-inline:14px;margin-bottom:7px;background:#1c1728;border:1px solid #604069}
+:root[data-theme=cyberpunk] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row):hover{background:#30203b;border-color:#ff72cd;box-shadow:inset 4px 0 #eaff73}
+:root[data-theme=cyberpunk] :is(.badge,.category-tag,.reading-state){color:#dff878;font-family:Consolas,"Microsoft YaHei",monospace}
+:root[data-theme=cyberpunk] :is(.console-project-menu,.action-menu-items,dialog,.theme-options){background:#21172b;border-color:#a34d8b}
+:root[data-theme=cyberpunk] :is(input,select,textarea){background:#20162c;border-color:#765071}
+:root[data-theme=cyberpunk] :is(.rw-primary,.primary){box-shadow:4px 4px 0 #ff72cd8a;font-weight:700}
+
+/* Geek: a readable terminal workspace with code-like rails and status colors. */
+:root[data-theme=geek]{
+  --rw-paper:#0d1512;--rw-side:#111d17;--rw-ink:#e0f1e4;--rw-sub:#acc7b4;
+  --rw-line:#355442;--rw-hover:#1b3023;--rw-select:#20402c;
+  --rw-solid:#73e69a;--rw-on-solid:#092016;
+  --preset-accent:#89eea8;--preset-positive:#9af0b6;--preset-negative:#f0ae8e;
+  --preset-add:#1c4630;--preset-del:#4b302c;
+  --preset-body-font:"Segoe UI","Microsoft YaHei",sans-serif;
+  --preset-heading-font:"SFMono-Regular",Consolas,"Microsoft YaHei",monospace;
+  --preset-radius:3px;--preset-row-radius:3px;
+  --preset-popover-shadow:0 18px 36px #000b,0 0 0 1px #73e69a55;
+  --rail:202px;
+}
+:root[data-theme=geek] .console-shell{background:linear-gradient(transparent 95%,#73e69a09 96%),#0d1512;background-size:100% 32px,auto}
+:root[data-theme=geek] .console-main{background:transparent}
+:root[data-theme=geek] .console-sidebar{background:#101b15;border-right:1px dashed #5b8b67;gap:16px}
+:root[data-theme=geek] .console-topbar{padding-block:14px;background:#132019;border-bottom:1px solid #66b580}
+:root[data-theme=geek] .console-sidebar-brand{font-family:var(--preset-heading-font);font-size:14px;letter-spacing:.015em;color:#a5f5bd}
+:root[data-theme=geek] .console-nav-item{font-family:var(--preset-heading-font);font-size:12px;border-left:2px solid transparent;padding-left:9px}
+:root[data-theme=geek] .console-nav-item.is-active{border-left-color:#8eeda9;background:#1c3a28;color:#d5ffdc}
+:root[data-theme=geek] .page-header h1{font-size:22px;font-weight:650;color:#a7f5bf}
+:root[data-theme=geek] .page-header h1::before{content:"> ";color:#70c78e}
+:root[data-theme=geek] :is(.rw-list,.project-list){border-top:1px dashed #5b8b67}
+:root[data-theme=geek] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row){padding-inline:12px;border-bottom:1px dashed #3a5b46}
+:root[data-theme=geek] :is(.rw-list-row,.project-row,.paper-card,.knowledge-row):hover{background:#192c20;box-shadow:inset 2px 0 #83e9a3}
+:root[data-theme=geek] :is(.rw-list-meta,.meta,.badge,.category-tag,.reading-state){font-family:Consolas,"Microsoft YaHei",monospace;font-size:11px}
+:root[data-theme=geek] :is(.badge,.category-tag,.reading-state){color:#d6cb86}
+:root[data-theme=geek] :is(.console-project-menu,.action-menu-items,dialog,.theme-options){background:#17251c;border-color:#50745a}
+:root[data-theme=geek] :is(input,select,textarea){background:#132119;border-color:#45684f}
+:root[data-theme=geek] :is(.rw-primary,.primary){font-family:var(--preset-heading-font);font-weight:700}
+
+@media(max-width:775px){
+  :root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]){
+    --workbench-gutter:14px;
+  }
+  :root:is([data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) .page-header h1{font-size:clamp(19px,5vw,24px)}
+  :root:is([data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.rw-list-row,.project-row,.paper-card,.knowledge-row){padding-inline:10px}
+  :root[data-theme=bento] :is(.rw-list,.project-list,.literature-grid){grid-template-columns:1fr}
+  :root[data-theme=glass] .console-sidebar{backdrop-filter:none;background:#f4f9fb}
+  :root[data-theme=glass] .console-topbar{backdrop-filter:none;background:#e9f2f6}
+  :root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) .console-sidebar.is-open{max-height:75dvh;overflow:auto}
+}
+
+@media(prefers-reduced-transparency:reduce){
+  :root[data-theme=glass] :is(.console-sidebar,.console-topbar,.console-project-menu,.action-menu-items,dialog){backdrop-filter:none;background:#f5fafc}
+}
+
+@media(prefers-reduced-motion:reduce){
+  :root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.console-nav-item,.rw-list-row,.project-row,.paper-card,button,.button){transition:none!important;animation:none!important}
+  :root[data-theme=anima] :is(.console-nav-item,.rw-list-row,.project-row,.paper-card,.knowledge-row,.rw-primary,.primary){transform:none!important}
+}
+
+@media print{
+  :root:is([data-theme=claude],[data-theme=codex],[data-theme=notion],[data-theme=linear],[data-theme=glass],[data-theme=bento],[data-theme=brutalist],[data-theme=swiss],[data-theme=retro],[data-theme=collage],[data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]){
+    --rw-paper:#fff;--rw-side:#fff;--rw-ink:#111;--rw-sub:#444;--rw-line:#bbb;
+    --rw-hover:#fff;--rw-select:#eee;--rw-solid:#111;--rw-on-solid:#fff;
+  }
+  :root[data-theme=bento] :is(.rw-list,.project-list,.literature-grid){display:block}
+  :root:is([data-theme=glass],[data-theme=collage],[data-theme=brutalist]) :is(.rw-list-row,.project-row,.paper-card){box-shadow:none;background:#fff}
+  :root:is([data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.console-shell,.console-main,.rw-list-row,.project-row,.paper-card,.knowledge-row){background:#fff;box-shadow:none;border-color:#bbb}
+  :root:is([data-theme=anima],[data-theme=cyberpunk],[data-theme=geek]) :is(.page-header h1,.badge,.category-tag,.reading-state){color:#111;text-shadow:none}
+  :root[data-theme=anima] :is(.console-topbar,.page-header){background:none}
+}

@@ -6,10 +6,10 @@ description: Start and use the Chinese-first local LLM Wiki research cockpit. Us
 
 The website is a simple loopback visualization and interaction layer, not a second knowledge engine.
 
-1. Call `llmwiki_web_start` with optional `home` or `port` when the user asks to open the site.
-2. Return the URL from the tool. It binds to `127.0.0.1` only.
-3. If a shell launch is needed, run `python -I -B <plugin>/scripts/web_server.py`; keep the host loopback. For a Windows desktop shortcut without a terminal, target `pythonw.exe -I -B <plugin>/scripts/desktop_launcher.py --home <actual-home> --port <actual-port>`. It reuses the existing background starter, opens the browser after health checks, and exits. Never wrap it in a visible terminal, create startup tasks, or kill an existing service without user intent. Closing the browser does not stop the background server.
-4. For the separately installed Windows desktop application, open `%LOCALAPPDATA%/Programs/WildResearchWorkbench/WildResearchWorkbench.exe` (desktop shortcut: “野人工作台（桌面版）”). It uses the same data home, or `--home <actual-home>` for a custom registry. Its server exits with the native window; repeated launch focuses that window. Do not pass `--debug-port` for everyday use. Its optional build lives in the source repository's `desktop/`, outside the plugin cache; source changes require rebuilding/installing the desktop snapshot.
+1. Call `llmwiki_web_start` with optional `home` when the user asks to open the workbench. When the Windows desktop app is installed, the tool launches it (a repeat call focuses the window only with `open_browser: true`) and returns its loopback URL with `desktop: true`; no browser website is started. Only machines without the desktop app fall back to the loopback website.
+2. For the desktop app, tell the user the “野人工作台” window is open; for the website fallback, return the URL. Both bind to `127.0.0.1` only.
+3. When the desktop app is installed, the user works only in it: do not start `scripts/web_server.py` for the browser, create website shortcuts (including `desktop_launcher.py`), or add startup tasks. Without the desktop app, `python -I -B <plugin>/scripts/web_server.py` remains the fallback; keep the host loopback. Never kill an existing service without user intent.
+4. The desktop app is `%LOCALAPPDATA%/Programs/WildResearchWorkbench/WildResearchWorkbench.exe` (desktop and Start-menu shortcut: “野人工作台”). It uses the same data home, or `--home <actual-home>` for a custom registry. Its server exits with the native window; repeated launch focuses that window. Do not pass `--debug-port` for everyday use. Its build lives in the source repository's `desktop/`, outside the plugin cache; source changes require rebuilding/installing the desktop snapshot.
 
 The website brand is “野人工作台”. Its default application scale is 125%, independently of browser zoom; responsive layouts use matching breakpoints. Do not instruct the user to adjust browser zoom for the normal display.
 
@@ -21,7 +21,7 @@ The Chinese-first site provides:
 - 文献使用单列表与搜索/类型/阅读状态/收藏筛选，配对笔记及添加指令按需展开；
 - 原文阅读与中文精读对照阅读，小屏自动改为单列；
 - 科研记录采用平面分隔线列表，显示标题及紧凑日期/来源/真实批注数，搜索默认收起；手动笔记保留连续 Markdown 正文、截图粘贴、引用批注与自动保存；
-- 主操作统一加号实心按钮；侧栏底部与设置页支持浅色、深色、跟随系统，选择在当前浏览器持久化，首次绘制前生效，跟随系统响应实时变化；
+- 主操作统一加号实心按钮；侧栏底部与设置页支持浅色、深色、跟随系统，以及 13 个视觉风格选项；蒸汽波发现后进入同一风格选项布局；选择在当前浏览器持久化，首次绘制前生效，跟随系统响应实时变化；
 - Markdown 阅读页只有正文与折叠目录，页面操作在“更多”；
 - 存储设置按需展开，高级路径默认收起，添加项目链接可直接展开对应表单。
 

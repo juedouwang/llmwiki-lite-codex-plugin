@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string] $SourceDirectory = (Join-Path $PSScriptRoot 'dist\WildResearchWorkbench')
+    [string] $SourceDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -11,15 +11,16 @@ if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is not set.' }
 
 $AppName = 'WildResearchWorkbench'
 $ExeName = "$AppName.exe"
+$SourceDirectory = if ($SourceDirectory) { $SourceDirectory } else { Join-Path $PSScriptRoot 'dist\WildResearchWorkbench' }
 $ProgramsRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs'))
 $InstallRoot = Join-Path $ProgramsRoot $AppName
 $InstalledExe = Join-Path $InstallRoot $ExeName
 $SourceRoot = [IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\')
 # ASCII source also works in Windows PowerShell 5.1 without relying on a BOM.
-# The exact shortcut label is: U+91CE U+4EBA U+5DE5 U+4F5C U+53F0
-# U+FF08 U+684C U+9762 U+7248 U+FF09 (full-width parentheses).
-$ShortcutName = -join [char[]]@(0x91CE, 0x4EBA, 0x5DE5, 0x4F5C, 0x53F0,
-    0xFF08, 0x684C, 0x9762, 0x7248, 0xFF09)
+# The exact shortcut label is: U+91CE U+4EBA U+5DE5 U+4F5C U+53F0.
+$ShortcutName = -join [char[]]@(0x91CE, 0x4EBA, 0x5DE5, 0x4F5C, 0x53F0)
+# Earlier installs used the label plus U+FF08 U+684C U+9762 U+7248 U+FF09.
+$LegacyShortcutName = $ShortcutName + (-join [char[]]@(0xFF08, 0x684C, 0x9762, 0x7248, 0xFF09))
 
 function Assert-NoReparsePoint([string] $Path, [switch] $Recurse) {
     $full = [IO.Path]::GetFullPath($Path)
@@ -88,6 +89,7 @@ $desktop = [Environment]::GetFolderPath('DesktopDirectory')
 $startMenu = [Environment]::GetFolderPath('Programs')
 if (-not $desktop -or -not $startMenu) { throw 'Cannot locate the current user shortcut folders.' }
 $shortcutPaths = @((Join-Path $desktop "$ShortcutName.lnk"), (Join-Path $startMenu "$ShortcutName.lnk"))
+$legacyShortcutPaths = @((Join-Path $desktop "$LegacyShortcutName.lnk"), (Join-Path $startMenu "$LegacyShortcutName.lnk"))
 if (-not $PSCmdlet.ShouldProcess($InstallRoot, 'Install desktop bundle and desktop/start-menu shortcuts')) {
     return
 }
@@ -165,6 +167,15 @@ try {
             $shortcut.Save()
         } finally {
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut)
+        }
+    }
+    # Retire shortcuts under the old label, but only those that launch this app.
+    foreach ($path in $legacyShortcutPaths) {
+        if (Test-Path -LiteralPath $path) {
+            $shortcut = $shell.CreateShortcut($path)
+            try { $ours = $shortcut.TargetPath -eq $InstalledExe }
+            finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut) }
+            if ($ours) { Remove-Item -LiteralPath $path -Force }
         }
     }
     if ($oldMoved) {

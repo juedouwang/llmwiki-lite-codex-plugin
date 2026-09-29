@@ -22,13 +22,27 @@ const assert=require('node:assert/strict');
     await page.reload();assert.equal(await theme(),'vapor','persists across reloads');
     await page.locator('[data-workbench-nav=todos]').click();await page.locator('#research-progress').waitFor();
     assert.equal(await page.locator('.theme-options [data-theme-choice=vapor]').count(),1,'found option survives in-app navigation');
+    assert.equal(await page.locator('.theme-options .theme-choice-group:last-child [data-theme-choice=vapor]').count(),1,'vapor belongs with the other styles');
+    assert.ok(await page.locator('.theme-options [data-theme-choice]').evaluateAll(buttons=>buttons.every(button=>getComputedStyle(button).justifyContent==='flex-start')),'menu choices align at the leading edge');
     await page.locator('.theme-menu summary').click();await page.locator('.theme-options [data-theme-choice=light]').click();
     assert.equal(await theme(),'light');assert.equal(await page.locator('.theme-options [data-theme-choice=vapor]').count(),1);
+    await page.goto(origin+'/settings');
+    assert.equal(await page.locator('.theme-preset-grid [data-theme-choice=vapor]').count(),1,'vapor is a matching style card');
+    assert.equal(await page.locator('.theme-preset-grid [data-theme-choice]').count(),14);
+    const positions=await page.locator('.theme-preset-grid [data-theme-choice]').evaluateAll(buttons=>buttons.map(button=>({
+      choice:button.dataset.themeChoice,swatchX:button.querySelector('.theme-swatch').getBoundingClientRect().x,
+      alignment:getComputedStyle(button).justifyContent
+    })));
+    assert.ok(positions.every(item=>item.alignment==='flex-start'),'all style cards align at the leading edge');
+    assert.ok(Math.abs(positions[1].swatchX-positions.at(-1).swatchX)<1,'vapor card swatch aligns with the second column');
+    await page.locator('.theme-preset-grid [data-theme-choice=vapor]').click();assert.equal(await theme(),'vapor');
+    await page.locator('.theme-mode-grid [data-theme-choice=light]').click();assert.equal(await theme(),'light');
+    await page.goto(origin+base+'/todos');
     await page.locator('main h1').click();await type();assert.equal(await theme(),'vapor');
     await type();assert.equal(await theme(),'light','returns to the remembered everyday theme');
     await page.goto(origin+'/search');await page.locator('#q').click();await type();
     assert.equal(await theme(),'light','typing in a field never flips the theme');
     assert.deepEqual(errors,[]);
-    console.log('Theme easter egg: hidden until found, avatar + Konami toggle, persistence, navigation, field guard PASS');
+    console.log('Theme easter egg: discovery, unified picker alignment, persistence, navigation and field guard PASS');
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exit(1);});

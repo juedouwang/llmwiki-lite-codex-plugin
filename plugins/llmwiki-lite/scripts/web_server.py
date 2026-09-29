@@ -774,6 +774,84 @@ def is_server(host: str, port: int) -> bool:
     except (OSError, ValueError, json.JSONDecodeError):
         return False
 
+def _spawn_detached(command: list[str]) -> subprocess.Popen:
+    """Start a silent process that outlives the caller's console and job."""
+    kwargs: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if os.name != "nt":
+        kwargs["start_new_session"] = True
+        return subprocess.Popen(command, **kwargs)
+    base_flags = (
+        subprocess.CREATE_NO_WINDOW
+        | subprocess.DETACHED_PROCESS
+        | subprocess.CREATE_NEW_PROCESS_GROUP
+    )
+    breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+    kwargs["creationflags"] = base_flags | breakaway
+    try:
+        return subprocess.Popen(command, **kwargs)
+    except OSError:
+        kwargs["creationflags"] = base_flags
+        return subprocess.Popen(command, **kwargs)
+
+
+def desktop_executable() -> Path | None:
+    """The installed Windows desktop app, which replaces the browser site when present."""
+    base = os.environ.get("LOCALAPPDATA")
+    if os.name != "nt" or not base:
+        return None
+    executable = Path(base) / "Programs" / "WildResearchWorkbench" / "WildResearchWorkbench.exe"
+    return executable if executable.is_file() else None
+
+
+def _desktop_url(root: Path) -> str | None:
+    """The live loopback URL recorded by a running desktop window for this home."""
+    try:
+        url = json.loads((root / "desktop" / "instance.json").read_text(encoding="utf-8"))["url"]
+        parsed = urlparse(url)
+        port = parsed.port
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    if parsed.hostname != "127.0.0.1" or not port:
+        return None
+    return url if is_server("127.0.0.1", port) else None
+
+
+def start_desktop(
+    executable: Path, home: str | None = None, focus: bool = True
+) -> dict[str, Any]:
+    root = llmwiki_home(home)
+    result: dict[str, Any] = {"ok": True, "running": True, "desktop": True, "home": str(root)}
+    url = _desktop_url(root)
+    if url and not focus:
+        return {**result, "started": False, "url": url}
+    # The app is single-instance per home: a repeated launch only focuses its window.
+    _spawn_detached([str(executable), "--home", str(root)])
+    if url:
+        return {**result, "started": False, "url": url}
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        url = _desktop_url(root)
+        if url:
+            return {**result, "started": True, "url": url}
+        time.sleep(0.2)
+    raise LLMWikiError(f"桌面版未能启动，请查看 {root / 'logs' / 'desktop.log'}。")
+
+
+def start_workbench(
+    home: str | None = None, port: int | None = None, open_browser: bool = False
+) -> dict[str, Any]:
+    """Open the installed desktop app; only machines without it use the browser site."""
+    executable = desktop_executable()
+    if executable:
+        return start_desktop(executable, home, focus=open_browser)
+    return start_background(home=home, port=port, open_browser=open_browser)
+
+
 def start_background(
     home: str | None = None, port: int | None = None, open_browser: bool = False
 ) -> dict[str, Any]:
@@ -809,28 +887,7 @@ def start_background(
         "--port",
         str(selected),
     ]
-    kwargs: dict[str, Any] = {
-        "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-        "close_fds": True,
-    }
-    if os.name == "nt":
-        base_flags = (
-            subprocess.CREATE_NO_WINDOW
-            | subprocess.DETACHED_PROCESS
-            | subprocess.CREATE_NEW_PROCESS_GROUP
-        )
-        breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
-        kwargs["creationflags"] = base_flags | breakaway
-        try:
-            process = subprocess.Popen(command, **kwargs)
-        except OSError:
-            kwargs["creationflags"] = base_flags
-            process = subprocess.Popen(command, **kwargs)
-    else:
-        kwargs["start_new_session"] = True
-        process = subprocess.Popen(command, **kwargs)
+    process = _spawn_detached(command)
     deadline = time.monotonic() + 4
     while time.monotonic() < deadline:
         if is_server(host, selected):

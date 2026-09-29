@@ -365,6 +365,15 @@ def test_web(
             and ".timeline-card" in style_text,
             "research records timeline connector CSS missing",
         )
+        presets = ("claude", "codex", "notion", "linear", "glass", "bento",
+                   "brutalist", "swiss", "retro", "collage", "anima", "cyberpunk", "geek")
+        require('/static/style-presets.css' in project_text, "appearance stylesheet missing")
+        require(all(f'data-theme-choice="{name}"' in project_text for name in presets),
+                "appearance choices missing from sidebar")
+        code, body, _ = request(connection, "GET", "/static/style-presets.css")
+        preset_css = body.decode("utf-8")
+        require(code == 200 and all(f"[data-theme={name}]" in preset_css for name in presets),
+                "appearance styles missing")
         code, body, _ = request(connection, "GET", f"{records_base}/{encoded_record}")
         record_text = body.decode("utf-8")
         for token in ("\u8bb0\u5f55\u65f6\u95f4", "\u9636\u6bb5\u6027\u7406\u89e3", "\u8c03\u6574\u91c7\u6837\u65b9\u6848", "\u5173\u8054\u6750\u6599"):
@@ -714,8 +723,10 @@ def test_platform_metadata() -> None:
         )
     for script in sorted(SCRIPTS.glob("*.py")):
         text = script.read_text(encoding="utf-8")
-        # Adapter environment keys are protocol identifiers, not user-facing host wording.
+        # Adapter keys are protocol identifiers; the named appearance preset is user-facing.
         wording = text.replace('"CODEX_HOME"', '').replace("'CODEX_HOME'", '')
+        if script.name == "research_web_ui.py":
+            wording = wording.replace('"Codex 灵感"', '')
         require(
             "Codex" not in wording and "CODEX" not in wording,
             f"host-specific wording in {script.name}",

@@ -36,7 +36,7 @@ from llmwiki_registry import (  # noqa: E402
 from research_progress import mcp_context_write, mcp_get  # noqa: E402
 from research_reports import report_plan, report_sources, report_finish  # noqa: E402
 from research_records import list_records, read_record, write_record  # noqa: E402
-from web_server import start_background  # noqa: E402
+from web_server import start_workbench  # noqa: E402
 
 SERVER_NAME = "llmwiki"
 SERVER_VERSION = plugin_version()
@@ -129,7 +129,7 @@ TOOLS = [
     },
     {
         "name": "llmwiki_web_start",
-        "description": "Start or reuse the loopback-only local Wiki website and return its URL.",
+        "description": "Open the installed Windows desktop workbench (a repeat call focuses its window only when open_browser is true), or on machines without it start or reuse the loopback-only website; returns the URL.",
         "inputSchema": schema(
             {
                 "home": HOME,
@@ -420,7 +420,7 @@ def dispatch(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "settings": update_settings(**kwargs)}
     if name == "llmwiki_web_start":
         only(args, {"home", "port", "open_browser"})
-        return start_background(**args)
+        return start_workbench(**args)
     if name == "llmwiki_init":
         only(args, {"project_root", "state_root", "wiki_root"})
         return init_project(**args)
