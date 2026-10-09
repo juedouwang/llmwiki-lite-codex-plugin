@@ -10,11 +10,17 @@
 
 程序不会生成固定十五类空页面，也不会重新引入复杂 Research Core。
 
-## Windows 桌面版
-
-现在也可将同一工作台打包为独立 Windows 应用：桌面双击打开，无浏览器标签或终端；沿用已有项目和数据，关闭窗口会结束它自己的本机服务。构建与安装见 [桌面版说明](desktop/README.md)。桌面依赖单独放在 `desktop/`，不改变 AI 插件的运行环境。
-
 ## 安装
+
+分两部分：**AI 插件**负责在对话里理解项目、写科研记录和维护知识库；**桌面版**（可选，Windows）用一个独立窗口浏览这些内容。两者读写同一份本地数据。
+
+### 桌面版（Windows 10/11，64 位）
+
+1. 从 [Releases](https://github.com/juedouwang/llmwiki-lite-codex-plugin/releases/latest) 下载 `WildResearchWorkbench-<版本>-windows-x64.zip`，可用同名 `.sha256` 文件核对完整性。
+2. 解压后双击 `install.cmd`：程序装到当前用户目录，并创建「野人工作台」桌面和开始菜单快捷方式。不需要管理员权限，也不需要 Python。
+3. 首次运行若出现「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」（程序未做付费代码签名）。需要 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)，Windows 10/11 一般已自带。
+
+桌面版每天最多向 GitHub 查询一次最新版本，有新版时在顶部提示下载；设置环境变量 `LLMWIKI_UPDATE_CHECK=0` 可关闭。没有桌面版的电脑，插件会改用浏览器打开同一个本地工作台。构建细节见 [桌面版说明](desktop/README.md)。
 
 ### Codex
 
@@ -25,7 +31,7 @@ codex plugin marketplace add https://github.com/juedouwang/llmwiki-lite-codex-pl
 codex plugin add llmwiki-lite@llmwiki-lite
 ```
 
-Marketplace 清单位于 `.agents/plugins/marketplace.json`，Plugin 位于 `plugins/llmwiki-lite/`。
+安装后在 Codex 中打开 `/hooks`，信任 `llmwiki-lite` 的 Hook，否则智能记录不会自动工作。Marketplace 清单位于 `.agents/plugins/marketplace.json`，Plugin 位于 `plugins/llmwiki-lite/`。
 
 ### Claude Code
 
@@ -56,7 +62,7 @@ python llmwiki-lite-codex-plugin/plugins/llmwiki-lite/opencode/install.py
 网页端面向中国研究生的日常科研使用：
 
 - 统一浅灰侧栏与白色内容区，首页仅保留项目列表；
-- 知识库使用可筛选的单列表，移除重复统计、分类卡片与常驻维护说明；
+- 知识库按类型分组（项目现状、总览、架构原理、结论、实验、数据、操作指南、概念术语、文献综述、规划），每类一个图标，可筛选；每个项目的「项目现状」页置顶并默认打开；
 - 文献目录只收录明确添加的文献：粘贴地址、DOI 或 arXiv，或通过“更多 → 明确导入本地文件”从项目文件导入，项目里的文件不会自动混入目录；
 - “更多 → 浏览项目内文献文件”自动发现项目目录中的 PDF、EPUB、DOCX 和 HTML，区分论文、补充材料、专利与报告，可按阅读状态、类型和收藏筛选；
 - PDF 可直接在网页内阅读，也可与 AI 生成的简体中文精读 Markdown 左右双栏对照；
@@ -122,7 +128,7 @@ python -B plugins/llmwiki-lite/scripts/task_cli.py write --args-file -
 ## 存储
 
 - 新用户未配置时：`<project-root>/wiki`
-- 当前用户推荐的人类可读根目录：`E:\wiki_obsidian`
+- 可在设置里指定统一的 Wiki 根目录（例如一个 Obsidian 仓库），新项目各用其中的子目录
 - 机器状态与人类 Markdown 分开保存
 - 网页可修改默认位置和项目位置
 - 移动时默认复制内容，旧目录永不自动删除
@@ -143,11 +149,7 @@ https://github.com/juedouwang/llmwiki-research-codex-plugin
 
 两条发布线使用不同仓库名、Marketplace 名和 Plugin 名，可以并行维护。
 
-## 发布与更新
-
-Codex 与 Claude Code 共用同一仓库和版本号，发布维护以 `main` 分支和版本标签（例如 `v0.3.3`）为准。每次推送 `main` 或提交版本标签都会由 GitHub Actions 自动执行验证；版本标签通过验证后自动创建 GitHub Release。
-
-安装后更新：
+## 更新
 
 ```powershell
 # Codex
@@ -162,16 +164,25 @@ codex plugin add llmwiki-lite@llmwiki-lite
 python plugins/llmwiki-lite/opencode/install.py
 ```
 
-重新安装后请新开对话，让新的 Skill 和 MCP 配置生效。
+重新安装后请新开对话，让新的 Skill 和 MCP 配置生效。桌面版按顶部提示下载新的 zip，关闭工作台后再运行一次 `install.cmd`，数据不受影响。
 
-## 验证
+## 发布
+
+Codex、Claude Code 与桌面版共用一个版本号（两份 `plugin.json`），以 `main` 分支和 `vX.Y.Z` 标签为准。推送 `main` 或 PR 时 GitHub Actions 运行检查并试构建桌面版；推送标签后自动校验版本、按 `CHANGELOG.md` 生成 Release 说明，并附上桌面版 zip 与 SHA-256。步骤见 [RELEASING.md](RELEASING.md)。
+
+## 开发
 
 ```powershell
 $env:PYTHONUTF8='1'
 ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/opencode plugins/llmwiki-lite/tests
 python -B plugins/llmwiki-lite/tests/smoke_test.py
 python plugins/llmwiki-lite/opencode/install.py --dry-run
-python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/llmwiki-lite
+
+# 把当前代码装进本机 Claude Code 和 Codex（Marketplace 指向本仓库时）；提交的版本号不变
+powershell -ExecutionPolicy Bypass -File tools/refresh-local-plugin.ps1
+
+# 从源码运行桌面版：改完重开即生效，无需构建安装（首次先运行一次 desktop/build.ps1）
+powershell -ExecutionPolicy Bypass -File desktop/run-dev.ps1
 ```
 
 ### 科研连续性（当前开发版）

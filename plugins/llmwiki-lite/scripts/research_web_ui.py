@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import html
+import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +12,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from llmwiki_core import LLMWikiError, _wiki_page_title, status, wiki_list
-from llmwiki_registry import get_project, list_projects, load_settings
+from llmwiki_registry import get_project, list_projects, llmwiki_home, load_settings
 from markdown_renderer import plain_text, render_markdown
 from research_records import CST, EMPTY_SECTION, MAX_LIST_RECORDS, list_records, read_record
 import web_session
@@ -58,6 +60,18 @@ _ICON_PATHS = {
     "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     "more": '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     "star": '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/>',
+    # Knowledge page kinds (Lucide geometry: activity, map, network, lightbulb,
+    # flask-conical, database, list-checks, book-a, library, flag).
+    "kind-status": '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    "kind-overview": '<path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/>',
+    "kind-architecture": '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+    "kind-finding": '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+    "kind-experiment": '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>',
+    "kind-data": '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+    "kind-guide": '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+    "kind-concept": '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m8 13 4-7 4 7"/><path d="M9.1 11h5.7"/>',
+    "kind-review": '<path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/>',
+    "kind-plan": '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
 }
 
 
@@ -71,21 +85,51 @@ def ui_icon(name: str) -> str:
     )
 
 
-CATEGORY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("研究总览", ("index", "overview", "readme", "project", "研究总览", "项目总览", "概览")),
-    ("文献与阅读", ("paper", "papers", "literature", "survey", "文献", "论文", "阅读", "综述")),
-    ("方法与实现", ("method", "methods", "algorithm", "implementation", "architecture", "方法", "算法", "实现", "模型")),
-    ("数据与样本", ("dataset", "data", "sample", "数据集", "数据", "样本", "标注")),
-    ("实验记录", ("experiment", "experiments", "ablation", "run", "实验", "消融", "训练记录", "运行记录")),
-    ("结果与分析", ("result", "results", "metric", "evaluation", "analysis", "结果", "指标", "评估", "分析")),
-    ("结论与问题", ("claim", "conclusion", "question", "finding", "结论", "问题", "发现", "假设")),
-    ("计划与待办", ("plan", "roadmap", "todo", "backlog", "goal", "计划", "路线图", "待办", "目标")),
-    ("论文与成果", ("thesis", "patent", "publication", "defense", "manuscript", "学位论文", "专利", "投稿", "答辩", "成果")),
-    ("决策记录", ("decision", "decisions", "meeting", "决策", "会议", "讨论记录")),
-    ("资料索引", ("source", "sources", "reference", "bibliography", "资料", "来源", "参考文献", "索引")),
-    ("研究笔记", ("note", "notes", "journal", "diary", "笔记", "日志", "日记")),
+# Knowledge page kinds, in display order: (id, label, icon). Each project keeps
+# one 项目现状 page at STATUS_PAGE; it is listed and opened first.
+KNOWLEDGE_KINDS: tuple[tuple[str, str, str], ...] = (
+    ("project-status", "项目现状", "kind-status"),
+    ("overview", "总览", "kind-overview"),
+    ("architecture", "架构原理", "kind-architecture"),
+    ("finding", "结论", "kind-finding"),
+    ("experiment", "实验", "kind-experiment"),
+    ("data", "数据", "kind-data"),
+    ("guide", "操作指南", "kind-guide"),
+    ("concept", "概念术语", "kind-concept"),
+    ("review", "文献综述", "kind-review"),
+    ("plan", "规划", "kind-plan"),
+    ("other", "其他", "reports"),
 )
-CATEGORY_ORDER = [name for name, _ in CATEGORY_RULES] + ["其他页面"]
+KIND_ORDER = {kind: index for index, (kind, _, _) in enumerate(KNOWLEDGE_KINDS)}
+KIND_LABELS = {kind: label for kind, label, _ in KNOWLEDGE_KINDS}
+KIND_ICONS = {kind: icon for kind, _, icon in KNOWLEDGE_KINDS}
+STATUS_PAGE = "knowledge/project-status.md"
+# A page's frontmatter `type` wins; these older or looser values map onto a kind.
+KIND_ALIASES = {
+    "status": "project-status",
+    "code-analysis": "architecture", "design": "architecture", "protocol": "architecture",
+    "conclusion": "finding", "current-understanding": "finding", "understanding": "finding", "claim": "finding",
+    "experiment-result": "experiment", "result": "experiment", "results": "experiment",
+    "dataset": "data",
+    "how-to": "guide", "manual": "guide", "procedure": "guide", "convention": "guide",
+    "concepts": "concept", "glossary": "concept", "key-concepts": "concept",
+    "literature-synthesis": "review", "survey": "review", "literature-review": "review",
+    "roadmap": "plan", "strategy": "plan",
+}
+# Without a `type`, the file name and title decide; the first matching kind wins.
+# ASCII keywords match whole words, Chinese keywords match anywhere.
+KIND_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("project-status", ("project-status", "现状")),
+    ("finding", ("current-understanding", "finding", "conclusion", "root-cause", "结论", "认识", "根因", "定案")),
+    ("experiment", ("experiment", "experiments", "benchmark", "baseline", "baselines", "ablation", "test", "reproduction", "实验", "测试", "复现", "消融")),
+    ("data", ("dataset", "datasets", "数据集", "样本", "标注")),
+    ("guide", ("guide", "how-to", "howto", "manual", "tutorial", "convention", "指南", "手册", "教程", "步骤", "约定", "规范")),
+    ("concept", ("concept", "concepts", "glossary", "key-concepts", "semantics", "概念", "术语", "名词", "语义")),
+    ("review", ("literature", "survey", "review", "related-work", "trends", "综述", "文献", "调研", "趋势")),
+    ("plan", ("plan", "roadmap", "strategy", "milestone", "proposal", "patent", "规划", "计划", "路线图", "策略", "专利", "开题")),
+    ("architecture", ("architecture", "design", "protocol", "pipeline", "架构", "结构", "原理", "协议", "链路", "模块")),
+    ("overview", ("overview", "readme", "总览", "概览", "简介")),
+)
 
 
 def esc(value: Any) -> str:
@@ -256,10 +300,36 @@ def layout(title: str, body: str, query: str = "", project_id: str | None = None
         f'<header class="console-topbar"><button class="console-menu-button" type="button" aria-label="打开导航菜单" aria-expanded="false" aria-controls="console-sidebar" onclick="toggleConsoleSidebar()">{ui_icon("sidebar")}</button>'
         + _console_breadcrumbs(title, project, active)
         + f'<a class="console-search" href="/search{esc(context_query)}" aria-label="搜索">' + ui_icon('search') + '</a></header>'
-        + f'<div class="console-content"><main id="main-content" tabindex="-1">{body}</main></div>'
+        + f'<div class="console-content">{desktop_update_notice(home)}<main id="main-content" tabindex="-1">{body}</main></div>'
         + '<footer class="workbench-footer"><span>从上次停下的地方继续。</span><span>本地工作台 · 内容保存在你的设备</span></footer></div></div>'
         + LIGHTBOX_HTML + '<script src="/static/app.js" defer></script>'
         + '<script src="/static/workbench-navigation.js" defer></script></body></html>'
+    )
+
+
+def release_version(value: Any) -> tuple[int, ...] | None:
+    """``v0.4.1`` or ``0.4.1-dev.3`` -> (0, 4, 1); anything else -> None."""
+    match = re.match(r"v?(\d+)\.(\d+)\.(\d+)", str(value or "").strip())
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
+def desktop_update_notice(home: str | None) -> str:
+    """A release build of the desktop app records the newest GitHub release; offer it when newer."""
+    current = os.environ.get("LLMWIKI_DESKTOP_VERSION", "")
+    if not current:
+        return ""
+    try:
+        state = json.loads((llmwiki_home(home) / "desktop" / "update.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, LLMWikiError):
+        return ""
+    if not isinstance(state, dict):
+        return ""
+    latest, running, url = release_version(state.get("latest")), release_version(current), str(state.get("url") or "")
+    if not (latest and running and latest > running and url.startswith("https://github.com/")):
+        return ""
+    return (
+        f'<div class="notice update-notice" role="status">野人工作台有新版本 {esc(state["latest"])}（当前 {esc(current)}）。'
+        f'<a href="{esc(url)}" target="_blank" rel="noopener noreferrer">下载新版</a></div>'
     )
 
 
@@ -349,15 +419,50 @@ def format_time(value: str | None) -> str:
     return parsed.strftime("%Y-%m-%d %H:%M") if parsed else value
 
 
-def classify_page(path: str, title: str) -> str:
-    normalized = f"{path} {title}".replace("\\", "/").lower()
-    parts = re.split(r"[/_.\-\s]+", normalized)
-    for category, keywords in CATEGORY_RULES:
+def page_type(target: Path) -> str:
+    """The frontmatter `type` of a Markdown page, or ''."""
+    try:
+        # Pages saved by Windows editors may start with a BOM and use CRLF.
+        with target.open(encoding="utf-8-sig") as handle:
+            head = handle.read(2048)
+    except (OSError, UnicodeDecodeError):
+        return ""
+    if not head.startswith("---"):
+        return ""
+    end = head.find("\n---", 3)
+    match = re.search(r"(?m)^type:\s*[\"']?([\w-]+)", head[: end if end > 0 else len(head)])
+    return match.group(1).lower() if match else ""
+
+
+def page_kind(path: str, title: str, declared: str = "") -> str:
+    declared = KIND_ALIASES.get(declared, declared)
+    if declared in KIND_ORDER:
+        return declared
+    path = path.replace("\\", "/")
+    if path == STATUS_PAGE:
+        return "project-status"
+    if path.lower().startswith("experiments/"):
+        return "experiment"
+    text = f"{Path(path).stem} {title}".lower()
+    words = " " + " ".join(re.findall(r"[a-z0-9]+", text)) + " "
+    for kind, keywords in KIND_KEYWORDS:
         for keyword in keywords:
-            key = keyword.lower()
-            if key in parts or key in normalized:
-                return category
-    return "其他页面"
+            if keyword.isascii():
+                if " " + " ".join(re.findall(r"[a-z0-9]+", keyword)) + " " in words:
+                    return kind
+            elif keyword in text:
+                return kind
+    return "other"
+
+
+def search_label(path: str, title: str, target: Path) -> str:
+    """Search covers the whole Wiki: records and papers say so, knowledge pages give their kind."""
+    top = path.replace("\\", "/").split("/", 1)[0].lower()
+    if top == "records":
+        return "科研记录"
+    if top in {"literature", "papers"}:
+        return "文献"
+    return KIND_LABELS[page_kind(path, title, page_type(target))]
 
 
 def page_records(project: dict[str, Any], pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -365,8 +470,8 @@ def page_records(project: dict[str, Any], pages: list[dict[str, Any]]) -> list[d
     records: list[dict[str, Any]] = []
     for page in pages:
         item = dict(page)
-        item["category"] = classify_page(str(page["path"]), str(page["title"]))
         target = safe_path(wiki_root, str(page["path"]))
+        item["kind"] = page_kind(str(page["path"]), str(page["title"]), page_type(target))
         try:
             item["mtime"] = target.stat().st_mtime
             item["updated"] = datetime.fromtimestamp(item["mtime"]).strftime("%Y-%m-%d %H:%M")
@@ -375,15 +480,6 @@ def page_records(project: dict[str, Any], pages: list[dict[str, Any]]) -> list[d
             item["updated"] = "未知"
         records.append(item)
     return records
-
-
-def grouped(records: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    result = {name: [] for name in CATEGORY_ORDER}
-    for page in records:
-        result[str(page["category"])].append(page)
-    for pages in result.values():
-        pages.sort(key=lambda item: (str(item["title"]).lower(), str(item["path"])))
-    return result
 
 
 def page_link(project_id: str, page: dict[str, Any], *, show_path: bool = False) -> str:
@@ -445,7 +541,10 @@ def knowledge_records(project: dict[str, Any]) -> list[dict[str, Any]]:
         except (LLMWikiError, ValueError, OSError):
             continue
         eligible.append(page)
-    return sorted(page_records(project, eligible), key=lambda item: (str(item["title"]), str(item["path"])))
+    return sorted(
+        page_records(project, eligible),
+        key=lambda item: (KIND_ORDER[item["kind"]], str(item["title"]), str(item["path"])),
+    )
 
 
 def knowledge_count(project: dict[str, Any]) -> int:
@@ -460,8 +559,10 @@ _LANDING_STEMS = ("overview", "readme", "项目总览", "总览", "概览")
 
 
 def landing_page(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Open a project's knowledge on its overview, not whichever title sorts first."""
+    """Open a project's knowledge on its 项目现状, else its overview, not whichever title sorts first."""
     def rank(item: dict[str, Any]) -> int:
+        if item.get("kind") == "project-status":
+            return -1
         stem = Path(str(item["path"])).stem.lower()
         return _LANDING_STEMS.index(stem) if stem in _LANDING_STEMS else len(_LANDING_STEMS)
     return min(records, key=rank)
@@ -481,12 +582,27 @@ def knowledge_surface(
     """The prototype's page directory and actual Markdown share one reading surface."""
     from knowledge_maintenance import widget
     project_id = str(project["id"])
-    rows = ''.join(f'<li data-page-title="{esc((str(item["title"])+" "+str(item["path"])).casefold())}"><a class="knowledge-row" aria-current="{"page" if item["path"] == selected else "false"}" href="{pageurl(project_id, item["path"])}">{ui_icon("reports")}<span>{esc(item["title"])}</span></a></li>' for item in records)
+
+    def row(item: dict[str, Any]) -> str:
+        kind = str(item.get("kind") or "other")
+        return (
+            f'<li data-page-title="{esc((str(item["title"])+" "+str(item["path"])).casefold())}">'
+            f'<a class="knowledge-row" data-kind="{esc(kind)}" aria-current="{"page" if item["path"] == selected else "false"}" '
+            f'href="{pageurl(project_id, item["path"])}" title="{esc(KIND_LABELS[kind])}">{ui_icon(KIND_ICONS[kind])}<span>{esc(item["title"])}</span></a></li>'
+        )
+
+    groups = ''.join(
+        f'<li class="knowledge-kind" data-kind="{kind}"><small>{label}</small><ul class="page-list">'
+        + ''.join(row(item) for item in records if item.get("kind", "other") == kind)
+        + '</ul></li>'
+        for kind, label, _ in KNOWLEDGE_KINDS
+        if any(item.get("kind", "other") == kind for item in records)
+    )
     directory = (
         '<aside class="rw-page-list"><div class="knowledge-directory-heading"><small>项目理解</small>'
         f'<details class="knowledge-search"><summary class="rw-icon-button" aria-label="搜索知识页">{ui_icon("search")}</summary>'
         '<input class="page-filter" type="search" aria-label="筛选知识页" oninput="filterPages(this)" placeholder="搜索知识页"></details></div>'
-        '<ul class="page-list">' + rows + '</ul><p class="filter-empty empty" hidden>没有匹配的知识页</p></aside>'
+        '<ul class="page-list knowledge-kinds">' + groups + '</ul><p class="filter-empty empty" hidden>没有匹配的知识页</p></aside>'
     )
     target = safe_path(Path(str(project["wiki_root"])), selected)
     text = target.read_text(encoding="utf-8")
@@ -599,8 +715,11 @@ def records_page(home: str, project_id: str, params: dict[str, list[str]]) -> st
         metadata = f'<time title="{esc(record.get("recorded_at", ""))}">{esc(date if date != "0000-00-00" else "日期未知")}</time><span>{source}</span>'
         if comment_count is not None:
             metadata += f'<span>{comment_count} 条批注</span>'
-        remove = (f'<button type="button" class="rw-icon-button record-delete" data-delete-note="{note_id}" data-revision="{revision}" aria-label="删除笔记：{esc(record["title"])}" title="删除笔记">{ui_icon("trash")}</button>' if note_id and revision else "")
-        entries.append(f'<article class="rw-list-row" data-record-id="{esc(record_id)}">{ui_icon("notebook" if manual else "message")}<div class="rw-list-main"><a class="timeline-card rw-title-button" href="{recordurl(project_id, record_id)}">{esc(record["title"])}</a><div class="rw-list-meta">{metadata}</div></div><div class="rw-row-actions">{remove}<a class="rw-icon-button" href="{recordurl(project_id, record_id)}" aria-label="打开记录：{esc(record["title"])}" title="打开记录">{ui_icon("open")}</a></div></article>')
+        superseded = bool(record.get("superseded_by"))
+        if superseded:
+            metadata += '<span>已被取代</span>'
+        remove =(f'<button type="button" class="rw-icon-button record-delete" data-delete-note="{note_id}" data-revision="{revision}" aria-label="删除笔记：{esc(record["title"])}" title="删除笔记">{ui_icon("trash")}</button>' if note_id and revision else "")
+        entries.append(f'<article class="rw-list-row{" is-superseded" if superseded else ""}" data-record-id="{esc(record_id)}">{ui_icon("notebook" if manual else "message")}<div class="rw-list-main"><a class="timeline-card rw-title-button" href="{recordurl(project_id, record_id)}">{esc(record["title"])}</a><div class="rw-list-meta">{metadata}</div></div><div class="rw-row-actions">{remove}<a class="rw-icon-button" href="{recordurl(project_id, record_id)}" aria-label="打开记录：{esc(record["title"])}" title="打开记录">{ui_icon("open")}</a></div></article>')
     record_html = '<div class="rw-list records-timeline">' + ''.join(entries) + '</div>'
     if not entries:
         record_html += ('<p class="record-empty muted">没有找到匹配的科研记录。</p>' if query or tag else '<p class="record-empty muted">还没有科研记录。新建一篇笔记，或让 AI 助手“记录刚才的讨论”。</p>')
@@ -779,13 +898,10 @@ def _material_panel(
 
 
 def _record_neighbors(
-    project_root: str, state_root: str | None, current_id: str
+    newest_first: list[dict[str, Any]], current_id: str
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Return (older, newer) neighbors for chronological record paging."""
-    result = list_records(
-        project_root, state_root=state_root, max_records=MAX_LIST_RECORDS
-    )
-    records = list(reversed(list(result.get("records") or [])))
+    records = list(reversed(newest_first))
     ids = [str(item["id"]) for item in records]
     if current_id not in ids:
         return None, None
@@ -793,6 +909,47 @@ def _record_neighbors(
     prev_record = records[index - 1] if index > 0 else None
     next_record = records[index + 1] if index + 1 < len(records) else None
     return prev_record, next_record
+
+
+RESOLVED_SECTIONS = {"下一步行动": ("s", "已完成"), "尚未解决的问题": ("q", "已回答")}
+
+
+def _mark_resolved(content: str, resolved: dict[str, str]) -> str:
+    """Strike through next steps and open questions that later records closed."""
+    if not resolved:
+        return content
+    out: list[str] = []
+    section: tuple[str, str] | None = None
+    count = 0
+    for line in content.split("\n"):
+        heading = re.match(r"^#{2,3}\s+(.+?)\s*$", line)
+        if heading:
+            section, count = RESOLVED_SECTIONS.get(heading.group(1)), 0
+        elif section:
+            bullet = re.match(r"^[-*+]\s+(.+)$", line)
+            if bullet:
+                count += 1
+                if f"{section[0]}{count}" in resolved:
+                    line = f"- ~~{bullet.group(1).strip()}~~（{section[1]}）"
+        out.append(line)
+    return "\n".join(out)
+
+
+def _record_status(project_id: str, record: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> str:
+    """Links to the records that replaced this one, that it replaced, or that closed its items."""
+    def link(record_id: str) -> str:
+        target = by_id.get(record_id)
+        return f'<a href="{recordurl(project_id, record_id)}">{esc(target["title"])}</a>' if target else ""
+
+    rows = [f"这条记录的结论已被取代，以 {link(rid)} 为准。" for rid in record.get("superseded_by") or [] if rid in by_id]
+    rows += [f"这条记录取代了 {link(rid)}。" for rid in record.get("supersedes") or [] if rid in by_id]
+    closed: dict[str, list[str]] = {}
+    for item, rid in sorted((record.get("resolved_items") or {}).items()):
+        closed.setdefault(rid, []).append(("下一步 " if item[0] == "s" else "问题 ") + item[1:])
+    rows += [f"{'、'.join(items)} 已在 {link(rid)} 中完成或回答。" for rid, items in closed.items() if rid in by_id]
+    if not rows:
+        return ""
+    return '<div class="notice record-status">' + "".join(f"<p>{row}</p>" for row in rows) + "</div>"
 
 
 def record_view(home: str, project_id: str, record_id: str) -> str:
@@ -814,6 +971,12 @@ def record_view(home: str, project_id: str, record_id: str) -> str:
     text_files: list[str] = [x for x in related_files if not _is_image_path(x)]
     pages = [str(x) for x in record.get("related_pages") or [] if str(x).strip()]
 
+    universe = list(list_records(
+        str(project["source_root"]), state_root=str(project["state_root"]), max_records=MAX_LIST_RECORDS
+    ).get("records") or [])
+    status_html = _record_status(project_id, record, {str(item["id"]): item for item in universe})
+    content = _mark_resolved(content, record.get("resolved_items") or {})
+
     content_for_render, evidence_images, has_evidence = _extract_evidence_image_bullets(content)
     for item in evidence_images:
         if item not in images:
@@ -832,9 +995,7 @@ def record_view(home: str, project_id: str, record_id: str) -> str:
     tags_html = "".join(
         f'<span class="badge">{esc(tag)}</span>' for tag in record.get("tags") or []
     )
-    prev_record, next_record = _record_neighbors(
-        str(project["source_root"]), str(project["state_root"]), str(record["id"])
-    )
+    prev_record, next_record = _record_neighbors(universe, str(record["id"]))
     prev_link = (
         f'<a class="button" href="{recordurl(project_id, str(prev_record["id"]))}" title="{esc(prev_record["title"])}">&larr; 上一篇</a>'
         if prev_record
@@ -846,7 +1007,7 @@ def record_view(home: str, project_id: str, record_id: str) -> str:
         else ""
     )
     pager_html = f'<div class="record-pager">{prev_link}{next_link}</div>' if (prev_link or next_link) else ""
-    body = f'''<div class="doc-toolbar"><a href="{purl(project_id)}/records">← 科研记录</a></div><section class="record-document"><details class="reader-contents"><summary>记录信息</summary><div class="document-meta"><span class="meta">记录时间：{esc(format_time(str(record.get("recorded_at") or "")))}</span><span class="meta path">{esc(record["path"])}</span>{tags_html}</div></details><article class="document">{rendered}</article>{pager_html}{extra}</section>'''
+    body = f'''<div class="doc-toolbar"><a href="{purl(project_id)}/records">← 科研记录</a></div><section class="record-document"><details class="reader-contents"><summary>记录信息</summary><div class="document-meta"><span class="meta">记录时间：{esc(format_time(str(record.get("recorded_at") or "")))}</span><span class="meta path">{esc(record["path"])}</span>{tags_html}</div></details>{status_html}<article class="document">{rendered}</article>{pager_html}{extra}</section>'''
     return layout(str(record["title"]), body, project_id=project_id, active="records", home=home)
 
 def heading_slug(text: str) -> str:
@@ -936,7 +1097,7 @@ def search_page(home: str, params: dict[str, list[str]]) -> str:
                     continue
                 if query.lower() not in f'{page["title"]}\n{page["path"]}\n{text}'.lower():
                     continue
-                results.append({"project": project, "page": page, "category": classify_page(str(page["path"]), str(page["title"])), "excerpt": highlighted_excerpt(text, query)})
+                results.append({"project": project, "page": page, "category": search_label(str(page["path"]), str(page["title"]), target), "excerpt": highlighted_excerpt(text, query)})
     result_html = "".join(f'''<article class="search-result"><div><span class="category-tag">{esc(item["category"])}</span><span class="meta">{esc(item["project"]["name"])}</span></div><h2><a href="{pageurl(item["project"]["id"], item["page"]["path"])}">{esc(item["page"]["title"])}</a></h2><div class="meta path">{esc(item["page"]["path"])}</div><p>{item["excerpt"]}</p></article>''' for item in results)
     if query and not results:
         result_html = '<div class="empty"><h2>没有找到相关内容</h2><p>可尝试项目术语、算法名、实验指标、作者名或更短的关键词。</p></div>'

@@ -15,7 +15,7 @@ Use this skill for identity and location management only. Registration is not pr
 
 ## Storage policy
 
-- The current user's configured default may be an external root such as `E:\wiki_obsidian`.
+- The current user's configured default may be an external root such as `D:\wiki`.
 - For a new user with no configured default, the default is `<project-root>/wiki`.
 - A configured default is a parent: each project receives `<default-wiki-root>/<project-id>` unless an explicit `wiki_root` is supplied.
 - Machine state belongs in `state_root`; human-readable Markdown belongs in `wiki_root`.

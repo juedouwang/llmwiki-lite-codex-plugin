@@ -153,6 +153,56 @@ class CaptureHookTests(unittest.TestCase):
         context = self.start(cwd=source)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("体素下采样单位是毫米〔踩坑〕", context)
 
+    def test_recall_drops_superseded_records_and_closed_items(self):
+        def write(title, **fields):
+            return write_record(str(self.source), state_root=self.project["state_root"],
+                                project_id=self.project["id"], title=title, **fields)["record"]
+
+        old = write("横纹是 AU3826 积压", understanding="推测横纹来自 AU3826 FIFO 积压，降帧即可修复。",
+                    next_steps=["降帧复测横纹", "抓原始 USB 流"], open_questions=["USB 流是什么格式？"],
+                    tags=["发现"])
+        newer = write("横纹根因定案：传输上限", understanding="老板同样有横纹，属于 AU3826 方案的数据量上限。",
+                      next_steps=["量新板投射器电流"], supersedes=[old["ref"]],
+                      resolves=[old["ref"] + ".s1"], tags=["结果"])
+        context = self.start()["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("横纹是 AU3826 积压", context)
+        self.assertNotIn("降帧复测横纹", context)
+        self.assertIn("横纹根因定案：传输上限〔结果〕", context)
+        # Items of a superseded record are gone with it.
+        self.assertNotIn("抓原始 USB 流", context)
+        self.assertNotIn("USB 流是什么格式", context)
+        self.assertIn(f"{newer['ref']}.s1｜量新板投射器电流", context)
+
+    def test_recall_lists_open_questions_with_refs(self):
+        record = write_record(str(self.source), state_root=self.project["state_root"],
+                              project_id=self.project["id"], title="深度软件按编码条 ID 选标定",
+                              understanding="软件从编码条读 ID，再加载 rgbd_<id>.data。",
+                              open_questions=["新板装的是哪种投射器？"], tags=["发现"])["record"]
+        context = self.start()["hookSpecificOutput"]["additionalContext"]
+        self.assertIn(record["ref"], context)
+        self.assertIn(f"{record['ref']}.q1｜新板装的是哪种投射器？", context)
+
+    def test_session_start_injects_status_page_without_changelog(self):
+        status = Path(self.project["wiki_root"]) / "knowledge" / "project-status.md"
+        status.parent.mkdir(parents=True, exist_ok=True)
+        status.write_text(
+            '---\ntitle: "项目现状"\ntype: project-status\n---\n\n# 项目现状\n\n'
+            "## 在用的版本与配置\n\n| 项目 | 在用 | 状态 |\n|---|---|---|\n| FPGA | `0923-legacy-bar-postreg` | 🔍 |\n\n"
+            "## 当前主线问题\n\n- 深度出不来\n\n## 更新日志\n\n- 2026-10-09 建立本页。\n",
+            encoding="utf-8",
+        )
+        context = self.start()["hookSpecificOutput"]["additionalContext"]
+        status_part = context.split("项目现状（", 1)[1].split("最近记录", 1)[0]
+        self.assertIn("`0923-legacy-bar-postreg`", status_part)
+        self.assertIn("深度出不来", status_part)
+        self.assertNotIn("建立本页", status_part)
+        self.assertNotIn("type: project-status", status_part)
+
+    def test_session_start_without_status_page_asks_for_one(self):
+        context = self.start()["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("还没有项目现状页", context)
+        self.assertIn("knowledge/project-status.md", context)
+
     def test_session_start_without_records_invites_first_record(self):
         context = self.start()["hookSpecificOutput"]["additionalContext"]
         self.assertIn("暂无可用于接续的科研记录", context)
@@ -237,6 +287,14 @@ class CaptureHookTests(unittest.TestCase):
         self.clock += 2 * capture_hook.NUDGE_SPACING_SECONDS + 1
         self.assertEqual(self.stop()["decision"], "block")
 
+    def test_short_session_tail_with_findings_blocks(self):
+        # Real case: the last two turns of a session (5 tool calls, ~3000
+        # characters of diagnosis) ended without any check and were lost.
+        self.start()
+        self.claude(prompt="深度图全黑是什么情况", tools=["Read"] * 2, text="散斑点太少，匹配不上。" * 60)
+        self.claude(prompt="怎么快速标定一遍", tools=["Read"] * 3, text="先备份 param，再按 c 和 3。" * 60)
+        self.assertEqual(self.stop()["decision"], "block")
+
     def test_record_call_resets_checkpoint_without_block(self):
         self.start()
         self.claude(prompt="跑实验", tools=["Bash"] * 6 + [RECORD_TOOL], text="📝 已记录：实验结果")
@@ -276,6 +334,23 @@ class CaptureHookTests(unittest.TestCase):
         self.rollout(turn=True, tools=["llmwiki_record_write"], text="📝 已记录：mAP 0.61 基线")
         self.assertIsNone(self.stop(active=True))
         self.assertEqual(self.state()["backoff"], 0)
+
+    def test_code_mode_mcp_record_counts_as_recorded(self):
+        # Scripted tool mode: the model calls ``exec``; the MCP call is an event.
+        self.start()
+        self.rollout(tools=["exec"] * 8, text="根因找到了。")
+        self.append([{"type": "event_msg", "payload": {"type": "item_completed", "item": {
+            "type": "McpToolCall", "server": "llmwiki", "tool": "llmwiki_record_write",
+            "status": "completed"}}}])
+        self.assertIsNone(self.stop("📝 已记录：横纹根因"))
+        self.assertEqual(self.state()["records"], 1)
+
+    def test_failed_code_mode_record_does_not_count(self):
+        self.start()
+        self.rollout(tools=["exec"] * 8, text="根因找到了。")
+        self.append([{"type": "event_msg", "payload": {"type": "item_completed", "item": {
+            "type": "McpToolCall", "tool": "llmwiki_record_write", "status": "failed"}}}])
+        self.assertEqual(self.stop()["decision"], "block")
 
     def user_turn(self, text):
         self.append([

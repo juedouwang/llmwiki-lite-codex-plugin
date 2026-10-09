@@ -245,7 +245,7 @@ TOOLS = [
     },
     {
         "name": "llmwiki_record_write",
-        "description": "Append one assistant-authored research process entry to the configured daily Markdown file records/YYYY/MM/YYYY-MM-DD.md. Never overwrites an existing entry.",
+        "description": "Append one assistant-authored research process entry to the configured daily Markdown file records/YYYY/MM/YYYY-MM-DD.md. Never overwrites an existing entry. Use supersedes/resolves to mark earlier records or their next steps and open questions as replaced or done; the earlier entries stay unchanged.",
         "inputSchema": schema(
             {
                 "project_root": ROOT,
@@ -262,6 +262,16 @@ TOOLS = [
                 "related_files": {"type": "array", "items": {"type": "string"}},
                 "related_pages": {"type": "array", "items": {"type": "string"}},
                 "tags": {"type": "array", "items": {"type": "string"}},
+                "supersedes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Earlier records whose conclusion this entry corrects or replaces, by ref (e.g. R3fa21c) or full record ID.",
+                },
+                "resolves": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Earlier next steps (R3fa21c.s1) or open questions (R3fa21c.q2) that this entry completes or answers.",
+                },
                 "recorded_at": {"type": "string"},
             },
             ["project_root", "title", "understanding"],
@@ -534,6 +544,8 @@ def dispatch(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 "related_files",
                 "related_pages",
                 "tags",
+                "supersedes",
+                "resolves",
                 "recorded_at",
             },
         )

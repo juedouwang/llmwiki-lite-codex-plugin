@@ -114,7 +114,7 @@ python -I -B scripts/web_server.py --host 127.0.0.1 --port 8765
 - `state_root`：快照、哈希、配置和变化提示。
 - `wiki_root/records/YYYY/MM/YYYY-MM-DD.md`：科研过程日档（助手按记录规则写入或用户要求记录）；同一天追加多条记录，不覆盖历史。
 
-未配置全局默认时，新用户使用 `<project-root>/wiki`。配置例如 `E:\wiki_obsidian` 后，新项目默认使用其独立子目录。网页修改位置时默认复制原内容，并永不自动删除旧目录。
+未配置全局默认时，新用户使用 `<project-root>/wiki`。配置例如 `D:\wiki` 后，新项目默认使用其独立子目录。网页修改位置时默认复制原内容，并永不自动删除旧目录。
 
 ## 安全边界
 
@@ -132,7 +132,7 @@ python -I -B scripts/web_server.py --host 127.0.0.1 --port 8765
 ## 使用示例
 
 ```text
-注册当前项目，把人类可读 Wiki 放到 E:\wiki_obsidian。
+注册当前项目，把人类可读 Wiki 放到 D:\wiki。
 ```
 
 ```text
@@ -162,7 +162,7 @@ $env:PYTHONUTF8='1'
 ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/opencode plugins/llmwiki-lite/tests
 python -B plugins/llmwiki-lite/tests/smoke_test.py
 python plugins/llmwiki-lite/opencode/install.py --dry-run
-python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/llmwiki-lite
+claude plugin validate plugins/llmwiki-lite
 ```
 
 ## 手动科研笔记（开发中 / 未发布）

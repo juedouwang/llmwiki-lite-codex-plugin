@@ -15,6 +15,7 @@ function filterPages(input) {
   const scope=input.closest('.knowledge-list')||input.closest('.sidebar')||input.closest('.panel')||document;
   let visible=0;
   scope.querySelectorAll('[data-page-title]').forEach(el=>{el.hidden=!el.dataset.pageTitle.includes(q);if(!el.hidden)visible++;});
+  scope.querySelectorAll('.knowledge-kind').forEach(group=>{group.hidden=!group.querySelector('[data-page-title]:not([hidden])');});
   const empty=scope.querySelector('.filter-empty');if(empty)empty.hidden=visible!==0;
 }
 const literatureState = {status: 'all', kind: 'all', query: '', favorite: false};

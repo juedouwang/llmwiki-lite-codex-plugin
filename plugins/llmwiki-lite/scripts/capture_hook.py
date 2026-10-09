@@ -38,14 +38,19 @@ from llmwiki_registry import list_projects, load_settings  # noqa: E402
 SCHEMA_VERSION = 1
 MAX_INPUT_BYTES = 1024 * 1024
 MAX_SCAN_BYTES = 4 * 1024 * 1024
-MAX_CONTEXT_CHARS = 6000
+MAX_CONTEXT_CHARS = 8000
 RULES_TEMPLATE = PLUGIN_ROOT / "templates" / "capture-rules.md"
+STATUS_PAGE = "knowledge/project-status.md"
+MAX_STATUS_CHARS = 1800
 MODE_ENV = "LLMWIKI_CAPTURE"
 
 # A checkpoint is due after this much unrecorded work. Each check that ends
 # without a record doubles the thresholds and the spacing (up to MAX_BACKOFF).
-MIN_TOOL_CALLS = 6
-MIN_TURNS = 3
+# In the first day of real use every check produced a record, while a session
+# ending with 2 turns, 5 tool calls and ~3000 reply characters of findings was
+# lost, so the bar sits just below that.
+MIN_TOOL_CALLS = 5
+MIN_TURNS = 2
 MIN_REPLY_CHARS = 2500
 # Hosts do not promise a stable transcript format. When new lines are present
 # but none is recognisable, transcript growth stands in for activity.
@@ -56,7 +61,7 @@ SESSION_TTL_SECONDS = 14 * 24 * 3600
 
 RECALL_SCAN = 40
 RECALL_RECORDS = 6
-RECALL_STEPS = 5
+RECALL_PENDING = {"s": 5, "q": 3}  # unresolved next steps / open questions
 KINDS = ("决策", "结果", "发现", "踩坑", "约定", "问题")
 RECEIPT_TAGS = ("task-receipt", "hook-request-")
 RECORD_TOOL = "llmwiki_record_write"
@@ -71,7 +76,6 @@ CALL_TYPES = {
     "mcp_tool_call",
     "tool_search_call",
 }
-NEXT_STEPS_RE = re.compile(r"(?ms)^#{2,3}\s+下一步行动\s*\n(.*?)(?=^#{1,3}\s|\Z)")
 
 
 def now_iso() -> str:
@@ -202,6 +206,12 @@ def _count(entry: dict[str, Any], activity: Activity) -> None:
             _user_message([str(block.get("text") or "") for block in blocks], activity)
     elif kind == "event_msg" and ptype == "task_started":
         activity.turns += 1
+    elif kind == "event_msg" and ptype == "item_completed":
+        # Some hosts run MCP tools inside a scripted ``exec`` call; the record
+        # tool then only shows up as a completed McpToolCall item.
+        item = payload.get("item")
+        if isinstance(item, dict) and item.get("type") == "McpToolCall" and item.get("status") != "failed":
+            _record_call(item.get("tool"), activity)
 
 
 def scan_transcript(path: Any, start: int) -> Activity:
@@ -352,13 +362,6 @@ def _snippet(content: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _next_steps(content: str) -> list[str]:
-    match = NEXT_STEPS_RE.search(content)
-    if not match:
-        return []
-    return [item.strip() for item in re.findall(r"(?m)^\s*-\s+(.+)$", match.group(1)) if item.strip()]
-
-
 def recall_text(project: dict[str, Any]) -> str:
     from research_records import list_records
 
@@ -372,37 +375,43 @@ def recall_text(project: dict[str, Any]) -> str:
     except Exception:
         return ""
     lines: list[str] = []
-    steps: list[str] = []
+    pending: dict[str, list[str]] = {"s": [], "q": []}
+    seen: set[str] = set()
     for record in listing.get("records", []):
         tags = [str(tag) for tag in record.get("tags") or []]
-        if any(tag.startswith(RECEIPT_TAGS) for tag in tags):
+        if any(tag.startswith(RECEIPT_TAGS) for tag in tags) or record.get("superseded_by"):
             continue
         content = str(record.get("content") or "")
         summary = str(record.get("summary") or "") or _snippet(content)
         if len(summary) < 8:
             continue
+        ref = str(record.get("ref") or "")
         if len(lines) < RECALL_RECORDS:
             # Legacy single-record pages may carry no date; fall back to the file time.
             day = str(record.get("date") or record.get("updated_at") or "")[5:10]
             kind = next((tag for tag in tags if tag in KINDS), "")
             label = f"〔{kind}〕" if kind else ""
             title = _oneline(str(record.get("title") or ""), 40)
-            prefix = f"{day}｜" if day else ""
-            lines.append(f"- {prefix}{title}{label} {_oneline(summary, 90)}")
-        if len(steps) < RECALL_STEPS:
-            for step in _next_steps(content):
-                step = _oneline(step, 80)
-                if step not in steps and len(steps) < RECALL_STEPS:
-                    steps.append(step)
-        if len(lines) >= RECALL_RECORDS and len(steps) >= RECALL_STEPS:
+            lines.append(f"- {' '.join(filter(None, (day, ref)))}｜{title}{label} {_oneline(summary, 90)}")
+        resolved = record.get("resolved_items") or {}
+        for key, field in (("s", "next_steps"), ("q", "open_questions")):
+            for index, item in enumerate(record.get(field) or [], 1):
+                text = _oneline(str(item), 80)
+                if f"{key}{index}" in resolved or text in seen or len(pending[key]) >= RECALL_PENDING[key]:
+                    continue
+                seen.add(text)
+                pending[key].append(f"- {ref}.{key}{index}｜{text}")
+        if len(lines) >= RECALL_RECORDS and all(len(pending[k]) >= RECALL_PENDING[k] for k in pending):
             break
     parts = []
     if lines:
-        parts.append("最近记录（用于接续工作和避免重复记录，详情用 llmwiki_record_list / llmwiki_record_read 查）：\n" + "\n".join(lines))
+        parts.append("最近记录（R 开头的是记录编号；详情用 llmwiki_record_list / llmwiki_record_read 查）：\n" + "\n".join(lines))
     else:
         parts.append("最近记录：暂无可用于接续的科研记录，从这次对话开始记。")
-    if steps:
-        parts.append("最近记录里的下一步（可能已完成，接续前先核对）：\n" + "\n".join(f"- {step}" for step in steps))
+    if pending["s"]:
+        parts.append("还没完成的下一步（可能已经做完，接续前先核对）：\n" + "\n".join(pending["s"]))
+    if pending["q"]:
+        parts.append("还没解决的问题：\n" + "\n".join(pending["q"]))
     wiki_root = _resolved(project.get("wiki_root"))
     if wiki_root is not None:
         knowledge = wiki_root / "knowledge"
@@ -417,9 +426,27 @@ def recall_text(project: dict[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
+def status_text(project: dict[str, Any]) -> str:
+    """The project's 项目现状 page, without its changelog, or a prompt to start one."""
+    wiki_root = _resolved(project.get("wiki_root"))
+    if wiki_root is None:
+        return ""
+    page = wiki_root / STATUS_PAGE
+    try:
+        text = page.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return f"项目现状：本项目还没有项目现状页（{page}）。第一次聊到在用的版本、参数或主线问题时，按上面的规则起草。"
+    body = re.sub(r"(?s)\A---\n.*?\n---\n", "", text.replace("\r\n", "\n"))
+    body = re.sub(r"(?ms)^#{1,3}\s+更新日志\s*\n.*?(?=^#{1,2}\s|\Z)", "", body)
+    body = re.sub(r"\n{3,}", "\n\n", body).strip()
+    if len(body) > MAX_STATUS_CHARS:
+        body = body[:MAX_STATUS_CHARS].rstrip() + "\n…（后略，完整内容读原页）"
+    return f"项目现状（{page}；回答项目问题以此为准，有变化当轮更新）：\n{body}"
+
+
 def session_context(project: dict[str, Any]) -> str:
-    text = rules_text(project) + "\n\n" + recall_text(project)
-    return text[:MAX_CONTEXT_CHARS].rstrip()
+    parts = [rules_text(project), status_text(project), recall_text(project)]
+    return "\n\n".join(part for part in parts if part)[:MAX_CONTEXT_CHARS].rstrip()
 
 
 def session_start(value: dict[str, Any], home: str | None = None) -> dict[str, Any] | None:
@@ -484,7 +511,8 @@ def reminder(project: dict[str, Any], activity: Activity) -> str:
         f"【LLM Wiki 记录检查】上次记录之后又完成了一段工作{amount}，还没有记录。请按记录规则回顾这段工作：\n"
         "- 有值得长期保留的决策、实验结果、新发现、踩坑、项目约定、未决问题或下一步：调用 llmwiki_record_write"
         f"（project_root=\"{project.get('source_root')}\"，project_id=\"{project.get('id')}\"）写入，"
-        "同一主题合并为一条，最多两条；写完只回复一行「📝 已记录：<标题>」。\n"
+        "一条只讲一个主题，不同主题分开记，最多三条；推翻了旧结论或做完了回顾里的下一步，"
+        "用 supersedes / resolves 填编号；写完只回复「📝 已记录：<标题>」，每条一行。\n"
         "- 没有：只回复「（本段无需记录）」。\n"
         "不要重复已经记录过的内容，不要向用户征求是否记录，也不要继续做其他工作。"
     )

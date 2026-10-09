@@ -60,7 +60,7 @@ tests/smoke_test.py
 7. Hook failure must never fail the host tool call on any host.
 8. Storage moves copy by default, reject non-empty merges, and never delete old directories.
 9. Update README, affected Skills, and smoke tests when behavior changes.
-10. Keep `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json` versions in sync, and keep `.mcp.json` / `hooks/hooks.json` resolvable by both Codex and Claude Code without host-specific JSON files.
+10. Keep `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json` versions in sync and a plain `X.Y.Z`; never edit the version for local testing (use `tools/refresh-local-plugin.ps1`, see `RELEASING.md`). Keep `.mcp.json` / `hooks/hooks.json` resolvable by both Codex and Claude Code without host-specific JSON files.
 11. Skill and script text must stay host-neutral: never address one host by name in Skill instructions or user-facing website strings.
 
 ## Validation
@@ -72,9 +72,10 @@ $env:PYTHONUTF8='1'
 ruff check plugins/llmwiki-lite/scripts plugins/llmwiki-lite/opencode plugins/llmwiki-lite/tests
 python -B plugins/llmwiki-lite/tests/smoke_test.py
 python plugins/llmwiki-lite/opencode/install.py --dry-run
-python C:/Users/lyn/.codex/skills/.system/skill-creator/scripts/quick_validate.py <each-skill-directory>
-python C:/Users/lyn/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py next/llmwiki-lite-codex-plugin/plugins/llmwiki-lite
+claude plugin validate plugins/llmwiki-lite
 ```
+
+Changes to website code or `desktop/` also need `python -B -m unittest discover -s desktop -p test_app.py`; try them in the desktop app with `desktop/run-dev.ps1` rather than rebuilding and reinstalling.
 
 ## Explicit visual Git boundary
 

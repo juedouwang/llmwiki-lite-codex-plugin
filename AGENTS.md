@@ -15,4 +15,6 @@ Host entry points:
 - Claude Code: `.claude-plugin/marketplace.json` plus `plugins/llmwiki-lite/.claude-plugin/plugin.json`;
 - opencode: `plugins/llmwiki-lite/opencode/install.py` writes the user's `opencode.json`.
 
+The Windows desktop app in `desktop/` packages the same website; releases attach it to GitHub Releases automatically (see `RELEASING.md`).
+
 Follow `plugins/llmwiki-lite/AGENTS.md` for implementation and validation rules.

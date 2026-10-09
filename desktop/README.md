@@ -17,19 +17,31 @@
 
 ```text
 %LOCALAPPDATA%\LLMWikiDesktop\build-env
-本机：C:\Users\lyn\AppData\Local\LLMWikiDesktop\build-env
 ```
 
 若该环境正在创建、不是 Python 3.11 x64 venv，或开放了 system-site-packages，脚本会停止而不是删除、重建或污染它。现成环境直接复用其中的 `Scripts/python.exe`，无需 PATH 上有 Python。依赖只声明在 `desktop/requirements-build.txt`，用隔离环境的 `python -m pip install` 安装并通过 `pip check` 检查，插件仍不引入桌面依赖。
 
 直接依赖已固定为 [pywebview 6.2.1](https://pypi.org/project/pywebview/6.2.1/)、[PyInstaller 6.22.3](https://pypi.org/project/pyinstaller/6.22.3/)、[pyinstaller-hooks-contrib 2026.7](https://pypi.org/project/pyinstaller-hooks-contrib/2026.7/) 和 [pypdf 6.19.0](https://pypi.org/project/pypdf/6.19.0/)，于 2026-09-25 查询官方 PyPI 确认；传递依赖仍由 pip 解析。pypdf 用于原有 PDF 文本阅读功能。首次安装依赖需要联网。
 
-## 构建与安装
+## 普通用户安装
 
-在 PowerShell 中执行；只对这次脚本进程使用 Bypass，不修改用户/系统执行策略：
+不需要构建：从 GitHub Releases 下载 `WildResearchWorkbench-<版本>-windows-x64.zip`，解压后双击 `install.cmd`（详见根目录 README 的“安装”）。以下内容面向开发者。
+
+## 开发模式
+
+改完代码想马上看效果，不必构建安装，直接从源码运行：
 
 ```powershell
-Set-Location 'E:\GitHub\llm-wiki-agent\next\llmwiki-lite-codex-plugin'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\desktop\run-dev.ps1
+```
+
+它用 `build.ps1` 创建的隔离环境运行 `desktop/app.py`，读取仓库里的插件代码，重开即生效，也不做更新检查。首次使用前先运行一次 `build.ps1` 创建环境。同一数据目录只开一个窗口：已安装的桌面版开着时脚本会提示先关闭它；也可以加 `-DataHome <临时目录>` 用另一份数据并排测试，加 `-Console` 在终端里看报错。
+
+## 构建与安装
+
+在仓库根目录的 PowerShell 中执行；只对这次脚本进程使用 Bypass，不修改用户/系统执行策略：
+
+```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\desktop\build.ps1
 if ($LASTEXITCODE -ne 0) { throw '构建失败，请勿继续安装旧产物。' }
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\desktop\install.ps1
@@ -38,7 +50,7 @@ if ($LASTEXITCODE -ne 0) { throw '安装失败，请查看上方错误。' }
 
 `build.ps1` 只构建，不安装或启动。它通过明确的 venv Python 路径运行 PyInstaller，输出为：
 
-首次创建环境时，若默认 `python` 不是 Python 3.11，可在构建命令末尾添加 `-Python 'C:\Users\lyn\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\python.exe'`；已有构建环境时无需此参数。
+首次创建环境时，若默认 `python` 不是 Python 3.11，可在构建命令末尾添加 `-Python '<Python 3.11 的 python.exe 路径>'`；已有构建环境时无需此参数。
 
 ```text
 desktop/dist/WildResearchWorkbench/
@@ -55,7 +67,15 @@ desktop/dist/WildResearchWorkbench/
 
 `Workbench.spec` 同时收集全部脚本源码和动态导入的 hidden imports，以便分析其标准库依赖；`app.py` 将 `sys._MEIPASS/plugin/scripts` 放到 `sys.path` 首位，保证 `__file__` 相对路径资源可用。pywebview 的 Windows 后端、桥接 JS/DLL 和 Python.NET 也纳入打包，不引入 Qt/CEF。
 
-`install.ps1` 会检查目录完整性，先复制到同级临时目录，再替换程序目录；替换失败时尝试恢复旧目录。所有递归删除和目录移动都限制在规范化后的程序目录及 GUID 命名临时目录中，并拒绝符号链接/junction。运行中的桌面应用会阻止安装，不会被强制终止。可用 `-WhatIf` 预览，或用 `-SourceDirectory 'D:\release\WildResearchWorkbench'` 安装其他完整构建目录。
+`install.ps1` 会检查目录完整性，先复制到同级临时目录，再替换程序目录；替换失败时尝试恢复旧目录。所有递归删除和目录移动都限制在规范化后的程序目录及 GUID 命名临时目录中，并拒绝符号链接/junction。运行中的桌面应用会阻止安装，不会被强制终止。可用 `-WhatIf` 预览，或用 `-SourceDirectory 'D:\release\WildResearchWorkbench'` 安装其他完整构建目录。脚本放在发布包里时（旁边有 `WildResearchWorkbench\` 文件夹）会自动安装那个文件夹。
+
+## 打包发布
+
+`package.ps1` 把 `desktop/dist` 的构建打成 `desktop/release/WildResearchWorkbench-<版本>-windows-x64.zip`，并写出同名 `.sha256`。压缩包根目录含 `WildResearchWorkbench\`、`install.ps1`、`install.cmd`（双击安装）、`README.txt`（中文安装说明）和 `LICENSE`。版本号必须与 `plugin.json` 一致，构建与源码版本不同时拒绝打包。正式发布由 GitHub Actions 在推送 `vX.Y.Z` 标签后自动完成，见根目录 `RELEASING.md`。
+
+## 更新检查
+
+打包版启动时在后台向 GitHub 查询最新 Release（每天最多一次，5 秒超时，失败重试一次后静默跳过，绝不影响启动），结果只保存版本号和链接到 `<数据目录>\desktop\update.json`。最新版本高于当前版本时，工作台顶部显示“下载新版”，在系统浏览器打开 Release 页面；不会自动下载或替换程序。关闭方法：环境变量 `LLMWIKI_UPDATE_CHECK=0`，或在 `<数据目录>\desktop\window.json` 中加 `"update_check": false`。从源码运行时不检查。
 
 应用支持 `--home` 指定已有数据根目录、`--port` 指定本机端口（`0` 为自动分配）；默认独立端口为 `18765`，占用时自动选择可用端口。需要单独测试时，例如：
 
@@ -67,7 +87,7 @@ desktop/dist/WildResearchWorkbench/
 
 ## 更新与验证
 
-- 修改 `app.py`、插件 Python、网页/static 资源或构建依赖后，必须**重新构建，再安装**。已安装的 EXE 使用打包快照，不会自动读取仓库修改。
+- 已安装的 EXE 使用打包快照，不读取仓库修改。开发时用 `run-dev.ps1` 从源码运行；只有要验证打包版本身时，才需要**重新构建，再安装**。
 - 更新前关闭桌面版；安装仅替换程序及专用快捷方式，不触碰 `%LOCALAPPDATA%\LLMWiki`，不会迁移/删除原 Wiki 文件。
 - 首次构建后检查：双击快捷方式无终端、窗口标题正确、页面及图标可用、能读取原项目/数据；关闭窗口后对应本机服务和应用进程退出。原网站独立启动的服务不属于桌面版的关闭范围。
 - 运行端无需 Python/uv，但 Git 相关功能仍需要本机 Git；WebView2/.NET 运行环境问题应按实际报错处理。尚未完成真实构建/启动验证时，不应将静态检查当作发行验证。

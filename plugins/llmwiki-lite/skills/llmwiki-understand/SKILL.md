@@ -13,7 +13,7 @@ You do the semantic work. MCP performs bounded filesystem mechanics.
 5. Use `llmwiki_search` to find exact terms and `llmwiki_read` in bounded ranges. Read exact sources before asserting behavior, numbers, experimental conditions, or conclusions.
 6. Explain what is known, how it works, evidence paths, and what remains unknown.
 7. Create only pages with durable value. Prefer a few rich pages over a taxonomy or many stubs.
-8. Write semantic Markdown with `llmwiki_wiki_write`, using project-relative `sources` where useful.
+8. Write semantic Markdown with `llmwiki_wiki_write`, using project-relative `sources` where useful. Give every knowledge page a frontmatter `type` so the website can show its icon and group: `overview`, `architecture`, `finding`, `experiment`, `data`, `guide`, `concept`, `review` (literature synthesis), or `plan` (paper, patent, or research roadmap). Also start `knowledge/project-status.md` (`title: "项目现状"`, `type: project-status`) with what is currently in use, known behavior and limits, the main open problems, and a changelog; mark each item ✅ confirmed, 🔍 inferred (with its basis), or ❓ unknown.
 9. Run `llmwiki_wiki_check` after adding links or source references.
 
 ## Default language and writing style

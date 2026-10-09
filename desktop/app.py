@@ -19,10 +19,13 @@ import sys
 import socket
 import threading
 import time
+import urllib.request
 
 TITLE = "野人工作台"
 APP_ID = "LLMWiki.WildResearchWorkbench.Desktop"
 DEFAULT_PORT = 18765
+LATEST_RELEASE_API = "https://api.github.com/repos/juedouwang/llmwiki-lite-codex-plugin/releases/latest"
+UPDATE_INTERVAL_SECONDS = 24 * 3600
 
 
 def plugin_scripts() -> Path:
@@ -44,6 +47,53 @@ def write_settings(path: Path, value: dict) -> None:
     temporary = path.with_suffix(f".{os.getpid()}.tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(path)
+
+
+def bundled_version(scripts: Path) -> str:
+    """The plugin version this build packaged; its release tag is ``v`` + this."""
+    return str(read_settings(scripts.parent / ".codex-plugin" / "plugin.json").get("version") or "")
+
+
+def update_check_enabled(home: Path) -> bool:
+    """On by default; ``LLMWIKI_UPDATE_CHECK=0`` or ``"update_check": false`` in window.json turns it off."""
+    if os.environ.get("LLMWIKI_UPDATE_CHECK", "").strip().lower() in {"0", "false", "no", "off"}:
+        return False
+    return read_settings(home / "desktop" / "window.json").get("update_check", True) is not False
+
+
+def check_for_update(home: Path, current: str, *, opener=urllib.request.urlopen, now: float | None = None) -> dict:
+    """Ask GitHub for the latest release at most once a day. Never blocks or fails startup.
+
+    Only the release tag and page URL are kept, in <home>/desktop/update.json; the
+    website shows a download notice when that tag is newer than this build.
+    """
+    cache = home / "desktop" / "update.json"
+    state = read_settings(cache)
+    now = time.time() if now is None else now
+    checked = state.get("checked_at")
+    if state.get("current") == current and isinstance(checked, (int, float)) and now - checked < UPDATE_INTERVAL_SECONDS:
+        return state
+    request = urllib.request.Request(LATEST_RELEASE_API, headers={
+        "Accept": "application/vnd.github+json", "User-Agent": f"WildResearchWorkbench/{current}",
+    })
+    for attempt in range(2):  # proxies often drop the first TLS handshake
+        try:
+            with opener(request, timeout=5) as response:
+                release = json.loads(response.read().decode("utf-8"))
+            break
+        except Exception as exc:  # offline, rate limited, or no release published yet
+            if attempt:
+                logging.info("Update check skipped: %s", exc)
+                return state
+            time.sleep(2)
+    if not isinstance(release, dict):
+        return state
+    state = {
+        "checked_at": now, "current": current,
+        "latest": str(release.get("tag_name") or ""), "url": str(release.get("html_url") or ""),
+    }
+    write_settings(cache, state)
+    return state
 
 
 def configure_logging(home: Path) -> Path:
@@ -290,6 +340,12 @@ def main(argv: list[str] | None = None) -> int:
             pass
         import webview
 
+        if getattr(sys, "frozen", False):
+            # Release builds offer newer releases; a source run is already current.
+            version = bundled_version(scripts)
+            os.environ["LLMWIKI_DESKTOP_VERSION"] = version
+            if version and update_check_enabled(home):
+                threading.Thread(target=check_for_update, args=(home, version), daemon=True).start()
         runtime = DesktopServer(home, args.port)
         url = runtime.start()
         width, height = window_size(runtime.settings)

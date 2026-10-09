@@ -11,7 +11,11 @@ if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is not set.' }
 
 $AppName = 'WildResearchWorkbench'
 $ExeName = "$AppName.exe"
-$SourceDirectory = if ($SourceDirectory) { $SourceDirectory } else { Join-Path $PSScriptRoot 'dist\WildResearchWorkbench' }
+# A release zip keeps the app folder beside this script; a source checkout keeps it in dist\.
+$ReleaseLayout = Join-Path $PSScriptRoot $AppName
+$SourceDirectory = if ($SourceDirectory) { $SourceDirectory }
+    elseif (Test-Path -LiteralPath (Join-Path $ReleaseLayout $ExeName) -PathType Leaf) { $ReleaseLayout }
+    else { Join-Path $PSScriptRoot 'dist\WildResearchWorkbench' }
 $ProgramsRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs'))
 $InstallRoot = Join-Path $ProgramsRoot $AppName
 $InstalledExe = Join-Path $InstallRoot $ExeName

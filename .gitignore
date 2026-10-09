@@ -16,3 +16,4 @@ desktop/.venv/
 desktop/build/
 desktop/dist/
 desktop/test-output/
+desktop/release/

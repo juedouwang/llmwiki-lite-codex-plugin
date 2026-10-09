@@ -75,3 +75,37 @@ jobs:
           assert entries[0].get('source') == './plugins/llmwiki-lite'
           print(f'Validated LLM Wiki Lite {version} for Codex, Claude Code, and opencode')
           PY
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Build the desktop app
+        shell: powershell
+        run: ./desktop/build.ps1 -Python python
+
+      - name: Run desktop tests
+        shell: powershell
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          & "$env:LOCALAPPDATA\LLMWikiDesktop\build-env\Scripts\python.exe" -B -m unittest discover -s desktop -p test_app.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package a test zip
+        shell: powershell
+        run: ./desktop/package.ps1
+
+      - name: Keep the zip for manual testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: WildResearchWorkbench-windows-x64
+          path: desktop/release/*
+          retention-days: 7

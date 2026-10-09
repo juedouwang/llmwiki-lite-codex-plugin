@@ -34,8 +34,9 @@ description: "Proactively capture durable research knowledge from the conversati
 - 用户说“记一下”“记住”“这个很重要”“以后都这样”→ 一定记（通常是约定或决策）。
 - 失败的实验只要弄清了失败原因 → 记为踩坑；原因不明但现象重要 → 记为问题。
 - 用户认可、准备去验证的想法 → 记为发现，并标“推测/待验证”。
-- 同一主题已有记录且有变化 → 写一条后续记录，title 体现变化，understanding 说明和上次有什么不同。
-- 用户指出记错了 → 写一条以“更正：”开头的新记录，不改写旧条目。
+- 同一主题已有记录且结论变了 → 写一条后续记录，title 体现变化，understanding 说明和上次有什么不同，`supersedes` 填旧记录编号。
+- 用户指出记错了 → 写一条以“更正：”开头的新记录，`supersedes` 填被更正的记录，不改写旧条目。
+- 做完了回顾里的某个下一步、回答了某个未决问题 → 在这次的记录里用 `resolves` 标上编号。完成本身没什么值得记的，就等下一条记录顺带标上，不要为了标完成单独写一条。
 
 ## 写法
 
@@ -57,8 +58,10 @@ description: "Proactively capture durable research knowledge from the conversati
 - `conclusion` / `decisions` / `open_questions` / `next_steps`：只填真正发生的内容，没有就留空。
 - `related_files`：项目内相对路径；`related_pages`：相关的 Wiki 或知识库页面。
 - `tags`：第一个写类型（决策/结果/发现/踩坑/约定/问题），再加一两个主题词。
+- `supersedes`：这条推翻或更新了哪些旧记录的结论，填记录编号（如 `R3fa21c`）或完整记录 ID。
+- `resolves`：这条完成了哪些旧的下一步、回答了哪些旧的未决问题，填 `R3fa21c.s1`（第 1 个下一步）或 `R3fa21c.q2`（第 2 个问题）。编号不存在时工具会报错，改正后重试。
 
-一条记录只讲一个主题，一轮最多记两条。自动记录后只在回复末尾单独写一行「📝 已记录：<标题>」；用户明确要求记录时，再告诉用户工具返回的记录路径，并用 2–3 条要点说明记了什么。
+一条记录只讲一个主题；不同主题分开记，一轮最多三条，不要把几个主题塞进一条。自动记录后只在回复末尾单独写一行「📝 已记录：<标题>」；用户明确要求记录时，再告诉用户工具返回的记录路径，并用 2–3 条要点说明记了什么。
 
 ## 解析项目
 
@@ -71,11 +74,12 @@ description: "Proactively capture durable research knowledge from the conversati
 
 - 科研记录是时间线：什么时候、做了什么、当时怎么认为。只追加。
 - 知识库 `knowledge/*.md` 是当前有效的认识（项目架构、当前认识、关键概念等），由 `llmwiki-maintain` 流程从记录中提炼；替换旧内容需要用户确认。
-- 记录时不要直接改写知识库页面，把相关页面写进 `related_pages` 即可。用户要求“整理知识库”“更新知识库”时，按 `llmwiki-maintain` 执行。
+- 记录时不要直接改写知识库页面，把相关页面写进 `related_pages` 即可。唯一例外是 `knowledge/project-status.md`（项目现状）：在用版本、参数、推断状态或主线问题一有变化就当轮直接改，并在页尾更新日志加一行，规则以 `templates/capture-rules.md` 为准。用户要求“整理知识库”“更新知识库”时，按 `llmwiki-maintain` 执行。
 
 ## 回顾与接续
 
 - 用户说“继续”“上次做到哪了”“之前那个坑是什么”：先看会话开始注入的最近记录和下一步；需要细节时用 `llmwiki_record_list(query=...)` 检索、`llmwiki_record_read` 读全文。多条目日档要用带 `#entry_key` 的完整 ID，例如 `records/2026/08/2026-08-04.md#123000-topic`。
+- 记录只追加，当前状态由后来的记录推出：列表和读取结果里的 `superseded_by` 非空，说明这条结论已被取代，以新记录为准；`resolved_items` 列出已完成的下一步和已回答的问题。会话开始的回顾已经去掉了这些内容。
 - 记录不等于科学事实。用户要求核实时，回到记录的 evidence 和原始文件。
 - 不要用记录推断任务已完成；任务标题、日期、状态由用户控制。用户明确要求把检查点挂到已有任务时，使用 `llmwiki_progress_context_write`，并给出 `project_root`、`task_id`、`base_revision` 和已保存记录的 `source_record_id`；不要按标题猜任务，也不要用它改任务状态。
 - 需要浏览时，可以用 `llmwiki_web_start` 打开本地网站的“科研记录”页面。

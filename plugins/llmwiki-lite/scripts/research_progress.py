@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from llmwiki_core import LLMWikiError
 from research_notebook import NotebookConflict, _atomic, _file_lock, safe_file
-from research_records import _split_record_id, list_records, read_record, write_record
+from research_records import _split_record_id, closed_items, list_records, read_record, write_record
 
 LOCK = threading.RLock()
 MAX_BYTES = 8 * 1024 * 1024
@@ -311,6 +311,9 @@ def _legacy_candidates(records: list[dict]) -> list[dict]:
     """Legacy bullets are suggestions, never automatically new/finished tasks."""
     items = []
     for record in records:
+        if record.get("superseded_by"):
+            continue
+        closed = closed_items(record)
         text = str(record.get("content", "")).replace("\r\n", "\n")
         bullets = []
         for section in ("尚未解决的问题", "下一步行动"):
@@ -320,6 +323,8 @@ def _legacy_candidates(records: list[dict]) -> list[dict]:
         occurrences: dict[str, int] = {}
         for index, title in enumerate(bullets):
             occurrences[title] = occurrences.get(title, 0) + 1
+            if title in closed:
+                continue
             identity = f'{record["id"]}\0{title}\0{occurrences[title]}'
             items.append({"id": hashlib.sha256(identity.encode()).hexdigest()[:32], "title": title[:240],
                           "record_id": record["id"], "legacy_key": f'{record["id"]}::{index}'})

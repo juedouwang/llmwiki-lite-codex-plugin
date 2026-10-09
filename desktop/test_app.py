@@ -126,5 +126,80 @@ class CloseGuardTests(unittest.TestCase):
         self.window.destroy.assert_called_once()
 
 
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def read(self):
+        return self.payload
+
+
+class UpdateCheckTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="desktop-update-")
+        self.addCleanup(self.temporary.cleanup)
+        self.home = Path(self.temporary.name)
+        self.calls = []
+
+    def opener(self, payload):
+        def open_url(request, timeout):
+            self.calls.append((request.full_url, timeout))
+            return FakeResponse(payload)
+        return open_url
+
+    def test_records_latest_release_and_checks_at_most_daily(self):
+        release = {"tag_name": "v0.4.1", "html_url": "https://github.com/x/y/releases/tag/v0.4.1"}
+        state = app.check_for_update(self.home, "0.4.0", opener=self.opener(release), now=1000.0)
+        self.assertEqual(state["latest"], "v0.4.1")
+        self.assertEqual(self.calls, [(app.LATEST_RELEASE_API, 5)])
+        cached = json.loads((self.home / "desktop" / "update.json").read_text(encoding="utf-8"))
+        self.assertEqual(cached["url"], release["html_url"])
+        # Within a day the cache answers; a new build checks again.
+        app.check_for_update(self.home, "0.4.0", opener=self.opener(release), now=1000.0 + 3600)
+        self.assertEqual(len(self.calls), 1)
+        app.check_for_update(self.home, "0.4.1", opener=self.opener(release), now=1000.0 + 3600)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_offline_or_odd_reply_keeps_previous_state(self):
+        attempts = []
+
+        def offline(request, timeout):
+            attempts.append(1)
+            raise OSError("offline")
+        with patch("app.time.sleep"):
+            self.assertEqual(app.check_for_update(self.home, "0.4.0", opener=offline, now=1.0), {})
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(app.check_for_update(self.home, "0.4.0", opener=self.opener([]), now=1.0), {})
+        self.assertFalse((self.home / "desktop" / "update.json").exists())
+
+    def test_one_dropped_handshake_is_retried(self):
+        replies = [OSError("EOF"), FakeResponse({"tag_name": "v0.4.1", "html_url": "https://github.com/x"})]
+
+        def flaky(request, timeout):
+            reply = replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        with patch("app.time.sleep"):
+            self.assertEqual(app.check_for_update(self.home, "0.4.0", opener=flaky, now=1.0)["latest"], "v0.4.1")
+
+    def test_update_check_can_be_turned_off(self):
+        self.assertTrue(app.update_check_enabled(self.home))
+        with patch.dict(os.environ, {"LLMWIKI_UPDATE_CHECK": "0"}):
+            self.assertFalse(app.update_check_enabled(self.home))
+        app.write_settings(self.home / "desktop" / "window.json", {"update_check": False})
+        self.assertFalse(app.update_check_enabled(self.home))
+
+    def test_bundled_version_comes_from_the_plugin_manifest(self):
+        manifest = json.loads((app.plugin_scripts().parent / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(app.bundled_version(app.plugin_scripts()), manifest["version"])
+
+
 if __name__ == "__main__":
     unittest.main()

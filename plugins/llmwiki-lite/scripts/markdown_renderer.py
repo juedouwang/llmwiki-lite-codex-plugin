@@ -92,13 +92,14 @@ def render_inline(text: str, project_id: str, current_page: str) -> str:
     text = re.sub(r"(?<!!)\[([^\]]+)\]\(([^)]+)\)", link, text)
     text = html.escape(text)
     text = re.sub(r"~~(.+?)~~", r"<del>\1</del>", text)
+    # Underscores inside a word (camera_params, rgbd_11) are never emphasis.
     text = re.sub(
-        r"\*\*(.+?)\*\*|__(.+?)__",
+        r"\*\*(.+?)\*\*|(?<!\w)__(.+?)__(?!\w)",
         lambda m: f"<strong>{m.group(1) or m.group(2)}</strong>",
         text,
     )
     text = re.sub(
-        r"(?<!\*)\*([^*\n]+)\*(?!\*)|(?<!_)_([^_\n]+)_(?!_)",
+        r"(?<!\*)\*([^*\n]+)\*(?!\*)|(?<![\w_])_([^_\n]+)_(?![\w_])",
         lambda m: f"<em>{m.group(1) or m.group(2)}</em>",
         text,
     )
@@ -118,7 +119,8 @@ _PLAIN_INLINE = (
     (re.compile(r"!\[([^\]]*)\]\([^)]*\)"), lambda m: m.group(1) or "[图片]"),
     (re.compile(r"\[\[([^\]|]+)\|?([^\]]*)\]\]"), lambda m: m.group(2) or m.group(1)),
     (re.compile(r"\[([^\]]+)\]\([^)]*\)"), lambda m: m.group(1)),
-    (re.compile(r"(\*\*|__|~~)(.+?)\1"), lambda m: m.group(2)),
+    (re.compile(r"(\*\*|~~)(.+?)\1"), lambda m: m.group(2)),
+    (re.compile(r"(?<!\w)__(.+?)__(?!\w)"), lambda m: m.group(1)),
     (re.compile(r"(?<![\w*])\*(?!\s)([^*\n]+?)\*(?!\w)"), lambda m: m.group(1)),
     (re.compile(r"`([^`\n]+)`"), lambda m: m.group(1)),
 )
